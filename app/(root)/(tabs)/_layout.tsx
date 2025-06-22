@@ -1,3 +1,4 @@
+
 import { View, Text, Image } from 'react-native'
 import React from 'react'
 import { Tabs } from 'expo-router'
@@ -48,6 +49,16 @@ const TabsLayout = () => {
                 tabBarIcon: ({focused}) => (
                 <TabIcon icon = {icons.search} focused = {focused} title = "Explore" />
              )
+            }}
+        />
+        <Tabs.Screen
+            name="Map"
+            options={{
+                title: 'Map',
+                headerShown: false,
+                tabBarIcon: ({ focused }) => (
+                <TabIcon icon={icons.location} focused={focused} title="Map" />
+                ),
             }}
         />
         <Tabs.Screen

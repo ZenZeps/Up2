@@ -1,56 +1,58 @@
-import images from '@/constants/images';
-import icons from '@/constants/icons';
-import React, { useEffect } from "react";
-import { Image, ScrollView, Text, TouchableOpacity, View, Alert } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { login, getCurrentUser } from '@/lib/appwrite';
+import React from 'react';
+import { View, Text, TouchableOpacity, Alert, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { loginWithGoogle } from './appwrite/auth';
+import images from '@/constants/images';
+import { client } from './appwrite/client';
+import { AppwriteException } from 'appwrite';
 
 const SignIn = () => {
   const router = useRouter();
 
-  // Auto-redirect if already logged in
-  useEffect(() => {
-    const checkUser = async () => {
-      const user = await getCurrentUser();
-      if (user) {
-        router.replace('/(root)/(tabs)/Home'); // redirect to Home if user is logged in
-      }
-    };
-    checkUser();
-  }, []);
-
-  const handleLogin = async () => {
-    const result = await login();
-    if (result) {
-      console.log('Login Successful');
-      router.replace('/(root)/(tabs)/Home'); // redirect after login
-    } else {
-      Alert.alert('Error', 'Failed to Login');
+  const handleGoogleLogin = async () => {
+    try {
+      await loginWithGoogle();
+      router.replace('/(root)/(tabs)/Home');
+    } catch (error: any) {
+      Alert.alert('Login Error', error.message || 'Try again');
     }
   };
 
+  const pingAppwrite = async () => {
+  try {
+    // Use a valid endpoint to test connection
+    const res = await client.call("get", "/health"); // or /health/ping
+    Alert.alert("Ping successful!", JSON.stringify(res));
+  } catch (error) {
+    if (error instanceof AppwriteException) {
+      Alert.alert("Ping failed", error.message);
+    } else {
+      Alert.alert("Ping failed", "Unknown error occurred");
+    }
+  }
+};
+
+
   return (
-    <SafeAreaView className="bg-white h-full">
-      <ScrollView contentContainerClassName="h-full">
-        <Image source={images.onboarding} className="w-full h-4/6" resizeMode="contain" />
-        <View className="px-10">
-          <Text className="text-base text-center uppercase font-rubik text-black-200">Welcome to Up2</Text>
-          <Text className="text-3xl font-rubik-semibold text-black-300 text-center mt-2">
-            Make Meeting Up {"\n"}
-            <Text className="text-primary-300">EASY</Text>
-          </Text>
-          <Text className="text-lg font-rubik text-black-200 text-center mt-12">
-            Login to Up2 with Google
-          </Text>
-          <TouchableOpacity onPress={handleLogin} className="bg-white shadow-md shadow-zinc-300 rounded-full w-full py-4 mt-5">
-            <View className="flex flex-row items-center justify-center">
-              <Image source={icons.google} className="w-5 h-5" resizeMode="contain" />
-              <Text className="text-lg font-rubik-medium text-black-300 ml-2">Continue With Google</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+    <SafeAreaView className="flex-1 items-center justify-center bg-white px-6">
+      <Image source={images.onboarding} className="w-4/5 h-1/3 mb-6" resizeMode="contain" />
+      <Text className="text-2xl font-bold mb-4">Welcome to the Social Calendar</Text>
+
+      <TouchableOpacity
+        onPress={handleGoogleLogin}
+        className="bg-blue-600 px-6 py-3 rounded-full mb-4"
+      >
+        <Text className="text-white text-lg font-medium">Continue with Google</Text>
+      </TouchableOpacity>
+
+      {/* Ping Appwrite Button */}
+      <TouchableOpacity
+        onPress={pingAppwrite}
+        className="bg-green-500 px-6 py-2 rounded-full"
+      >
+        <Text className="text-white text-base font-medium">Ping Appwrite</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 };
