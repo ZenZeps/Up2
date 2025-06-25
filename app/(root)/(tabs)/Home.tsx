@@ -11,6 +11,7 @@ const viewModes: Mode[] = ['day', 'week', 'month'];
 
 export default function Home() {
 	const { events } = useEvents();
+	console.log('Events in Home:', events); // <-- Add this line
 	const [formVisible, setFormVisible] = useState(false);
 	const [selectedDateTime, setSelectedDateTime] = useState<string | null>(null);
 	const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
@@ -61,17 +62,18 @@ export default function Home() {
         	onPressEvent={handlePressEvent}
       	/>
 
-      	{selectedDateTime && (
-        	<EventForm
-          		visible={formVisible}
-          		selectedDateTime={selectedDateTime}
-          		event={editingEvent || undefined}
-          		onClose={() => {
-            		setFormVisible(false);
-            		setEditingEvent(null);
-          	}}
-        	/>
-      	)}
-    	</View>
-  	);
+{selectedDateTime && (
+  <EventForm
+    visible={formVisible}
+    selectedDateTime={selectedDateTime}
+    event={editingEvent || undefined}
+    currentUserId="demo"
+    onClose={() => {
+      setFormVisible(false);
+      setEditingEvent(null);
+    }}
+  />
+)}
+    </View>
+  );
 }

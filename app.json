@@ -9,9 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.up2.Up2"
     },
     "android": {
+      "package": "com.Up2.Up2",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
@@ -31,21 +33,21 @@
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "cover",
           "backgroundColor": "#ffffff",
-          "enableFullScreenImage_legacy":  true
+          "enableFullScreenImage_legacy": true
         }
       ],
       [
-      "expo-font",
-      {
-        "fonts": [
-        "./assets/fonts/Rubik-ExtraBold.ttf",
-        "./assets/fonts/Rubik-Medium.ttf",
-        "./assets/fonts/Rubik-Light.ttf",
-        "./assets/fonts/Rubik-Regular.tff",
-        "./assets/fonts/Rubik-SemiBold.tff"
-        ]
-      }
-    ]
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Rubik-ExtraBold.ttf",
+            "./assets/fonts/Rubik-Medium.ttf",
+            "./assets/fonts/Rubik-Light.ttf",
+            "./assets/fonts/Rubik-Regular.ttf",
+            "./assets/fonts/Rubik-SemiBold.ttf"
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

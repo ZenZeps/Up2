@@ -4,6 +4,8 @@ export interface Event {
   location: string;
   dateTime: string; // ISO format
   duration: number; // duration in minutes
+  creatorId: string;
+  inviteeIds: string[];
 }
 
 export interface EventWithDetails extends Event {
