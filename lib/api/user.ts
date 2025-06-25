@@ -11,6 +11,7 @@ export async function createUserProfile(profile: UserProfile) {
       profile.id || ID.unique(),
       {
         name: profile.name,
+        email: profile.email,             // ← Add this line
         isPublic: profile.isPublic,
         preferences: profile.preferences,
       }
@@ -47,6 +48,7 @@ export async function updateUserProfile(profile: UserProfile) {
       profile.id,
       {
         name: profile.name,
+        email: profile.email,             // ← Add this line
         isPublic: profile.isPublic,
         preferences: profile.preferences,
       }

@@ -1,10 +1,7 @@
-import { Account, Avatars, Client, Databases, OAuthProvider } from "react-native-appwrite";
-import * as Linking from "expo-linking";
-import { openAuthSessionAsync } from "expo-web-browser";
-import { createUserProfile, getUserProfile } from "@/lib/api/user";
+import { Account, Avatars, Client, Databases, ID } from "react-native-appwrite";
 
 export const config = {
-  platform: 'com.Up2.Up2', // Also make sure this matches your Appwrite Platform settings
+  platform: "com.Up2.Up2",
   endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT!,
   projectID: process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID!,
   databaseID: process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID!,
@@ -23,49 +20,33 @@ export const avatar = new Avatars(client);
 export const account = new Account(client);
 export const databases = new Databases(client);
 
-export async function login() {
+// ✅ Email/password signup
+export async function signupWithEmail(email: string, password: string, name: string) {
   try {
-    const redirectUri = Linking.createURL('/');
-    console.log("Redirect URI:", redirectUri);
-
-    // Manually build the OAuth URL
-    const authURL = `${config.endpoint}/account/sessions/oauth2/${OAuthProvider.Google}?project=${config.projectID}&success=${encodeURIComponent(redirectUri)}&failure=${encodeURIComponent(redirectUri)}`;
-
-    // Open in browser
-    const browserResult = await openAuthSessionAsync(authURL, redirectUri);
-    if (browserResult.type !== 'success') throw new Error('Login was not successful');
-
-    const url = new URL(browserResult.url);
-    const secret = url.searchParams.get('secret')?.toString();
-    const userId = url.searchParams.get('userId')?.toString();
-
-    if (!secret || !userId) {
-      throw new Error('Missing secret or userId in redirect URL');
-    }
-
-    await account.createSession(userId, secret);
-    const user = await account.get();
-
-    const existingProfile = await getUserProfile(user.$id);
-    if (!existingProfile) {
-      await createUserProfile({
-        id: user.$id,
-        name: user.name || "Unnamed",
-        isPublic: true,
-        preferences: [],
-      });
-    }
-
-    return true;
+    // Use ID.unique() instead of email for user ID
+    const user = await account.create(ID.unique(), email, password, name);
+    return user;
   } catch (err) {
-    console.error("Login error:", err);
-    return false;
+    console.error("Signup error:", err);
+    throw err;
   }
 }
 
+// ✅ Email/password login
+export async function loginWithEmail(email: string, password: string) {
+  try {
+    const session = await account.createEmailPasswordSession(email, password);
+    return session;
+  } catch (err) {
+    console.error("Login error:", err);
+    throw err;
+  }
+}
+
+// ✅ Logout
 export async function logout() {
   try {
-    await account.deleteSession('current');
+    await account.deleteSession("current");
     return true;
   } catch (error) {
     console.error("Logout error:", error);
@@ -73,6 +54,7 @@ export async function logout() {
   }
 }
 
+// ✅ Get current user
 export async function getCurrentUser() {
   try {
     const response = await account.get();
