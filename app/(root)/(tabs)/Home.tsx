@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { useEvents } from '../context/EventContext';
@@ -6,6 +6,8 @@ import EventForm from '../components/EventForm';
 import { Event as AppEvent } from '../types/Events';
 import dayjs from 'dayjs';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { account } from '@/lib/appwrite';
+import { useLocalSearchParams } from 'expo-router';
 
 const viewModes: Mode[] = ['day', 'week', 'month'];
 
@@ -15,11 +17,37 @@ export default function Home() {
   const [selectedDateTime, setSelectedDateTime] = useState<string | null>(null);
   const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
   const [viewMode, setViewMode] = useState<Mode>('week');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  const calendarEvents = events.map((e) => ({
+  const params = useLocalSearchParams(); // supports dynamic routes like /user/[id]
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        if (params?.id) {
+          // We're viewing another user's calendar
+          setCurrentUserId(params.id as string);
+        } else {
+          const user = await account.get();
+          setCurrentUserId(user.$id);
+        }
+      } catch (err) {
+        console.error('Error getting current user:', err);
+      }
+    };
+    init();
+  }, [params]);
+
+  // Filter events for this user
+const calendarEvents = events
+  .filter((e) =>
+    currentUserId &&
+    (e.creatorId === currentUserId || e.inviteeIds.includes(currentUserId))
+  )
+  .map((e) => ({
     title: e.title,
-    start: new Date(e.dateTime),
-    end: dayjs(e.dateTime).add(e.duration, 'minute').toDate(),
+    start: new Date(e.startTime),
+    end: new Date(e.endTime),
     location: e.location,
     rawEvent: e,
   }));
@@ -40,7 +68,10 @@ export default function Home() {
     <SafeAreaView className="flex-1 bg-white">
       <View className="flex-1 p-4 pb-8">
         {/* Header */}
-        <Text className="text-2xl font-rubik-semibold mb-4 text-primary-300">My Events</Text>
+        <Text className="text-2xl font-rubik-semibold mb-4 text-primary-300">
+          {params?.id ? "User's Calendar" : 'My Events'}
+        </Text>
+
         {/* View Mode Toggle */}
         <View className="flex-row justify-center mb-4">
           {viewModes.map((mode) => (
@@ -64,11 +95,11 @@ export default function Home() {
             </TouchableOpacity>
           ))}
         </View>
+
         {/* Calendar Card */}
         <View
           className="flex-1 bg-white rounded-2xl shadow-md p-2"
           style={{
-            // Native shadow for iOS, elevation for Android
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.08,
@@ -104,13 +135,14 @@ export default function Home() {
             }}
           />
         </View>
-        {/* Event Form Modal */}
-        {selectedDateTime && (
+
+        {/* Event Form Modal (only for own calendar) */}
+        {selectedDateTime && !params?.id && (
           <EventForm
             visible={formVisible}
             selectedDateTime={selectedDateTime}
             event={editingEvent || undefined}
-            currentUserId="demo"
+            currentUserId={currentUserId ?? ''}
             onClose={() => {
               setFormVisible(false);
               setEditingEvent(null);

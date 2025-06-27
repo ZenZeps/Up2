@@ -1,4 +1,4 @@
-import { View, TextInput, Modal, Button, Text, ScrollView } from 'react-native';
+import { View, TextInput, Modal, Button, Text, ScrollView, TouchableOpacity } from 'react-native';
 import React, { useState, useEffect } from 'react';
 import RNPickerSelect from 'react-native-picker-select';
 import { Event } from '../types/Events';
@@ -27,11 +27,11 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [description, setDescription] = useState('');
   const [inviteeIds, setInviteeIds] = useState<string[]>([]);
   const [selectedInvitee, setSelectedInvitee] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState<Date>(event ? new Date(event.dateTime) : new Date(selectedDateTime));
+  const [startDate, setStartDate] = useState<Date>(event ? new Date(event.startTime) : new Date(selectedDateTime));
   const [endDate, setEndDate] = useState<Date>(
     event
-      ? dayjs(event.dateTime).add(event.duration ?? 60, 'minute').toDate()
-      : dayjs(selectedDateTime).add(60, 'minute').toDate()
+      ? new Date(event.endTime)
+      : dayjs(selectedDateTime).add(1, 'hour').toDate()
   );
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
@@ -42,59 +42,58 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
   const { refetchEvents } = useEvents(); // <-- get refetchEvents
 
-  useEffect(() => {
-    if (event) {
-      setTitle(event.title || '');
-      setLocation(event.location || '');
-      setDescription((event as any).description || '');
-      setDuration(event.duration ?? 60);
-      setInviteeIds(event.inviteeIds ?? []);
-      setStartDate(new Date(event.dateTime));
-      setEndDate(dayjs(event.dateTime).add(event.duration ?? 60, 'minute').toDate());
-    } else {
-      setTitle('');
-      setLocation('');
-      setDescription('');
-      setDuration(60);
-      setInviteeIds([]);
-      setStartDate(new Date(selectedDateTime));
-      setEndDate(dayjs(selectedDateTime).add(60, 'minute').toDate());
-    }
-  }, [event, selectedDateTime]);
+useEffect(() => {
+  if (event) {
+    setTitle(event.title || '');
+    setLocation(event.location || '');
+    setDescription(event.description || '');
+    setInviteeIds(event.inviteeIds ?? []);
+    setStartDate(new Date(event.startTime));
+    setEndDate(new Date(event.endTime));
+  } else {
+    setTitle('');
+    setLocation('');
+    setDescription('');
+    setInviteeIds([]);
+    setStartDate(new Date(selectedDateTime));
+    setEndDate(dayjs(selectedDateTime).add(1, 'hour').toDate());
+  }
+}, [event, selectedDateTime]);
 
-  const handleSave = async () => {
-    const duration = dayjs(endDate).diff(dayjs(startDate), 'minute');
-    const newEvent: Event = {
-      id: event?.id ?? ID.unique(),
-      title,
-      location,
-      dateTime: startDate.toISOString(),
-      duration,
-      creatorId: currentUserId,
-      inviteeIds,
-    };
+
+const newEvent: Event = {
+  id: event?.id ?? ID.unique(),
+  title,
+  location,
+  startTime: startDate.toISOString(),
+  endTime: endDate.toISOString(),
+  creatorId: currentUserId,
+  inviteeIds,
+  description,
+};
 
     const payload = {
       ...newEvent,
       description,
     };
 
-    try {
-      if (event) {
-        await databases.updateDocument(
-          config.databaseID!,
-          config.eventsCollectionID!,
-          event.id,
-          payload
-        );
-      } else {
-        await databases.createDocument(
-          config.databaseID!,
-          config.eventsCollectionID!,
-          newEvent.id,
-          payload
-        );
-      }
+const handleSave = async () => {
+  try {
+    if (event) {
+      await databases.updateDocument(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        event.id,
+        payload
+      );
+    } else {
+      await databases.createDocument(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        newEvent.id,
+        payload
+      );
+    }
 
       await refetchEvents(); // <-- refetch after save
 
@@ -131,17 +130,37 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
           className="border p-2 mb-4"
         />
 
-        <Text className="mb-1 font-medium">Duration (minutes)</Text>
-        <View className="border rounded mb-4">
-          <RNPickerSelect
-            onValueChange={setDuration}
-            value={duration}
-            items={durationOptions.map((min) => ({
-              label: `${min} minutes`,
-              value: min,
-            }))}
-          />
-        </View>
+<Text className="mb-1 font-medium">Start Time</Text>
+<TouchableOpacity onPress={() => setShowStartPicker(true)} className="border p-2 mb-2 rounded">
+  <Text>{startDate.toLocaleString()}</Text>
+</TouchableOpacity>
+<DateTimePickerModal
+  isVisible={showStartPicker}
+  mode="datetime"
+  date={startDate}
+  onConfirm={(date) => {
+    setStartDate(date);
+    setShowStartPicker(false);
+    if (date > endDate) setEndDate(dayjs(date).add(1, 'hour').toDate());
+  }}
+  onCancel={() => setShowStartPicker(false)}
+/>
+
+      <Text className="mb-1 font-medium">End Time</Text>
+      <TouchableOpacity onPress={() => setShowEndPicker(true)} className="border p-2 mb-4 rounded">
+        <Text>{endDate.toLocaleString()}</Text>
+      </TouchableOpacity>
+      <DateTimePickerModal
+        isVisible={showEndPicker}
+        mode="datetime"
+        date={endDate}
+        minimumDate={startDate}
+        onConfirm={(date) => {
+          setEndDate(date);
+          setShowEndPicker(false);
+        }}
+        onCancel={() => setShowEndPicker(false)}
+/>
 
         <Text className="mb-1 font-medium">Invite Friends</Text>
         <View className="border rounded mb-4">

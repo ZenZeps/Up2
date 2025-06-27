@@ -8,16 +8,15 @@ export async function fetchEvents(): Promise<Event[]> {
     config.eventsCollectionID!
   );
 
-    console.log("Appwrite raw event docs:", res.documents);
-
   return res.documents.map((doc): Event => ({
     id: doc.$id,
     title: doc.title,
     location: doc.location,
-    dateTime: doc.dateTime,
-    duration: doc.duration,
+    startTime: doc.startTime,
+    endTime: doc.endTime,
     creatorId: doc.creatorId,
     inviteeIds: doc.inviteeIds,
+    description: doc.description,
   }));
 }
 

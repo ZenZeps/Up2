@@ -2,10 +2,11 @@ export interface Event {
   id: string;
   title: string;
   location: string;
-  dateTime: string; // ISO format
-  duration: number; // duration in minutes
+  startTime: string; // ISO format
+  endTime: string;   // ISO format
   creatorId: string;
   inviteeIds: string[];
+  description?: string;
 }
 
 export interface EventWithDetails extends Event {

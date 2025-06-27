@@ -32,29 +32,28 @@ const EventDetail = () => {
     fetchEvent();
   }, [eventId]);
 
-  const handleAttend = async () => {
-    if (!event || !userId) return;
-    if (event.inviteeIds?.includes(userId)) return;
+ const handleAttend = async () => {
+  if (!event || !userId) return;
+  if (event.inviteeIds?.includes(userId)) return;
 
-    try {
-      const updatedInviteeIds = [...(event.inviteeIds || []), userId];
-      await databases.updateDocument(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        event.$id || event.id,
-        {
-          ...event,
-          inviteeIds: updatedInviteeIds,
-        }
-      );
-      setEvent({ ...event, inviteeIds: updatedInviteeIds });
-      setAttending(true);
-      Alert.alert('Success', 'You are now attending this event!');
-    } catch (err) {
-      console.error('Attend event error:', err);
-      Alert.alert('Error', 'Failed to attend event');
-    }
-  };
+  try {
+    const updatedInviteeIds = [...(event.inviteeIds || []), userId];
+    await databases.updateDocument(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      event.$id || event.id,
+      {
+        inviteeIds: updatedInviteeIds, // Only update this field!
+      }
+    );
+    setEvent({ ...event, inviteeIds: updatedInviteeIds });
+    setAttending(true);
+    Alert.alert('Success', 'You are now attending this event!');
+  } catch (err) {
+    console.error('Attend event error:', err);
+    Alert.alert('Error', 'Failed to attend event');
+  }
+};
 
   if (loading) {
     return (
@@ -78,7 +77,9 @@ const EventDetail = () => {
       <View className="bg-gray-100 dark:bg-gray-800 p-6 rounded-2xl shadow-md">
         <Text className="text-3xl font-bold text-gray-900 dark:text-white">{event.title}</Text>
         <Text className="mt-2 text-lg text-indigo-600 dark:text-indigo-400">{event.location}</Text>
-        <Text className="mt-1 text-sm text-gray-500 dark:text-gray-400">{new Date(event.dateTime).toLocaleString()}</Text>
+        <Text className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          {new Date(event.startTime).toLocaleString()} - {new Date(event.endTime).toLocaleString()}
+        </Text>
 
         {event.description && (
           <View className="mt-6">
