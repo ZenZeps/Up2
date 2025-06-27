@@ -44,18 +44,29 @@ const SignIn = () => {
       }
 
       const user = await account.get();
-      const profile = await getUserProfile(user.$id);
+    const existingProfile = await getUserProfile(user.$id);
 
-      if (!profile && mode === "signup") {
-        await createUserProfile({
-          id: user.$id,
-          name: user.name || "Unnamed",
-          email: user.email ?? email, // fallback to typed-in email
-          isPublic: true,
-          preferences: [],
-        });
-      }
+    if (!existingProfile) {
+      // No profile exists yet, create one with account data
+      await createUserProfile({
+        id: user.$id,
+        name: user.name || name || "Unnamed",
+        email: user.email ?? email,
+        isPublic: true,
+        preferences: [],
+      });
+      } else {
+      // Profile exists — sync it with latest Appwrite account data
+      await updateUserProfile({
+        id: user.$id,
+        name: user.name || existingProfile.name,
+        email: user.email ?? existingProfile.email,
+        isPublic: existingProfile.isPublic,
+        preferences: existingProfile.preferences,
+      });
+    }
 
+      // Navigate to Home after successful login/signup
       router.replace("/Home");
     } catch (err: any) {
       console.error("Auth error:", err);

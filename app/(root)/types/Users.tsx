@@ -4,4 +4,5 @@ export interface UserProfile {
   email: string;
   isPublic: boolean;
   preferences: string[];
+  friends?: string[];
 }

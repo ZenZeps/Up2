@@ -7,6 +7,8 @@ import { fetchAllUsers } from '@/lib/api/user';
 import { databases, config } from '@/lib/appwrite';
 import { ID } from 'react-native-appwrite';
 import { useEvents } from '../context/EventContext'; // <-- import useEvents
+import DateTimePickerModal from "react-native-modal-datetime-picker";
+import dayjs from 'dayjs';
 
 interface Props {
   visible: boolean;
@@ -25,6 +27,14 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [description, setDescription] = useState('');
   const [inviteeIds, setInviteeIds] = useState<string[]>([]);
   const [selectedInvitee, setSelectedInvitee] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState<Date>(event ? new Date(event.dateTime) : new Date(selectedDateTime));
+  const [endDate, setEndDate] = useState<Date>(
+    event
+      ? dayjs(event.dateTime).add(event.duration ?? 60, 'minute').toDate()
+      : dayjs(selectedDateTime).add(60, 'minute').toDate()
+  );
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
 
   const { data: users = [], loading } = useAppwrite({
     fn: fetchAllUsers,
@@ -34,27 +44,31 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
   useEffect(() => {
     if (event) {
-      setTitle(event.title);
-      setLocation(event.location);
+      setTitle(event.title || '');
+      setLocation(event.location || '');
+      setDescription((event as any).description || '');
       setDuration(event.duration ?? 60);
       setInviteeIds(event.inviteeIds ?? []);
-      setDescription((event as any).description ?? '');
+      setStartDate(new Date(event.dateTime));
+      setEndDate(dayjs(event.dateTime).add(event.duration ?? 60, 'minute').toDate());
     } else {
       setTitle('');
       setLocation('');
+      setDescription('');
       setDuration(60);
       setInviteeIds([]);
-      setDescription('');
+      setStartDate(new Date(selectedDateTime));
+      setEndDate(dayjs(selectedDateTime).add(60, 'minute').toDate());
     }
-    setSelectedInvitee(null);
-  }, [event]);
+  }, [event, selectedDateTime]);
 
   const handleSave = async () => {
+    const duration = dayjs(endDate).diff(dayjs(startDate), 'minute');
     const newEvent: Event = {
       id: event?.id ?? ID.unique(),
       title,
       location,
-      dateTime: selectedDateTime,
+      dateTime: startDate.toISOString(),
       duration,
       creatorId: currentUserId,
       inviteeIds,

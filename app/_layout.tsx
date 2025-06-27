@@ -1,10 +1,10 @@
 import { useFonts } from "expo-font";
-import { SplashScreen, Stack, useRouter } from "expo-router";
+import { SplashScreen, Stack } from "expo-router";
 import { useEffect, useState } from "react";
 import * as Linking from "expo-linking";
 import "./globals.css";
 import GlobalProvider from "@/lib/global-provider";
-import { account } from "@/app/appwrite/client";
+import { account } from "./appwrite/client";
 
 const prefix = Linking.createURL("/");
 
@@ -23,7 +23,7 @@ export default function RootLayout() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        await account.get(); // will throw if not logged in
+        await account.get(); // Will throw if not logged in
         setIsAuthenticated(true);
       } catch {
         setIsAuthenticated(false);
@@ -40,30 +40,17 @@ export default function RootLayout() {
 
   if (!fontsLoaded || !isAppReady || isAuthenticated === null) return null;
 
-  return (
-    <GlobalProvider>
-      <Stack
-        screenOptions={{ headerShown: false }}
-        initialRouteName={isAuthenticated ? "(tabs)" : "SignIn"}
-        linking={{
-          prefixes: [prefix],
-          config: {
-            screens: {
-              "auth-callback": "auth-callback",
-              "SignIn": "SignIn",
-              "(tabs)": {
-                screens: {
-                  Home: "Home",
-                  Explore: "Explore",
-                  Profile: "Profile",
-                },
-              },
-            },
-          },
-        }}
-      >
-        {/* These routes are loaded by name automatically */}
-      </Stack>
-    </GlobalProvider>
-  );
+ return (
+  <GlobalProvider>
+    <Stack screenOptions={{ headerShown: false }}>
+      {isAuthenticated ? (
+        <>
+          <Stack.Screen name="(root)" />
+        </>
+      ) : (
+        <Stack.Screen name="SignIn" />
+      )}
+    </Stack>
+  </GlobalProvider>
+);
 }

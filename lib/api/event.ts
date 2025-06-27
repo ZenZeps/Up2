@@ -41,3 +41,32 @@ export async function fetchEventById(id: string): Promise<Event | null> {
     return null;
   }
 }
+
+export async function getAllEvents() {
+  try {
+    const res = await databases.listDocuments(
+      config.databaseID!,
+      config.eventsCollectionID!
+    );
+
+    return res.documents;
+  } catch (err) {
+    console.error("Error fetching events:", err);
+    return [];
+  }
+}
+
+
+export async function getEventById(id: string) {
+  try {
+    const doc = await databases.getDocument(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      id
+    );
+    return doc;
+  } catch (err) {
+    console.error('Error fetching event by ID:', err);
+    return null;
+  }
+}
