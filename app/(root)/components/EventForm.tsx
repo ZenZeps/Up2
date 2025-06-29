@@ -6,7 +6,7 @@ import { useAppwrite } from '@/lib/useAppwrite';
 import { fetchAllUsers } from '@/lib/api/user';
 import { databases, config } from '@/lib/appwrite';
 import { ID } from 'react-native-appwrite';
-import { useEvents } from '../context/EventContext'; // <-- import useEvents
+import { useEvents } from '../context/EventContext';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import dayjs from 'dayjs';
 
@@ -16,11 +16,12 @@ interface Props {
   event?: Event;
   selectedDateTime: string;
   currentUserId: string;
+  friends: string[];
 }
 
 const durationOptions = Array.from({ length: 12 }, (_, i) => (i + 1) * 15); // 15–180 mins
 
-export default function EventForm({ visible, onClose, event, selectedDateTime, currentUserId }: Props) {
+export default function EventForm({ visible, onClose, event, selectedDateTime, currentUserId, friends }: Props) {
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
   const [duration, setDuration] = useState(60);
@@ -36,11 +37,23 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
-  const { data: users = [], loading } = useAppwrite({
+  const { data: usersData = [], loading } = useAppwrite({
     fn: fetchAllUsers,
   });
+  const users = usersData ?? [];
 
-  const { refetchEvents } = useEvents(); // <-- get refetchEvents
+    const friendUsers = users.filter(
+    (u) =>
+      u.id !== currentUserId &&
+      friends.includes(u.id) &&
+      !inviteeIds.includes(u.id)
+  );
+
+  const isCreator = event?.creatorId === currentUserId;
+
+  const editable = !event || isCreator;
+
+  const { refetchEvents } = useEvents();
 
 useEffect(() => {
   if (event) {
@@ -114,6 +127,7 @@ const handleSave = async () => {
           value={title}
           onChangeText={setTitle}
           className="border p-2 mb-2"
+          editable={editable}
         />
 
         <TextInput
@@ -121,6 +135,7 @@ const handleSave = async () => {
           value={location}
           onChangeText={setLocation}
           className="border p-2 mb-2"
+          editable={editable}
         />
 
         <TextInput
@@ -128,79 +143,167 @@ const handleSave = async () => {
           value={description}
           onChangeText={setDescription}
           className="border p-2 mb-4"
+          editable={editable}
         />
 
-<Text className="mb-1 font-medium">Start Time</Text>
-<TouchableOpacity onPress={() => setShowStartPicker(true)} className="border p-2 mb-2 rounded">
-  <Text>{startDate.toLocaleString()}</Text>
-</TouchableOpacity>
-<DateTimePickerModal
-  isVisible={showStartPicker}
-  mode="datetime"
-  date={startDate}
-  onConfirm={(date) => {
-    setStartDate(date);
-    setShowStartPicker(false);
-    if (date > endDate) setEndDate(dayjs(date).add(1, 'hour').toDate());
-  }}
-  onCancel={() => setShowStartPicker(false)}
-/>
+        <Text className="mb-1 font-medium">Start Time</Text>
+        <TouchableOpacity
+          onPress={() => editable && setShowStartPicker(true)}
+          className="border p-2 mb-2 rounded"
+          disabled={!editable}
+        >
+          <Text>{startDate.toLocaleString()}</Text>
+        </TouchableOpacity>
+        <DateTimePickerModal
+          isVisible={showStartPicker}
+          mode="datetime"
+          date={startDate}
+          onConfirm={(date) => {
+            setStartDate(date);
+            setShowStartPicker(false);
+            if (date > endDate) setEndDate(dayjs(date).add(1, 'hour').toDate());
+          }}
+          onCancel={() => setShowStartPicker(false)}
+        />
 
-      <Text className="mb-1 font-medium">End Time</Text>
-      <TouchableOpacity onPress={() => setShowEndPicker(true)} className="border p-2 mb-4 rounded">
-        <Text>{endDate.toLocaleString()}</Text>
-      </TouchableOpacity>
-      <DateTimePickerModal
-        isVisible={showEndPicker}
-        mode="datetime"
-        date={endDate}
-        minimumDate={startDate}
-        onConfirm={(date) => {
-          setEndDate(date);
-          setShowEndPicker(false);
-        }}
-        onCancel={() => setShowEndPicker(false)}
-/>
+        <Text className="mb-1 font-medium">End Time</Text>
+        <TouchableOpacity
+          onPress={() => editable && setShowEndPicker(true)}
+          className="border p-2 mb-4 rounded"
+          disabled={!editable}
+        >
+          <Text>{endDate.toLocaleString()}</Text>
+        </TouchableOpacity>
+        <DateTimePickerModal
+          isVisible={showEndPicker}
+          mode="datetime"
+          date={endDate}
+          minimumDate={startDate}
+          onConfirm={(date) => {
+            setEndDate(date);
+            setShowEndPicker(false);
+          }}
+          onCancel={() => setShowEndPicker(false)}
+        />
 
+        {/* Invite Friends - only creator can invite */}
         <Text className="mb-1 font-medium">Invite Friends</Text>
         <View className="border rounded mb-4">
-          <RNPickerSelect
-            onValueChange={(val: string | null) => {
-              if (val && !inviteeIds.includes(val)) {
-                setInviteeIds([...inviteeIds, val]);
-              }
-              setSelectedInvitee(null);
-            }}
-            value={selectedInvitee}
-            placeholder={{ label: 'Select user to invite', value: null }}
-            items={(users ?? []).filter((u) => u.id !== currentUserId && !inviteeIds.includes(u.id))
-              .map((user) => ({
+          {friends.length === 0 ? (
+            <Text className="text-gray-400 p-2">You have no friends to invite.</Text>
+          ) : editable ? (
+            <RNPickerSelect
+              onValueChange={(val: string | null) => {
+                if (val && !inviteeIds.includes(val)) {
+                  setInviteeIds([...inviteeIds, val]);
+                }
+                setSelectedInvitee(null);
+              }}
+              value={selectedInvitee}
+              placeholder={{ label: 'Select friend to invite', value: null }}
+              items={friendUsers.map((user) => ({
                 label: user.name,
                 value: user.id,
               }))}
-          />
+            />
+          ) : (
+            <Text className="text-gray-400 p-2">Only the creator can invite friends.</Text>
+          )}
         </View>
 
+        {/* Show invited users */}
         {inviteeIds.length > 0 && (
           <View className="mb-4">
-            <Text className="font-medium mb-1">Invited:</Text>
+            <Text className="font-medium mb-1">Attending:</Text>
             {inviteeIds.map((id) => {
               const user = (users ?? []).find((u) => u.id === id);
               return (
                 <View key={id} className="flex-row justify-between items-center mb-1">
                   <Text>{user?.name || id}</Text>
-                  <Button
-                    title="Remove"
-                    color="red"
-                    onPress={() => setInviteeIds(inviteeIds.filter((uid) => uid !== id))}
-                  />
+                  {/* Only show remove button if creator and not self */}
+                  {editable && id !== currentUserId && (
+                    <Button
+                      title="Remove"
+                      color="red"
+                      onPress={() => setInviteeIds(inviteeIds.filter((uid) => uid !== id))}
+                    />
+                  )}
                 </View>
               );
             })}
           </View>
         )}
 
-        <Button title={event ? 'Update Event' : 'Create Event'} onPress={handleSave} />
+        {/* Save/Update button only for creator or new event */}
+        {editable && (
+          <Button title={event ? 'Update Event' : 'Create Event'} onPress={handleSave} />
+        )}
+
+        {/* Delete button only for creator */}
+        {event && isCreator && (
+          <View className="mb-2">
+            <Button
+              title="Delete Event"
+              color="red"
+              onPress={async () => {
+                try {
+                  await databases.deleteDocument(
+                    config.databaseID!,
+                    config.eventsCollectionID!,
+                    event.id
+                  );
+                  await refetchEvents();
+                  onClose();
+                } catch (err) {
+                  console.error("Error deleting event:", err);
+                  alert("Failed to delete event.");
+                }
+              }}
+            />
+          </View>
+        )}
+
+        {/* If not creator, show join/leave button */}
+        {event && !isCreator && (
+          <View className="mb-2">
+            {inviteeIds.includes(currentUserId) ? (
+              <Button
+                title="Leave Event"
+                color="orange"
+                onPress={async () => {
+                  const updatedInvitees = inviteeIds.filter((id) => id !== currentUserId);
+                  await databases.updateDocument(
+                    config.databaseID!,
+                    config.eventsCollectionID!,
+                    event.id,
+                    { inviteeIds: updatedInvitees }
+                  );
+                  setInviteeIds(updatedInvitees);
+                  await refetchEvents();
+                  onClose();
+                }}
+              />
+            ) : (
+              <Button
+                title="Join Event"
+                color="green"
+                onPress={async () => {
+                  const updatedInvitees = [...inviteeIds, currentUserId];
+                  await databases.updateDocument(
+                    config.databaseID!,
+                    config.eventsCollectionID!,
+                    event.id,
+                    { inviteeIds: updatedInvitees }
+                  );
+                  setInviteeIds(updatedInvitees);
+                  await refetchEvents();
+                  onClose();
+                }}
+              />
+            )}
+          </View>
+        )}
+
         <View className="mt-2">
           <Button title="Cancel" color="gray" onPress={onClose} />
         </View>
@@ -208,4 +311,3 @@ const handleSave = async () => {
     </Modal>
   );
 }
-// This code defines an EventForm component that allows users to create or edit events.

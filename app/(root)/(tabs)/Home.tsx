@@ -8,6 +8,7 @@ import dayjs from 'dayjs';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { account } from '@/lib/appwrite';
 import { useLocalSearchParams } from 'expo-router';
+import { getUserProfile } from '@/lib/api/user';
 
 const viewModes: Mode[] = ['day', 'week', 'month'];
 
@@ -18,39 +19,41 @@ export default function Home() {
   const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
   const [viewMode, setViewMode] = useState<Mode>('week');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [friends, setFriends] = useState<string[]>([]);
 
-  const params = useLocalSearchParams(); // supports dynamic routes like /user/[id]
+  const params = useLocalSearchParams();
 
   useEffect(() => {
     const init = async () => {
       try {
-        if (params?.id) {
-          // We're viewing another user's calendar
-          setCurrentUserId(params.id as string);
-        } else {
-          const user = await account.get();
-          setCurrentUserId(user.$id);
-        }
+        const user = await account.get();
+        if (!user?.$id) return; // Don't fetch profile if not logged in
+        setCurrentUserId(user.$id);
+        const profile = await getUserProfile(user.$id);
+        setFriends(profile?.friends ?? []);
       } catch (err) {
-        console.error('Error getting current user:', err);
+        // Optionally ignore error if not logged in
+        if (err?.message?.includes('missing scope (account)')) return;
+        console.error('Error getting current user or friends:', err);
       }
     };
     init();
   }, [params]);
 
   // Filter events for this user
-const calendarEvents = events
-  .filter((e) =>
-    currentUserId &&
-    (e.creatorId === currentUserId || e.inviteeIds.includes(currentUserId))
-  )
-  .map((e) => ({
-    title: e.title,
-    start: new Date(e.startTime),
-    end: new Date(e.endTime),
-    location: e.location,
-    rawEvent: e,
-  }));
+  const calendarEvents = events
+    .filter(
+      (e) =>
+        currentUserId &&
+        (e.creatorId === currentUserId || e.inviteeIds.includes(currentUserId))
+    )
+    .map((e) => ({
+      title: e.title,
+      start: new Date(e.startTime),
+      end: new Date(e.endTime),
+      location: e.location,
+      rawEvent: e,
+    }));
 
   const handlePressCell = (date: Date) => {
     setSelectedDateTime(date.toISOString());
@@ -60,7 +63,7 @@ const calendarEvents = events
 
   const handlePressEvent = (calendarEvent: any) => {
     setEditingEvent(calendarEvent.rawEvent);
-    setSelectedDateTime(calendarEvent.rawEvent.dateTime);
+    setSelectedDateTime(calendarEvent.rawEvent.startTime);
     setFormVisible(true);
   };
 
@@ -143,6 +146,7 @@ const calendarEvents = events
             selectedDateTime={selectedDateTime}
             event={editingEvent || undefined}
             currentUserId={currentUserId ?? ''}
+            friends={friends}
             onClose={() => {
               setFormVisible(false);
               setEditingEvent(null);

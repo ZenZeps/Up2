@@ -15,7 +15,7 @@ import {
   signupWithEmail,
   account,
 } from "@/lib/appwrite";
-import { getUserProfile, createUserProfile } from "@/lib/api/user";
+import { getUserProfile, createUserProfile, updateUserProfile } from "@/lib/api/user";
 import images from "@/constants/images";
 
 const SignIn = () => {

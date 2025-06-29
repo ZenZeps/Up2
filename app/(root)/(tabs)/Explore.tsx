@@ -16,13 +16,14 @@ import icons from '@/constants/icons';
 import { getAllUsers, getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { getAllEvents } from '@/lib/api/event';
 import { getCurrentUser, databases, config } from '@/lib/appwrite';
+import { useEvents } from '../context/EventContext';
 
 const Explore = () => {
   const router = useRouter();
+  const { events, refetchEvents } = useEvents();
 
   const [query, setQuery] = useState('');
   const [users, setUsers] = useState<any[]>([]);
-  const [events, setEvents] = useState<any[]>([]);
   const [mode, setMode] = useState<'users' | 'events'>('users');
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState('');
@@ -38,13 +39,8 @@ const Explore = () => {
         setProfile(userProfile);
         setFriends(userProfile?.friends ?? []);
 
-        const [userRes, eventRes] = await Promise.all([
-          getAllUsers(),
-          getAllEvents(),
-        ]);
-        // Exclude current user from the list
+        const userRes = await getAllUsers();
         setUsers((userRes || []).filter((u: any) => u.id !== currentUser?.$id));
-        setEvents(eventRes || []);
       } catch (err) {
         console.error('Explore fetch error:', err);
       } finally {
@@ -52,6 +48,7 @@ const Explore = () => {
       }
     };
     fetchData();
+    refetchEvents(); // <-- fetch latest events on mount
   }, []);
 
   const handleAddFriend = async (friendId: string) => {
