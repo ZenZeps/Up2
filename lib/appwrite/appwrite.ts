@@ -55,6 +55,17 @@ export async function logout() {
   }
 }
 
+// ✅ Forgot password
+export async function forgotPassword(email: string) {
+  try {
+    const response = await account.createRecovery(email, `http://localhost/reset-password`);
+    return response;
+  } catch (err) {
+    console.error("Forgot password error:", err);
+    throw err;
+  }
+}
+
 // ✅ Get current user
 export async function getCurrentUser() {
   try {

@@ -9,9 +9,9 @@ import {
   Switch,
   Alert,
   Button,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ScrollView } from 'react-native-gesture-handler';
 import RNPickerSelect from 'react-native-picker-select';
 import icons from '@/constants/icons';
 import images from '@/constants/images';
@@ -19,6 +19,7 @@ import { getCurrentUser, logout } from '@/lib/appwrite/appwrite';
 import { getAllUsers, getUserProfile, updateUserProfile, getFriends } from '@/lib/api/user';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import { useGlobalContext } from '@/lib/global-provider';
 
 
 const eventTypeOptions = [
@@ -36,10 +37,18 @@ const Profile = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
-  const [eventType, setEventType] = useState('sports');
+  const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
   const [userId, setUserId] = useState('');
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [friends, setFriends] = useState<string[]>([]);
+
+  const handleInterestToggle = (interest: string) => {
+    setSelectedEventTypes((prev) =>
+      prev.includes(interest)
+        ? prev.filter((item) => item !== interest)
+        : [...prev, interest]
+    );
+  };
 
   // Fetch current user and profile on mount
   const loadUser = useCallback(async () => {
@@ -50,7 +59,7 @@ const Profile = () => {
       if (profile) {
         setName(profile.name || '');
         setIsPrivate(!profile.isPublic);
-        setEventType(profile.preferences?.[0] || 'sports');
+        setSelectedEventTypes(profile.preferences || []);
       }
       // Fetch all users except current user
       const users = await getAllUsers();
@@ -117,7 +126,7 @@ const handleSave = async () => {
       name,
       email: latestProfile.email,
       isPublic: !isPrivate,
-      preferences: [eventType],
+      preferences: selectedEventTypes,
       friends: mergedFriends, // 👈 Use merged list
     });
 
@@ -150,92 +159,120 @@ const handleSave = async () => {
   };
 
   return (
-    <SafeAreaView className="bg-white h-full px-7 pb-32">
-      <View>
-        <View className="flex flex-row items-center justify-between mt-5">
-          <Text className="text-xl font-rubik-semibold">Profile</Text>
+    <SafeAreaView className="flex-1 bg-white">
+      <View className="px-5 pt-5 flex-1">
+        {/* Header */}
+        <View className="flex-row items-center justify-between mb-6">
+          <View className="flex-row items-center">
+            <Image source={images.avatar} className="w-12 h-12 rounded-full" />
+            <View className="ml-3">
+              <Text className="text-base font-rubik-medium text-gray-600">Hello,</Text>
+              <Text className="text-xl font-rubik-semibold text-gray-900">{name || 'User'}</Text>
+            </View>
+          </View>
           <TouchableOpacity onPress={toggleEditing}>
-            <Text className="text-blue-500">{isEditing ? 'Done' : 'Edit'}</Text>
+            <Image
+              source={isEditing ? icons.check : icons.edit}
+              className="w-7 h-7"
+              resizeMode="contain"
+            />
           </TouchableOpacity>
         </View>
 
-        {/* Avatar */}
-        <View className="flex flex-row justify-center mt-5">
-          <View className="items-center mt-5">
-            <Image source={images.avatar} className="size-44 rounded-full" />
-          </View>
-        </View>
-
-        {/* Name */}
-        <View className="mt-5">
-          <Text className="text-lg font-semibold mb-1">Name</Text>
-          {isEditing ? (
-            <TextInput
-              className="border border-gray-300 p-2 rounded"
-              value={name}
-              onChangeText={setName}
-            />
-          ) : (
-            <Text>{name}</Text>
-          )}
-        </View>
-
-        {/* Privacy Toggle */}
-        <View className="mt-5 flex flex-row items-center justify-between">
-          <Text className="text-lg font-semibold">Profile Privacy</Text>
-          <View className="flex-row items-center space-x-2">
-            <Text>{isPrivate ? 'Private' : 'Public'}</Text>
-            <Switch value={isPrivate} onValueChange={setIsPrivate} />
-          </View>
-        </View>
-
-        {/* Event Type Dropdown */}
-        <View className="mt-5">
-          <Text className="text-lg font-semibold mb-1">Event Interests</Text>
-          {isEditing ? (
-            <RNPickerSelect
-              value={eventType}
-              onValueChange={setEventType}
-              items={eventTypeOptions}
-              style={{
-                inputIOS: {
-                  paddingVertical: 12,
-                  paddingHorizontal: 10,
-                  borderColor: 'gray',
-                  borderWidth: 1,
-                  borderRadius: 5,
-                },
-                inputAndroid: { color: 'black' },
-              }}
-            />
-          ) : (
-            <Text>{eventTypeOptions.find((e) => e.value === eventType)?.label}</Text>
-          )}
-        </View>
-
-        {/* Friends List */}
-        <View className="mt-7">
-          <Text className="text-lg font-semibold mb-2">Friends</Text>
-          <FlatList
-            data={allUsers.filter((user) => friends.includes(user.$id))} // Only show friends
-            keyExtractor={(item) => item.$id}
-            renderItem={({ item }) => (
-              <View className="py-2 border-b border-gray-200 flex-row items-center justify-between">
-                <Text>{item.name}</Text>
-                <Button
-                  title="Remove"
-                  color="red"
-                  onPress={() => handleRemoveFriend(item.$id)}
-                />
-              </View>
+        {/* Profile Details */}
+        <ScrollView className="flex-1">
+          {/* Name */}
+          <View className="mb-6">
+            <Text className="text-lg font-rubik-semibold mb-2">Name</Text>
+            {isEditing ? (
+              <TextInput
+                className="border border-gray-300 p-3 rounded-lg text-base font-rubik"
+                value={name}
+                onChangeText={setName}
+              />
+            ) : (
+              <Text className="text-base font-rubik text-gray-800">{name}</Text>
             )}
-          />
-        </View>
+          </View>
 
-        {/* Logout Button */}
-        <View className="mt-10">
-          <Button title="Log Out" color="red" onPress={handleLogout} />
-        </View>
+          {/* Privacy Toggle */}
+          <View className="flex-row items-center justify-between mb-6">
+            <Text className="text-lg font-rubik-semibold">Profile Privacy</Text>
+            <View className="flex-row items-center space-x-2">
+              <Text className="text-base font-rubik text-gray-800">{isPrivate ? 'Private' : 'Public'}</Text>
+              <Switch value={isPrivate} onValueChange={setIsPrivate} />
+            </View>
+          </View>
+
+          {/* Event Type Dropdown */}
+          <View className="mb-6">
+            <Text className="text-lg font-rubik-semibold mb-2">Event Interests</Text>
+            {isEditing ? (
+              <View className="flex-row flex-wrap">
+                {eventTypeOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    className={`px-4 py-2 rounded-full border mb-2 mr-2 ${
+                      selectedEventTypes.includes(option.value)
+                        ? 'bg-primary-300 border-primary-300'
+                        : 'bg-gray-100 border-gray-300'
+                    }`}
+                    onPress={() => handleInterestToggle(option.value)}
+                  >
+                    <Text
+                      className={`text-base font-rubik-medium ${
+                        selectedEventTypes.includes(option.value) ? 'text-white' : 'text-gray-800'
+                      }`}
+                    >
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : (
+              <Text className="text-base font-rubik text-gray-800">
+                {selectedEventTypes.length > 0
+                  ? selectedEventTypes.map(value => eventTypeOptions.find(opt => opt.value === value)?.label).join(', ')
+                  : 'None selected'}
+              </Text>
+            )}
+          </View>
+
+          {/* Friends List */}
+          <View className="mb-6">
+            <Text className="text-lg font-rubik-semibold mb-2">Friends</Text>
+            {friends.length === 0 ? (
+              <Text className="text-gray-500 text-center font-rubik">No friends yet.</Text>
+            ) : (
+              <FlatList
+                data={allUsers.filter((user) => friends.includes(user.$id))}
+                keyExtractor={(item) => item.$id}
+                renderItem={({ item }) => (
+                  <View className="flex-row items-center justify-between bg-white p-3 rounded-lg shadow-sm mb-3 border border-gray-100">
+                    <View className="flex-row items-center">
+                      <Image source={images.avatar} className="w-10 h-10 rounded-full mr-3" />
+                      <Text className="text-base font-rubik-medium text-gray-800">{item.name}</Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleRemoveFriend(item.$id)}
+                      className="bg-red-500 px-4 py-2 rounded-full shadow-sm"
+                    >
+                      <Text className="text-white font-rubik-medium text-sm">Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              />
+            )}
+          </View>
+
+          {/* Logout Button */}
+          <TouchableOpacity
+            onPress={handleLogout}
+            className="bg-red-500 px-4 py-3 rounded-lg items-center shadow-sm mt-4"
+          >
+            <Text className="text-white text-lg font-rubik-semibold">Log Out</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
     </SafeAreaView>
   );

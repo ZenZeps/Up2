@@ -16,6 +16,7 @@ import {
   loginWithEmail,
   signupWithEmail,
   account,
+  forgotPassword,
 } from "@/lib/appwrite/appwrite";
 import {
   getUserProfile,
@@ -96,6 +97,24 @@ const SignIn = () => {
     } catch (err: any) {
       console.error("Auth error:", err);
       Alert.alert("Error", err?.message || "Authentication failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      Alert.alert("Error", "Please enter your email to reset password.");
+      return;
+    }
+    try {
+      setLoading(true);
+      await forgotPassword(trimmedEmail);
+      Alert.alert("Password Reset", "A password reset link has been sent to your email.");
+    } catch (err: any) {
+      console.error("Forgot password error:", err);
+      Alert.alert("Error", err?.message || "Failed to send password reset email.");
     } finally {
       setLoading(false);
     }
@@ -190,6 +209,17 @@ const SignIn = () => {
                 : "Already have an account? Log In"}
             </Text>
           </TouchableOpacity>
+
+          {mode === "login" && (
+            <TouchableOpacity
+              onPress={handleForgotPassword}
+              className="mt-2 self-center"
+            >
+              <Text className="text-primary-300 font-rubik-medium">
+                Forgot Password?
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
       </KeyboardAvoidingView>
