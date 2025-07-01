@@ -8,6 +8,8 @@ export default function RootLayout() {
   if (!loading && !isLoggedIn) return <Redirect href="/SignIn" />;
 
   return (
-    <Slot />
+    <EventsProvider>
+      <Slot />
+    </EventsProvider>
   );
 }

@@ -126,7 +126,7 @@ const Explore = () => {
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <View className="px-5 pt-5">
+      <View className="px-5 pt-5 flex-1">
         {/* Header */}
         <View className="flex-row items-center justify-between mb-6">
           <View className="flex-row items-center">
