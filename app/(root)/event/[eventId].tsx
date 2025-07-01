@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, Button, Alert } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { databases, config, getCurrentUser } from '@/lib/appwrite';
+import { databases, config, getCurrentUser } from '@/lib/appwrite/appwrite';
 
 const EventDetail = () => {
   const { eventId } = useLocalSearchParams();
@@ -41,7 +41,7 @@ const EventDetail = () => {
     await databases.updateDocument(
       config.databaseID!,
       config.eventsCollectionID!,
-      event.$id || event.id,
+      event.$id,
       {
         inviteeIds: updatedInviteeIds, // Only update this field!
       }

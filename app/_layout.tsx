@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import * as Linking from "expo-linking";
 import "./globals.css";
 import GlobalProvider from "@/lib/global-provider";
-import { account } from "./appwrite/client";
+import { account } from "@/lib/appwrite/client";
 
 const prefix = Linking.createURL("/");
 
@@ -40,17 +40,12 @@ export default function RootLayout() {
 
   if (!fontsLoaded || !isAppReady || isAuthenticated === null) return null;
 
- return (
-  <GlobalProvider>
-    <Stack screenOptions={{ headerShown: false }}>
-      {isAuthenticated ? (
-        <>
-          <Stack.Screen name="(root)" />
-        </>
-      ) : (
-        <Stack.Screen name="SignIn" />
-      )}
-    </Stack>
-  </GlobalProvider>
-);
+  // Wrap the Stack in GlobalProvider
+  return (
+    <GlobalProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(root)" />
+      </Stack>
+    </GlobalProvider>
+  );
 }

@@ -1,6 +1,6 @@
-import { databases } from "@/lib/appwrite";
-import { config } from "@/lib/appwrite";
-import { Event } from "@/app/(root)/types/Events";
+import { databases } from "@/lib/appwrite/appwrite";
+import { config } from "@/lib/appwrite/appwrite";
+import { Event } from "@/lib/types/Events";
 
 export async function fetchEvents(): Promise<Event[]> {
   const res = await databases.listDocuments(
@@ -9,7 +9,7 @@ export async function fetchEvents(): Promise<Event[]> {
   );
 
   return res.documents.map((doc): Event => ({
-    id: doc.$id,
+    $id: doc.$id,
     title: doc.title,
     location: doc.location,
     startTime: doc.startTime,
@@ -17,6 +17,7 @@ export async function fetchEvents(): Promise<Event[]> {
     creatorId: doc.creatorId,
     inviteeIds: doc.inviteeIds,
     description: doc.description,
+    attendees: doc.attendees || [],
   }));
 }
 
@@ -31,8 +32,8 @@ export async function fetchEventById(id: string): Promise<Event | null> {
       id: doc.$id,
       title: doc.title,
       location: doc.location,
-      dateTime: doc.dateTime,
-      duration: doc.duration,
+      startTime: doc.startTime,
+      endTime: doc.endTime,
       creatorId: doc.creatorId,
       inviteeIds: doc.inviteeIds,
     };

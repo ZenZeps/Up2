@@ -15,8 +15,8 @@ import { ScrollView } from 'react-native-gesture-handler';
 import RNPickerSelect from 'react-native-picker-select';
 import icons from '@/constants/icons';
 import images from '@/constants/images';
-import { getCurrentUser, logout } from '@/lib/appwrite';
-import { getAllUsers, getUserProfile, updateUserProfile } from '@/lib/api/user';
+import { getCurrentUser, logout } from '@/lib/appwrite/appwrite';
+import { getAllUsers, getUserProfile, updateUserProfile, getFriends } from '@/lib/api/user';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -51,11 +51,14 @@ const Profile = () => {
         setName(profile.name || '');
         setIsPrivate(!profile.isPublic);
         setEventType(profile.preferences?.[0] || 'sports');
-        setFriends(profile.friends ?? []);
       }
       // Fetch all users except current user
       const users = await getAllUsers();
-      setAllUsers(users.filter((u: any) => u.id !== user.$id));
+      setAllUsers(users.filter((u: any) => u.$id !== user.$id));
+
+      // Fetch friends using the new getFriends function
+      const userFriends = await getFriends(user.$id);
+      setFriends(userFriends.map(friend => friend.$id));
     } catch (err) {
       console.error('Failed to load profile:', err);
       Alert.alert('Error', 'Failed to load profile');
@@ -68,48 +71,65 @@ const Profile = () => {
     }, [loadUser])
   );
 
-    const handleAddFriend = async (friendId: string) => {
-    const updatedFriends = [...friends, friendId];
+  const handleAddFriend = async (friendId: string) => {
+    // Fetch the latest profile before updating
+    const latestProfile = await getUserProfile(userId);
+    if (!latestProfile) return; // Handle case where profile is null
+    const updatedFriends = Array.from(new Set([...(latestProfile?.friends ?? []), friendId]));
     setFriends(updatedFriends);
     await updateUserProfile({
-      id: userId,
-      name,
-      email: '', // optional
-      isPublic: !isPrivate,
-      preferences: [eventType],
+      $id: userId,
+      name: latestProfile.name,
+      email: latestProfile.email,
+      isPublic: latestProfile.isPublic,
+      preferences: latestProfile.preferences,
       friends: updatedFriends,
     });
+    console.log('Updated user profile:', userId, updatedFriends);
   };
 
-  const handleRemoveFriend = async (friendId: string) => {
-    const updatedFriends = friends.filter((id) => id !== friendId);
-    setFriends(updatedFriends);
+const handleRemoveFriend = async (friendId: string) => {
+  // Fetch the latest profile before updating
+  const latestProfile = await getUserProfile(userId);
+  if (!latestProfile) return; // Handle case where profile is null
+  const updatedFriends = (latestProfile?.friends ?? []).filter((id) => id !== friendId);
+  setFriends(updatedFriends);
+  await updateUserProfile({
+    $id: userId,
+    name: latestProfile.name,
+    email: latestProfile.email,
+    isPublic: latestProfile.isPublic,
+    preferences: latestProfile.preferences,
+    friends: updatedFriends,
+  });
+};
+
+const handleSave = async () => {
+  try {
+    const latestProfile = await getUserProfile(userId);
+    if (!latestProfile) return; // Handle case where profile is null
+
+    const latestFriends = latestProfile.friends ?? [];
+    const mergedFriends = Array.from(new Set([...latestFriends, ...friends]));
+
     await updateUserProfile({
-      id: userId,
+      $id: userId,
       name,
-      email: '', // optional
+      email: latestProfile.email,
       isPublic: !isPrivate,
       preferences: [eventType],
-      friends: updatedFriends,
+      friends: mergedFriends, // 👈 Use merged list
     });
-  };
 
-  const handleSave = async () => {
-    try {
-      await updateUserProfile({
-        id: userId,
-        name,
-        email: '', // optional if you're not updating it
-        isPublic: !isPrivate,
-        preferences: [eventType],
-      });
-      setIsEditing(false);
-      Alert.alert('Success', 'Profile updated');
-    } catch (err) {
-      console.error('Update failed:', err);
-      Alert.alert('Error', 'Failed to update profile');
-    }
-  };
+    setFriends(mergedFriends); // Optional: update local state
+    setIsEditing(false);
+    Alert.alert('Success', 'Profile updated');
+  } catch (err) {
+    console.error('Update failed:', err);
+    Alert.alert('Error', 'Failed to update profile');
+  }
+};
+
 
   const handleLogout = async () => {
     try {
@@ -130,8 +150,8 @@ const Profile = () => {
   };
 
   return (
-    <SafeAreaView className="bg-white h-full">
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-32 px-7">
+    <SafeAreaView className="bg-white h-full px-7 pb-32">
+      <View>
         <View className="flex flex-row items-center justify-between mt-5">
           <Text className="text-xl font-rubik-semibold">Profile</Text>
           <TouchableOpacity onPress={toggleEditing}>
@@ -197,15 +217,15 @@ const Profile = () => {
         <View className="mt-7">
           <Text className="text-lg font-semibold mb-2">Friends</Text>
           <FlatList
-            data={allUsers.filter((user) => friends.includes(user.id))} // Only show friends
-            keyExtractor={(item) => item.id}
+            data={allUsers.filter((user) => friends.includes(user.$id))} // Only show friends
+            keyExtractor={(item) => item.$id}
             renderItem={({ item }) => (
               <View className="py-2 border-b border-gray-200 flex-row items-center justify-between">
                 <Text>{item.name}</Text>
                 <Button
                   title="Remove"
                   color="red"
-                  onPress={() => handleRemoveFriend(item.id)}
+                  onPress={() => handleRemoveFriend(item.$id)}
                 />
               </View>
             )}
@@ -216,7 +236,7 @@ const Profile = () => {
         <View className="mt-10">
           <Button title="Log Out" color="red" onPress={handleLogout} />
         </View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 };

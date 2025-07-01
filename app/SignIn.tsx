@@ -7,6 +7,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -14,59 +16,82 @@ import {
   loginWithEmail,
   signupWithEmail,
   account,
-} from "@/lib/appwrite";
-import { getUserProfile, createUserProfile, updateUserProfile } from "@/lib/api/user";
+} from "@/lib/appwrite/appwrite";
+import {
+  getUserProfile,
+  createUserProfile,
+  updateUserProfile,
+} from "@/lib/api/user";
 import images from "@/constants/images";
 
 const SignIn = () => {
   const router = useRouter();
-
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState(""); // only used for signup
+  const [confirmPassword, setConfirmPassword] = useState(""); // NEW
+  const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleAuth = async () => {
-    if (!email || !password || (mode === "signup" && !name)) {
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedName = name.trim();
+
+    if (!trimmedEmail || !password || (mode === "signup" && (!trimmedName || !confirmPassword))) {
       Alert.alert("Error", "Please fill in all required fields.");
+      return;
+    }
+
+    if (password.length < 8) {
+      Alert.alert("Weak Password", "Password must be at least 8 characters.");
+      return;
+    }
+
+    if (mode === "signup" && password !== confirmPassword) {
+      Alert.alert("Mismatch", "Passwords do not match.");
       return;
     }
 
     try {
       setLoading(true);
 
-      if (mode === "signup") {
-        await signupWithEmail(email.trim(), password, name.trim());
-        await loginWithEmail(email.trim(), password);
-      } else {
-        await loginWithEmail(email.trim(), password);
+    if (mode === "signup") {
+      await signupWithEmail(trimmedEmail, password, trimmedName);
+      // Log in to create a session so verification can be sent
+      await loginWithEmail(trimmedEmail, password);
+      await account.createVerification(`myapp://auth/verify`);
+      Alert.alert("Verify Email", "Check your email to verify your account.");
+      return;
+}
+
+      await loginWithEmail(trimmedEmail, password);
+      const user = await account.get();
+
+      if (!user.emailVerification) {
+        Alert.alert("Email Not Verified", "Please verify your email first.");
+        await account.deleteSession("current");
+        return;
       }
 
-      const user = await account.get();
-    const existingProfile = await getUserProfile(user.$id);
-
-    if (!existingProfile) {
-      // No profile exists yet, create one with account data
-      await createUserProfile({
-        id: user.$id,
-        name: user.name || name || "Unnamed",
-        email: user.email ?? email,
-        isPublic: true,
-        preferences: [],
-      });
+      const existingProfile = await getUserProfile(user.$id);
+      if (!existingProfile) {
+        await createUserProfile({
+          id: user.$id,
+          name: user.name || trimmedName || "Unnamed",
+          email: user.email ?? trimmedEmail,
+          isPublic: true,
+          preferences: [],
+        });
       } else {
-      // Profile exists — sync it with latest Appwrite account data
-      await updateUserProfile({
-        id: user.$id,
-        name: user.name || existingProfile.name,
-        email: user.email ?? existingProfile.email,
-        isPublic: existingProfile.isPublic,
-        preferences: existingProfile.preferences,
-      });
-    }
+        await updateUserProfile({
+          id: user.$id,
+          name: user.name || existingProfile.name,
+          email: user.email ?? existingProfile.email,
+          isPublic: existingProfile.isPublic,
+          preferences: existingProfile.preferences,
+        });
+      }
 
-      // Navigate to Home after successful login/signup
       router.replace("/Home");
     } catch (err: any) {
       console.error("Auth error:", err);
@@ -78,6 +103,11 @@ const SignIn = () => {
 
   return (
     <SafeAreaView className="bg-white h-full">
+       <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+      >
       <ScrollView contentContainerClassName="h-full justify-center">
         <Image
           source={images.onboarding}
@@ -90,14 +120,16 @@ const SignIn = () => {
           </Text>
 
           {mode === "signup" && (
-            <TextInput
-              placeholder="Full Name"
-              value={name}
-              onChangeText={setName}
-              className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
-              placeholderTextColor="#aaa"
-              autoCapitalize="words"
-            />
+            <>
+              <TextInput
+                placeholder="Full Name"
+                value={name}
+                onChangeText={setName}
+                className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
+                placeholderTextColor="#aaa"
+                autoCapitalize="words"
+              />
+            </>
           )}
 
           <TextInput
@@ -118,6 +150,17 @@ const SignIn = () => {
             secureTextEntry
             placeholderTextColor="#aaa"
           />
+
+          {mode === "signup" && (
+            <TextInput
+              placeholder="Confirm Password"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
+              secureTextEntry
+              placeholderTextColor="#aaa"
+            />
+          )}
 
           <TouchableOpacity
             onPress={handleAuth}
@@ -149,6 +192,7 @@ const SignIn = () => {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

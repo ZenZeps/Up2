@@ -10,37 +10,44 @@ import {
   Button,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import images from '@/constants/images';
 import icons from '@/constants/icons';
 import { getAllUsers, getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { getAllEvents } from '@/lib/api/event';
-import { getCurrentUser, databases, config } from '@/lib/appwrite';
+import { getCurrentUser, databases, config } from '@/lib/appwrite/appwrite';
 import { useEvents } from '../context/EventContext';
+import { ID } from 'react-native-appwrite';
+import dayjs from 'dayjs';
 
 const Explore = () => {
   const router = useRouter();
   const { events, refetchEvents } = useEvents();
 
-  const [query, setQuery] = useState('');
-  const [users, setUsers] = useState<any[]>([]);
-  const [mode, setMode] = useState<'users' | 'events'>('users');
-  const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState('');
-  const [friends, setFriends] = useState<string[]>([]);
-  const [profile, setProfile] = useState<any>(null);
+  // State variables
+  const [query, setQuery] = useState(''); // Search query
+  const [users, setUsers] = useState<any[]>([]); // All users except current
+  const [mode, setMode] = useState<'users' | 'events'>('users'); // Toggle between users/events
+  const [loading, setLoading] = useState(true); // Loading state
+  const [userId, setUserId] = useState(''); // Current user ID
+  const [friends, setFriends] = useState<string[]>([]); // Current user's friends
+  const [profile, setProfile] = useState<any>(null); // Current user's profile
 
+  // Fetch current user, profile, and all users on mount
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // Get current user and their profile
         const currentUser = await getCurrentUser();
         setUserId(currentUser?.$id);
         const userProfile = await getUserProfile(currentUser?.$id);
         setProfile(userProfile);
         setFriends(userProfile?.friends ?? []);
 
+        // Get all users except current user
         const userRes = await getAllUsers();
-        setUsers((userRes || []).filter((u: any) => u.id !== currentUser?.$id));
+        setUsers((userRes || []).filter((u: any) => u.$id !== currentUser?.$id));
       } catch (err) {
         console.error('Explore fetch error:', err);
       } finally {
@@ -48,31 +55,52 @@ const Explore = () => {
       }
     };
     fetchData();
-    refetchEvents(); // <-- fetch latest events on mount
+    refetchEvents(); // Fetch latest events on mount
   }, []);
 
-  const handleAddFriend = async (friendId: string) => {
-    const updatedFriends = [...friends, friendId];
-    setFriends(updatedFriends);
-    await updateUserProfile({
-      ...profile,
-      friends: updatedFriends,
-    });
+  // Send a friend request to another user
+  const handleSendFriendRequest = async (toUserId: string) => {
+    try {
+      const requestId = ID.unique();
+      await databases.createDocument(
+        config.databaseID!,
+        config.friendRequestsCollectionID,
+        requestId,
+        {
+          id: requestId, // Document ID
+          from: userId,  // Sender's user ID
+          to: toUserId,  // Recipient's user ID
+          status: 'pending',
+        }
+      );
+      Alert.alert('Friend request sent!');
+    } catch (err) {
+      console.error('Friend request error:', err);
+      Alert.alert('Error', 'Failed to send friend request');
+    }
   };
 
-  // Filter users by search query
+  // Filter users by search query (case-insensitive)
   const filteredUsers = users.filter((u) =>
     u.name?.toLowerCase().includes(query.toLowerCase())
   );
 
-  // Filter events by search query (by title or location)
+  // Filter events by search query (title or location)
   const filteredEvents = events.filter(
     (e) =>
       e.title?.toLowerCase().includes(query.toLowerCase()) ||
       e.location?.toLowerCase().includes(query.toLowerCase())
   );
 
-  // Attend event handler
+  // Check if the user has any pending event invites
+  const hasInvites = events.some(
+    (event) =>
+      userId &&
+      event.inviteeIds.includes(userId) &&
+      event.creatorId !== userId
+  );
+
+  // Handler for attending an event (not used in UI here, but available)
   const handleAttendEvent = async (event: any) => {
     if (!event.inviteeIds?.includes(userId)) {
       try {
@@ -86,14 +114,8 @@ const Explore = () => {
             inviteeIds: updatedInviteeIds,
           }
         );
-        // Update local state
-        setEvents((prev) =>
-          prev.map((ev) =>
-            (ev.$id || ev.id) === (event.$id || event.id)
-              ? { ...ev, inviteeIds: updatedInviteeIds }
-              : ev
-          )
-        );
+        // Correct: refetch events from the server
+        await refetchEvents();
         Alert.alert('Success', 'You are now attending this event!');
       } catch (err) {
         console.error('Attend event error:', err);
@@ -103,90 +125,115 @@ const Explore = () => {
   };
 
   return (
-    <ScrollView className="bg-white h-full">
-      <View className="px-5 mt-5">
+    <SafeAreaView className="flex-1 bg-white">
+      <View className="px-5 pt-5">
         {/* Header */}
-        <View className="flex flex-row items-center justify-between">
-          <View className="flex flex-row items-center">
-            <Image source={images.avatar} className="size-12 rounded-full" />
-            <View className="ml-2">
-              <Text className="text-lg font-semibold">Hello</Text>
-              <Text className="text-sm text-gray-500">Search for something</Text>
+        <View className="flex-row items-center justify-between mb-6">
+          <View className="flex-row items-center">
+            <Image source={images.avatar} className="w-12 h-12 rounded-full" />
+            <View className="ml-3">
+              <Text className="text-base font-rubik-medium text-gray-600">Welcome back,</Text>
+              <Text className="text-xl font-rubik-semibold text-gray-900">{profile?.name || 'User'}</Text>
             </View>
           </View>
-          <Image source={icons.bell} className="size-6" />
-        </View>
-
-        {/* Toggle */}
-        <View className="flex flex-row justify-center mt-6">
-          <TouchableOpacity
-            onPress={() => setMode('users')}
-            className={`px-4 py-2 rounded-full ${
-              mode === 'users' ? 'bg-primary-300' : 'bg-gray-200'
-            }`}
-          >
-            <Text className="text-white font-rubik-medium">Users</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setMode('events')}
-            className={`ml-4 px-4 py-2 rounded-full ${
-              mode === 'events' ? 'bg-primary-300' : 'bg-gray-200'
-            }`}
-          >
-            <Text className="text-white font-rubik-medium">Events</Text>
+          <TouchableOpacity onPress={() => router.push('/Invites')} className="relative">
+            <Image
+              source={icons.bell}
+              className="w-7 h-7"
+              style={{ tintColor: hasInvites ? '#FF3B30' : '#666876' }}
+            />
+            {hasInvites && (
+              <View className="absolute -top-1 -right-1 bg-red-500 rounded-full w-3 h-3 items-center justify-center">
+                <Text className="text-white text-xs"></Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
         {/* Search Bar */}
-        <TextInput
-          placeholder={`Search ${mode}`}
-          value={query}
-          onChangeText={setQuery}
-          className="border border-gray-300 rounded-lg px-4 py-3 mt-4 font-rubik text-black-300"
-          placeholderTextColor="#aaa"
-        />
-        <View className="mt-6">
+        <View className="flex-row items-center bg-gray-100 rounded-xl px-4 py-3 mb-6 border border-gray-200">
+          <Image source={icons.search} className="w-5 h-5 mr-3" resizeMode="contain" tintColor="#888" />
+          <TextInput
+            placeholder={`Search ${mode}...`}
+            value={query}
+            onChangeText={setQuery}
+            className="flex-1 text-base font-rubik text-gray-800"
+            placeholderTextColor="#888"
+          />
+        </View>
+
+        {/* Toggle between Users and Events mode */}
+        <View className="flex-row justify-around mb-6 bg-gray-100 rounded-xl p-1">
+          <TouchableOpacity
+            onPress={() => setMode('users')}
+            className={`flex-1 py-3 rounded-lg items-center ${
+              mode === 'users' ? 'bg-primary-300 shadow-sm' : ''
+            }`}
+          >
+            <Text className={`text-base font-rubik-medium ${mode === 'users' ? 'text-white' : 'text-gray-700'}`}>
+              Users
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setMode('events')}
+            className={`flex-1 py-3 rounded-lg items-center ${
+              mode === 'events' ? 'bg-primary-300 shadow-sm' : ''
+            }`}
+          >
+            <Text className={`text-base font-rubik-medium ${mode === 'events' ? 'text-white' : 'text-gray-700'}`}>
+              Events
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Main content: Users or Events list */}
+        <ScrollView className="flex-1">
           {loading ? (
-            <ActivityIndicator size="large" color="#888" className="mt-10" />
+            <ActivityIndicator size="large" color="#0061FF" className="mt-10" />
           ) : mode === 'users' ? (
             filteredUsers.length > 0 ? (
               filteredUsers.map((user) => {
-                const isFriend = friends.includes(user.id);
+                const isFriend = friends.includes(user.$id);
                 return (
-                  <View key={user.id} className="mb-4 flex-row items-center justify-between">
-                    <Text className="text-black-300 font-rubik">{user.name}</Text>
+                  <View key={user.$id} className="flex-row items-center justify-between bg-white p-4 rounded-lg shadow-sm mb-3 border border-gray-100">
+                    <View className="flex-row items-center">
+                      <Image source={images.avatar} className="w-10 h-10 rounded-full mr-3" />
+                      <Text className="text-lg font-rubik-medium text-gray-800">{user.name}</Text>
+                    </View>
                     {!isFriend && (
-                      <Button
-                        title="Add"
-                        color="green"
-                        onPress={() => handleAddFriend(user.id)}
-                      />
+                      <TouchableOpacity
+                        onPress={() => handleSendFriendRequest(user.$id)}
+                        className="bg-green-500 px-4 py-2 rounded-full shadow-sm"
+                      >
+                        <Text className="text-white font-rubik-medium text-sm">Add</Text>
+                      </TouchableOpacity>
                     )}
                   </View>
                 );
               })
             ) : (
-              <Text className="text-gray-400 mt-4 text-center">No users found</Text>
+              <Text className="text-gray-500 mt-4 text-center font-rubik">No users found</Text>
             )
           ) : filteredEvents.length > 0 ? (
             filteredEvents.map((event) => (
               <TouchableOpacity
-                key={event.$id || event.id}
-                className="mb-4"
-                onPress={() => router.push(`/event/${event.$id || event.id}`)}
+                key={event.$id}
+                className="bg-white p-4 rounded-lg shadow-sm mb-3 border border-gray-100"
+                onPress={() => router.push(`/event/${event.$id}`)}
               >
-                <Text className="text-black-300 font-rubik font-semibold">
-                  {event.title}
+                <Text className="text-lg font-rubik-semibold text-gray-900 mb-1">{event.title}</Text>
+                <Text className="text-sm font-rubik text-gray-600">{event.location}</Text>
+                <Text className="text-xs font-rubik text-gray-500 mt-1">
+                  {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
                 </Text>
-                <Text className="text-gray-400">{event.location}</Text>
               </TouchableOpacity>
             ))
           ) : (
-            <Text className="text-gray-400 mt-4 text-center">No events found</Text>
+            <Text className="text-gray-500 mt-4 text-center font-rubik">No events found</Text>
           )}
-        </View>
+        </ScrollView>
       </View>
-    </ScrollView>
+    </SafeAreaView>
   );
 };
 

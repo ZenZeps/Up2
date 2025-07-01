@@ -7,6 +7,7 @@ export const config = {
   databaseID: process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID!,
   usersCollectionID: process.env.EXPO_PUBLIC_APPWRITE_USERS_COLLECTION_ID!,
   eventsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_EVENTS_COLLECTION_ID!,
+  friendRequestsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_FRIENDREQUESTS_COLLECTION_ID!,
 };
 
 export const client = new Client();
@@ -66,7 +67,14 @@ export async function getCurrentUser() {
       };
     }
     return null;
-  } catch (error) {
+  } catch (error: any) {
+    // Suppress "missing scope (account)" error
+    if (
+      error?.message?.includes('missing scope (account)') ||
+      error?.message?.includes('User (role: guests)')
+    ) {
+      return null;
+    }
     console.error("Get current user error:", error);
     return null;
   }

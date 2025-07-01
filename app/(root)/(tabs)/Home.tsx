@@ -3,36 +3,50 @@ import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { useEvents } from '../context/EventContext';
 import EventForm from '../components/EventForm';
-import { Event as AppEvent } from '../types/Events';
+import { Event as AppEvent } from '@/lib/types/Events';
 import dayjs from 'dayjs';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { account } from '@/lib/appwrite';
+import { account } from '@/lib/appwrite/appwrite';
 import { useLocalSearchParams } from 'expo-router';
 import { getUserProfile } from '@/lib/api/user';
 
+// Define available calendar view modes
 const viewModes: Mode[] = ['day', 'week', 'month'];
 
 export default function Home() {
+  // Get events from context
   const { events } = useEvents();
+
+  // Modal state for event form
   const [formVisible, setFormVisible] = useState(false);
+  // Date/time selected for new/edit event
   const [selectedDateTime, setSelectedDateTime] = useState<string | null>(null);
+  // Event being edited (if any)
   const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
+  // Current calendar view mode
   const [viewMode, setViewMode] = useState<Mode>('week');
+  // Current user's Appwrite ID
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // Current user's friends (array of user IDs)
   const [friends, setFriends] = useState<string[]>([]);
 
+  // Get route params (for user calendar view)
   const params = useLocalSearchParams();
 
+  // On mount or when params change, fetch current user and their friends
   useEffect(() => {
     const init = async () => {
       try {
+        // Get current Appwrite user
         const user = await account.get();
-        if (!user?.$id) return; // Don't fetch profile if not logged in
+        if (!user?.$id) return; // If not logged in, skip
         setCurrentUserId(user.$id);
+
+        // Fetch user profile to get friends list
         const profile = await getUserProfile(user.$id);
         setFriends(profile?.friends ?? []);
       } catch (err) {
-        // Optionally ignore error if not logged in
+        // Ignore error if not logged in, otherwise log
         if (err?.message?.includes('missing scope (account)')) return;
         console.error('Error getting current user or friends:', err);
       }
@@ -40,27 +54,33 @@ export default function Home() {
     init();
   }, [params]);
 
-  // Filter events for this user
+  // Filter events for this user (creator or attendee)
   const calendarEvents = events
     .filter(
       (e) =>
         currentUserId &&
-        (e.creatorId === currentUserId || e.inviteeIds.includes(currentUserId))
+        (
+          e.creatorId === currentUserId ||
+          (e.inviteeIds && e.inviteeIds.includes(currentUserId)) ||
+          (e.attendees && e.attendees.includes(currentUserId))
+        )
     )
     .map((e) => ({
       title: e.title,
       start: new Date(e.startTime),
       end: new Date(e.endTime),
       location: e.location,
-      rawEvent: e,
+      rawEvent: { ...e, $id: e.$id }, // Keep original event for editing and ensure $id is present
     }));
 
+  // Handler for pressing a calendar cell (to create a new event)
   const handlePressCell = (date: Date) => {
     setSelectedDateTime(date.toISOString());
     setEditingEvent(null);
     setFormVisible(true);
   };
 
+  // Handler for pressing an event (to edit)
   const handlePressEvent = (calendarEvent: any) => {
     setEditingEvent(calendarEvent.rawEvent);
     setSelectedDateTime(calendarEvent.rawEvent.startTime);
@@ -75,7 +95,7 @@ export default function Home() {
           {params?.id ? "User's Calendar" : 'My Events'}
         </Text>
 
-        {/* View Mode Toggle */}
+        {/* View Mode Toggle Buttons */}
         <View className="flex-row justify-center mb-4">
           {viewModes.map((mode) => (
             <TouchableOpacity
@@ -139,7 +159,7 @@ export default function Home() {
           />
         </View>
 
-        {/* Event Form Modal (only for own calendar) */}
+        {/* Event Form Modal (only for own calendar, not when viewing another user's calendar) */}
         {selectedDateTime && !params?.id && (
           <EventForm
             visible={formVisible}
