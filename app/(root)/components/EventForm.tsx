@@ -5,7 +5,8 @@ import { Event } from '@/lib/types/Events';
 import { useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { getAllUsers } from '@/lib/api/user';
 import { databases, config } from '@/lib/appwrite/appwrite';
-import { ID } from 'react-native-appwrite';
+import { ID } from '@/lib/appwrite/appwrite';
+import { createEvent } from '@/lib/api/event';
 import { useEvents } from '../context/EventContext';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import dayjs from 'dayjs';
@@ -89,6 +90,7 @@ useEffect(() => {
 
 const newEvent: Event = {
   $id: event?.$id ?? ID.unique(),
+  id: event?.$id ?? ID.unique(),
   title,
   location,
   startTime: startDate.toISOString(),
@@ -98,10 +100,7 @@ const newEvent: Event = {
   description,
 };
 
-    const payload = {
-      ...newEvent,
-      description,
-    };
+    
 
 const handleSave = async () => {
   try {
@@ -110,15 +109,10 @@ const handleSave = async () => {
         config.databaseID!,
         config.eventsCollectionID!,
         event.$id,
-        payload
+        newEvent
       );
     } else if (!event) { // Only create if event is undefined (new event)
-      await databases.createDocument(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        newEvent.$id,
-        payload
-      );
+      await createEvent(newEvent);
     } else {
       console.error("Error: Event or event.$id is missing for update operation.", event);
       alert("Failed to save event: Missing event ID.");

@@ -1,5 +1,7 @@
 import { Account, Avatars, Client, Databases, ID } from "react-native-appwrite";
 
+export { ID };
+
 export const config = {
   platform: "com.Up2.Up2",
   endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT!,

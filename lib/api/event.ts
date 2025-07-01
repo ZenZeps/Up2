@@ -70,3 +70,18 @@ export async function getEventById(id: string) {
     return null;
   }
 }
+
+export async function createEvent(event: Event) {
+  try {
+    const res = await databases.createDocument(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      event.$id,
+      event
+    );
+    console.log("✅ Created event:", res);
+  } catch (err: any) {
+    console.error("❌ Error creating event:", err);
+    throw new Error("Failed to create event");
+  }
+}

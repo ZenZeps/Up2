@@ -74,7 +74,15 @@ const SignIn = () => {
         return;
       }
 
-      const existingProfile = await getUserProfile(user.$id);
+      let existingProfile = null;
+      try {
+        console.log("Attempting to fetch user profile...");
+        existingProfile = await getUserProfile(user.$id);
+      } catch (profileError: any) {
+        console.error("Error fetching user profile in SignIn.tsx:", profileError);
+        // Continue with the flow, assuming profile might not exist yet
+      }
+
       if (!existingProfile) {
         await createUserProfile({
           id: user.$id,

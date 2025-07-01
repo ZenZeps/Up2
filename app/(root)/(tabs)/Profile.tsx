@@ -39,8 +39,7 @@ const Profile = () => {
   const [isPrivate, setIsPrivate] = useState(false);
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
   const [userId, setUserId] = useState('');
-  const [allUsers, setAllUsers] = useState<any[]>([]);
-  const [friends, setFriends] = useState<string[]>([]);
+  const [friends, setFriends] = useState<UserProfile[]>([]);
 
   const handleInterestToggle = (interest: string) => {
     setSelectedEventTypes((prev) =>
@@ -61,13 +60,8 @@ const Profile = () => {
         setIsPrivate(!profile.isPublic);
         setSelectedEventTypes(profile.preferences || []);
       }
-      // Fetch all users except current user
-      const users = await getAllUsers();
-      setAllUsers(users.filter((u: any) => u.$id !== user.$id));
-
-      // Fetch friends using the new getFriends function
       const userFriends = await getFriends(user.$id);
-      setFriends(userFriends.map(friend => friend.$id));
+      setFriends(userFriends);
     } catch (err) {
       console.error('Failed to load profile:', err);
       Alert.alert('Error', 'Failed to load profile');
@@ -85,7 +79,10 @@ const Profile = () => {
     const latestProfile = await getUserProfile(userId);
     if (!latestProfile) return; // Handle case where profile is null
     const updatedFriends = Array.from(new Set([...(latestProfile?.friends ?? []), friendId]));
-    setFriends(updatedFriends);
+    const newFriendProfile = await getUserProfile(friendId);
+    if (newFriendProfile) {
+      setFriends([...friends, newFriendProfile]);
+    }
     await updateUserProfile({
       $id: userId,
       name: latestProfile.name,
@@ -102,7 +99,7 @@ const handleRemoveFriend = async (friendId: string) => {
   const latestProfile = await getUserProfile(userId);
   if (!latestProfile) return; // Handle case where profile is null
   const updatedFriends = (latestProfile?.friends ?? []).filter((id) => id !== friendId);
-  setFriends(updatedFriends);
+  setFriends(friends.filter((friend) => friend.$id !== friendId));
   await updateUserProfile({
     $id: userId,
     name: latestProfile.name,
@@ -119,7 +116,7 @@ const handleSave = async () => {
     if (!latestProfile) return; // Handle case where profile is null
 
     const latestFriends = latestProfile.friends ?? [];
-    const mergedFriends = Array.from(new Set([...latestFriends, ...friends]));
+    const mergedFriends = Array.from(new Set([...latestFriends, ...friends.map(f => f.$id)]));
 
     await updateUserProfile({
       $id: userId,
@@ -245,7 +242,7 @@ const handleSave = async () => {
               <Text className="text-gray-500 text-center font-rubik">No friends yet.</Text>
             ) : (
               <FlatList
-                data={allUsers.filter((user) => friends.includes(user.$id))}
+                data={friends}
                 keyExtractor={(item) => item.$id}
                 renderItem={({ item }) => (
                   <View className="flex-row items-center justify-between bg-white p-3 rounded-lg shadow-sm mb-3 border border-gray-100">

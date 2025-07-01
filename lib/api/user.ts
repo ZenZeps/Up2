@@ -42,20 +42,29 @@ export async function createUserProfile(profile: UserProfile) {
  */
 export async function getUserProfile(id: string): Promise<UserProfile | null> {
   try {
-    const doc = await databases.getDocument(
+    const response = await databases.listDocuments(
       config.databaseID!,
       config.usersCollectionID!,
-      id
+      [
+        Query.equal('$id', id),
+      ]
     );
-    return {
-      $id: doc.$id,
-      name: doc.name,
-      email: doc.email,
-      isPublic: doc.isPublic,
-      preferences: doc.preferences,
-      friends: doc.friends ?? [], // <-- add this line
-    };
+
+    if (response.documents.length > 0) {
+      const doc = response.documents[0];
+      return {
+        $id: doc.$id,
+        name: doc.name,
+        email: doc.email,
+        isPublic: doc.isPublic,
+        preferences: doc.preferences,
+        friends: doc.friends ?? [],
+      };
+    } else {
+      return null;
+    }
   } catch (err) {
+    console.error("Error fetching user profile with listDocuments:", err);
     return null;
   }
 }
@@ -117,6 +126,39 @@ export async function getAllUsers(): Promise<UserProfile[]> {
   }
 }
 
+
+
+/**
+ * Fetch multiple user profiles by their document IDs.
+ */
+export async function getUsersByIds(ids: string[]): Promise<UserProfile[]> {
+  if (ids.length === 0) {
+    return [];
+  }
+
+  try {
+    const response = await databases.listDocuments(
+      config.databaseID!,
+      config.usersCollectionID!,
+      [
+        Query.equal('$id', ids), // Query for documents where the ID is one of the given IDs
+      ]
+    );
+
+    return response.documents.map((doc: any) => ({
+      $id: doc.$id,
+      name: doc.name,
+      email: doc.email,
+      isPublic: doc.isPublic,
+      preferences: doc.preferences,
+      friends: doc.friends ?? [],
+    }));
+  } catch (err) {
+    console.error("Error fetching users by IDs:", err);
+    return [];
+  }
+}
+
 /**
  * Fetch user's friends.
  */
@@ -127,12 +169,14 @@ export const getFriends = async (userId: string): Promise<UserProfile[]> => {
       return [];
     }
 
-    const friendProfiles = await Promise.all(
-      userProfile.friends.map((friendId) => getUserProfile(friendId))
-    );
-    return friendProfiles.filter((profile): profile is UserProfile => profile !== null);
+    // Fetch all friend profiles in a single query
+    const friendProfiles = await getUsersByIds(userProfile.friends);
+    
+    return friendProfiles;
   } catch (error) {
     console.error("Error getting friends:", error);
     return [];
   }
 };
+
+""
