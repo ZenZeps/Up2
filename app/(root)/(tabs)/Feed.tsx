@@ -17,7 +17,7 @@ import { Event as AppEvent } from '@/lib/types/Events';
 
 dayjs.extend(relativeTime);
 export default function Feed() {
-  const { events } = useEvents();
+  const { events, refetchEvents } = useEvents();
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<AppEvent[]>([]);
 
  useEffect(() => {
@@ -82,6 +82,7 @@ export default function Feed() {
         )
       );
       Alert.alert('Success', 'You are now attending this event!');
+      refetchEvents();
     } catch (err) {
       console.error('Attend event error:', err);
       Alert.alert('Error', 'Failed to attend event');
@@ -108,6 +109,7 @@ export default function Feed() {
         )
       );
       Alert.alert('Success', 'You are no longer attending this event.');
+      refetchEvents();
     } catch (err) {
       console.error('Not attend event error:', err);
       Alert.alert('Error', 'Failed to un-attend event');

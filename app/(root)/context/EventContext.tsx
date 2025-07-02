@@ -29,9 +29,7 @@ const refetchEvents = async () => {
   setEvents(fetched as Event[]);
 };
 
-  useEffect(() => {
-    refetchEvents();
-  }, []);
+  
 
   const addEvent = async (eventData: Omit<Event, '$id'>) => {
     try {

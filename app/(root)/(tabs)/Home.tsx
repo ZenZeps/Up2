@@ -7,7 +7,7 @@ import { Event as AppEvent } from '@/lib/types/Events';
 import dayjs from 'dayjs';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { account } from '@/lib/appwrite/appwrite';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { getUserProfile } from '@/lib/api/user';
 
 // Define available calendar view modes
@@ -15,7 +15,7 @@ const viewModes: Mode[] = ['day', 'week', 'month'];
 
 export default function Home() {
   // Get events from context
-  const { events } = useEvents();
+  const { events, refetchEvents } = useEvents();
 
   // Modal state for event form
   const [formVisible, setFormVisible] = useState(false);
@@ -34,25 +34,28 @@ export default function Home() {
   const params = useLocalSearchParams();
 
   // On mount or when params change, fetch current user and their friends
-  useEffect(() => {
-    const init = async () => {
-      try {
-        // Get current Appwrite user
-        const user = await account.get();
-        if (!user?.$id) return; // If not logged in, skip
-        setCurrentUserId(user.$id);
+  useFocusEffect(
+    React.useCallback(() => {
+      const init = async () => {
+        try {
+          // Get current Appwrite user
+          const user = await account.get();
+          if (!user?.$id) return; // If not logged in, skip
+          setCurrentUserId(user.$id);
 
-        // Fetch user profile to get friends list
-        const profile = await getUserProfile(user.$id);
-        setFriends(profile?.friends ?? []);
-      } catch (err) {
-        // Ignore error if not logged in, otherwise log
-        if (err?.message?.includes('missing scope (account)')) return;
-        console.error('Error getting current user or friends:', err);
-      }
-    };
-    init();
-  }, [params]);
+          // Fetch user profile to get friends list
+          const profile = await getUserProfile(user.$id);
+          setFriends(profile?.friends ?? []);
+        } catch (err) {
+          // Ignore error if not logged in, otherwise log
+          if (err?.message?.includes('missing scope (account)')) return;
+          console.error('Error getting current user or friends:', err);
+        }
+      };
+      init();
+      refetchEvents();
+    }, [params])
+  );
 
   // Filter events for this user (creator or attendee)
   const calendarEvents = events

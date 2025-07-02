@@ -3,6 +3,7 @@ import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Image, Lin
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { databases, config, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { useEvents } from '../context/EventContext';
 import dayjs from 'dayjs';
 import icons from '@/constants/icons';
 import images from '@/constants/images';
@@ -10,6 +11,7 @@ import images from '@/constants/images';
 const EventDetail = () => {
   const { eventId } = useLocalSearchParams();
   const router = useRouter();
+  const { refetchEvents } = useEvents();
   const [event, setEvent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState('');
@@ -77,6 +79,7 @@ const EventDetail = () => {
       setEvent({ ...event, attendees: updatedAttendees });
       setAttending(true);
       Alert.alert('Success', 'You are now attending this event!');
+      refetchEvents();
     } catch (err) {
       console.error('Attend event error:', err);
       Alert.alert('Error', 'Failed to attend event');
@@ -99,6 +102,7 @@ const EventDetail = () => {
       setEvent({ ...event, attendees: updatedAttendees });
       setAttending(false);
       Alert.alert('Success', 'You are no longer attending this event.');
+      refetchEvents();
     } catch (err) {
       console.error('Not attend event error:', err);
       Alert.alert('Error', 'Failed to un-attend event');
