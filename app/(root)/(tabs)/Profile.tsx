@@ -245,7 +245,7 @@ const handleSave = async () => {
                 data={friends}
                 keyExtractor={(item) => item.$id}
                 renderItem={({ item }) => (
-                  <View className="flex-row items-center justify-between bg-white p-3 rounded-lg shadow-sm mb-3 border border-gray-100">
+                  <View key={item.$id} className="flex-row items-center justify-between bg-white p-3 rounded-lg shadow-sm mb-3 border border-gray-100">
                     <View className="flex-row items-center">
                       <Image source={images.avatar} className="w-10 h-10 rounded-full mr-3" />
                       <Text className="text-base font-rubik-medium text-gray-800">{item.name}</Text>

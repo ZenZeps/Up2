@@ -28,7 +28,8 @@ const Explore = () => {
   // State variables
   const [query, setQuery] = useState(''); // Search query
   const [users, setUsers] = useState<any[]>([]); // All users except current
-  const [mode, setMode] = useState<'users' | 'events'>('users'); // Toggle between users/events
+  const [mode, setMode] = useState<'events' | 'users'>('events'); // 'events' or 'users'
+  
   const [loading, setLoading] = useState(true); // Loading state
   const [userId, setUserId] = useState(''); // Current user ID
   const [friends, setFriends] = useState<string[]>([]); // Current user's friends
@@ -150,6 +151,38 @@ const Explore = () => {
           </TouchableOpacity>
         </View>
 
+        {/* Toggle Buttons */}
+        <View className="flex-row mb-6">
+          <TouchableOpacity
+            onPress={() => setMode('users')}
+            className={`flex-1 items-center py-3 rounded-lg mx-1 ${
+              mode === 'users' ? 'bg-primary-300' : 'bg-gray-100'
+            }`}
+          >
+            <Text
+              className={`text-lg font-rubik-medium ${
+                mode === 'users' ? 'text-white' : 'text-gray-700'
+              }`}
+            >
+              Users
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setMode('events')}
+            className={`flex-1 items-center py-3 rounded-lg mx-1 ${
+              mode === 'events' ? 'bg-primary-300' : 'bg-gray-100'
+            }`}
+          >
+            <Text
+              className={`text-lg font-rubik-medium ${
+                mode === 'events' ? 'text-white' : 'text-gray-700'
+              }`}
+            >
+              Events
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Search Bar */}
         <View className="flex-row items-center bg-gray-100 rounded-xl px-4 py-3 mb-6 border border-gray-200">
           <Image source={icons.search} className="w-5 h-5 mr-3" resizeMode="contain" tintColor="#888" />
@@ -160,30 +193,6 @@ const Explore = () => {
             className="flex-1 text-base font-rubik text-gray-800"
             placeholderTextColor="#888"
           />
-        </View>
-
-        {/* Toggle between Users and Events mode */}
-        <View className="flex-row justify-around mb-6 bg-gray-100 rounded-xl p-1">
-          <TouchableOpacity
-            onPress={() => setMode('users')}
-            className={`flex-1 py-3 rounded-lg items-center ${
-              mode === 'users' ? 'bg-primary-300 shadow-sm' : ''
-            }`}
-          >
-            <Text className={`text-base font-rubik-medium ${mode === 'users' ? 'text-white' : 'text-gray-700'}`}>
-              Users
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setMode('events')}
-            className={`flex-1 py-3 rounded-lg items-center ${
-              mode === 'events' ? 'bg-primary-300 shadow-sm' : ''
-            }`}
-          >
-            <Text className={`text-base font-rubik-medium ${mode === 'events' ? 'text-white' : 'text-gray-700'}`}>
-              Events
-            </Text>
-          </TouchableOpacity>
         </View>
 
         {/* Main content: Users or Events list */}
