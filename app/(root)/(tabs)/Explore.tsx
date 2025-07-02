@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Button,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -28,7 +29,7 @@ const Explore = () => {
   // State variables
   const [query, setQuery] = useState(''); // Search query
   const [users, setUsers] = useState<any[]>([]); // All users except current
-  const [mode, setMode] = useState<'events' | 'users'>('events'); // 'events' or 'users'
+  const [mode, setMode] = useState<'events' | 'users'>('users'); // 'events' or 'users'
   
   const [loading, setLoading] = useState(true); // Loading state
   const [userId, setUserId] = useState(''); // Current user ID
@@ -58,6 +59,11 @@ const Explore = () => {
     fetchData();
     refetchEvents(); // Fetch latest events on mount
   }, []);
+
+  const openInMaps = (location: string) => {
+  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+  Linking.openURL(url);
+  };
 
   // Send a friend request to another user
   const handleSendFriendRequest = async (toUserId: string) => {
@@ -231,7 +237,11 @@ const Explore = () => {
                 onPress={() => router.push(`/event/${event.$id}`)}
               >
                 <Text className="text-lg font-rubik-semibold text-gray-900 mb-1">{event.title}</Text>
-                <Text className="text-sm font-rubik text-gray-600">{event.location}</Text>
+                <Text className="text-sm font-rubik text-gray-600">
+                <TouchableOpacity onPress={() => openInMaps(event.location)}>
+                  <Text className="text-blue-600 underline">{event.location}</Text>
+                </TouchableOpacity>
+                </Text>
                 <Text className="text-xs font-rubik text-gray-500 mt-1">
                   {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
                 </Text>

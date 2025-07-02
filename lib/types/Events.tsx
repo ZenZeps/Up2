@@ -5,12 +5,13 @@ export interface Event {
   startTime: string; // ISO format
   endTime: string;   // ISO format
   creatorId: string;
-  inviteeIds: string[];
-  attendees?: string[];
+  inviteeIds: string[]; // Users who have been invited to the event
+  attendees: string[]; // Users who have confirmed attendance
+  isAttending?: boolean;
   description?: string;
 }
 
 export interface EventWithDetails extends Event {
   description: string;
-  attendees: string[]; // Array of attendee names or emails
+  attendees: string[]; // Array of attendee user IDs
 }

@@ -50,6 +50,17 @@ const TabsLayout = () => {
             )
           }}
         />
+        {/* Feed tab */}
+        <Tabs.Screen
+          name="Feed"
+          options={{
+            title: 'Feed',
+            headerShown: false,
+            tabBarIcon: ({ focused }) => (
+              <TabIcon icon={icons.bell} focused={focused} title="Feed" />
+            )
+          }}
+        />
         {/* Explore tab */}
         <Tabs.Screen
           name="Explore"

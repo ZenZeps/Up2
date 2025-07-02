@@ -90,18 +90,13 @@ export default function Home() {
   return (
     <SafeAreaView className="flex-1 bg-white">
       <View className="flex-1 p-4 pb-8">
-        {/* Header */}
-        <Text className="text-2xl font-rubik-semibold mb-4 text-primary-300">
-          {params?.id ? "User's Calendar" : 'My Events'}
-        </Text>
-
         {/* View Mode Toggle Buttons */}
         <View className="flex-row justify-center mb-4">
           {viewModes.map((mode) => (
             <TouchableOpacity
               key={mode}
               onPress={() => setViewMode(mode)}
-              className={`px-4 py-2 mx-1 rounded-xl ${
+              className={`flex-1 items-center py-3 rounded-lg mx-1 ${
                 viewMode === mode ? 'bg-primary-300' : 'bg-gray-200'
               }`}
               style={{
@@ -132,6 +127,7 @@ export default function Home() {
           }}
         >
           <BigCalendar
+            showAllDayEventCell={false}
             events={calendarEvents}
             height={Platform.OS === 'ios' ? 540 : 520}
             mode={viewMode}
