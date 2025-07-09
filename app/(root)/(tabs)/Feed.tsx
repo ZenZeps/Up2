@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import { databases, config, account } from '@/lib/appwrite/appwrite';
+import { databases, config, account, Query } from '@/lib/appwrite/appwrite';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 
 import icons from '@/constants/icons';
@@ -18,45 +18,60 @@ import { Event as AppEvent } from '@/lib/types/Events';
 dayjs.extend(relativeTime);
 export default function Feed() {
   const { events, refetchEvents } = useEvents();
+  const params = useLocalSearchParams();
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<AppEvent[]>([]);
+  const [formVisible, setFormVisible] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [friends, setFriends] = useState<string[]>([]);
 
  useEffect(() => {
-  const addCreatorNamesAndFilterEvents = async () => {
-    if (!currentUserId) return;
+    const init = async () => {
+      try {
+        const user = await account.get();
+        if (!user?.$id) return;
+        setCurrentUserId(user.$id);
+        const profile = await getUserProfile(user.$id);
+        const userFriends = profile?.friends ?? [];
+        setFriends(userFriends);
 
-    const uniqueCreatorIds = [...new Set(events.map(event => event.creatorId))];
-    const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
-    const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, profile.name]));
+        if (userFriends.length > 0) {
+          const friendEvents = await databases.listDocuments(
+            config.databaseID!,
+            config.eventsCollectionID!,
+            [
+              Query.equal('creatorId', userFriends)
+            ]
+          );
 
-    const filteredAndMappedEvents = events
-      .filter(event => {
-        const hasNotHappened = new Date(event.endTime).getTime() > Date.now();
-        const isFriend = friends.includes(event.creatorId);
-        return hasNotHappened && isFriend;
-      })
-      .map(event => ({
-        ...event,
-        creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
-        isAttending: event.attendees?.includes(currentUserId ?? ''),
-      }));
-    setEventsWithCreatorNames(filteredAndMappedEvents);
-  };
+          const uniqueCreatorIds = [...new Set(friendEvents.documents.map(event => event.creatorId))];
+          const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
+          const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, profile.name]));
 
-  addCreatorNamesAndFilterEvents();
-}, [events, currentUserId, friends]);
+          const filteredAndMappedEvents = friendEvents.documents
+            .filter(event => {
+              const hasNotHappened = new Date(event.endTime).getTime() > Date.now();
+              return hasNotHappened;
+            })
+            .map(event => ({
+              ...event,
+              creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
+              isAttending: event.attendees?.includes(user.$id ?? ''),
+            }));
+          setEventsWithCreatorNames(filteredAndMappedEvents);
+        }
+      } catch (err) {
+        if (err?.message?.includes('missing scope (account)')) return;
+        console.error('Error getting current user or friends:', err);
+      }
+    };
+    init();
+    refetchEvents();
+  }, []);
 
   const openInMaps = (location: string) => {
   const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
   Linking.openURL(url);
 };
-
-  const sortedEvents = [...eventsWithCreatorNames].sort((a, b) => {
-    return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
-  });
-  const [formVisible, setFormVisible] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [friends, setFriends] = useState<string[]>([]);
-  const params = useLocalSearchParams();
 
   const handleAttend = async (event: AppEvent) => {
     if (!currentUserId) return;
@@ -116,21 +131,9 @@ export default function Feed() {
     }
   };
 
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const user = await account.get();
-        if (!user?.$id) return;
-        setCurrentUserId(user.$id);
-        const profile = await getUserProfile(user.$id);
-        setFriends(profile?.friends ?? []);
-      } catch (err) {
-        if (err?.message?.includes('missing scope (account)')) return;
-        console.error('Error getting current user or friends:', err);
-      }
-    };
-    init();
-  }, [params]);
+  const sortedEvents = [...eventsWithCreatorNames].sort((a, b) => {
+    return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
+  });
 
   const renderEventItem = ({ item }: { item: AppEvent }) => (
     <View className="bg-white rounded-lg shadow-md mb-4 mx-4">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   TextInput,
   View,
@@ -15,11 +15,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import images from '@/constants/images';
 import icons from '@/constants/icons';
-import { getAllUsers, getUserProfile, updateUserProfile } from '@/lib/api/user';
+import { getAllUsers, getUserProfile, updateUserProfile, getUsersByIds } from '@/lib/api/user';
 import { getAllEvents } from '@/lib/api/event';
 import { getCurrentUser, databases, config } from '@/lib/appwrite/appwrite';
 import { useEvents } from '../context/EventContext';
-import { ID } from 'react-native-appwrite';
+import { ID, Query } from 'react-native-appwrite';
 import dayjs from 'dayjs';
 
 const Explore = () => {
@@ -35,21 +35,35 @@ const Explore = () => {
   const [userId, setUserId] = useState(''); // Current user ID
   const [friends, setFriends] = useState<string[]>([]); // Current user's friends
   const [profile, setProfile] = useState<any>(null); // Current user's profile
+  const [requestedUsers, setRequestedUsers] = useState<string[]>([]); // Users who have sent friend requests
+  const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<any[]>([]);
 
   // Fetch current user, profile, and all users on mount
   useEffect(() => {
     const fetchData = async () => {
       try {
         // Get current user and their profile
-        const currentUser = await getCurrentUser();
-        setUserId(currentUser?.$id);
-        const userProfile = await getUserProfile(currentUser?.$id);
-        setProfile(userProfile);
-        setFriends(userProfile?.friends ?? []);
+        const currentUser = await getCurrentUser();  // Gets the current user from Appwrite
+        setUserId(currentUser?.$id); // Function to define the currentUser statd with information form Appwrite
+        const userProfile = await getUserProfile(currentUser?.$id); // Fetches the user profile for the specified user from Appwrite
+        setProfile(userProfile); // Sets the profile state to the found user profile
+        setFriends(userProfile?.friends ?? []); // Sets the friends state to the users friend list attribute
 
         // Get all users except current user
         const userRes = await getAllUsers();
         setUsers((userRes || []).filter((u: any) => u.$id !== currentUser?.$id));
+
+        // Get pending friend requests sent by the current user
+        const requestsRes = await databases.listDocuments(
+          config.databaseID!,
+          config.friendRequestsCollectionID,
+          [
+            Query.equal('from', currentUser.$id),
+            Query.equal('status', 'pending'),
+          ]
+        );
+        setRequestedUsers(requestsRes.documents.map((req) => req.to));
+
       } catch (err) {
         console.error('Explore fetch error:', err);
       } finally {
@@ -60,13 +74,31 @@ const Explore = () => {
     refetchEvents(); // Fetch latest events on mount
   }, []);
 
+  useEffect(() => {
+    const addCreatorNames = async () => {
+      const uniqueCreatorIds = [...new Set(events.map(event => event.creatorId))];
+      const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
+      const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, profile.name]));
+
+      const eventsWithNames = events.map(event => ({
+        ...event,
+        creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
+      }));
+      setEventsWithCreatorNames(eventsWithNames);
+    };
+
+    if (events.length > 0) {
+      addCreatorNames();
+    }
+  }, [events]);
+
   const openInMaps = (location: string) => {
   const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
   Linking.openURL(url);
   };
 
   // Send a friend request to another user
-  const handleSendFriendRequest = async (toUserId: string) => {
+  const handleSendFriendRequest = useCallback(async (toUserId: string) => {
     try {
       const requestId = ID.unique();
       await databases.createDocument(
@@ -74,30 +106,95 @@ const Explore = () => {
         config.friendRequestsCollectionID,
         requestId,
         {
-          id: requestId, // Document ID
-          from: userId,  // Sender's user ID
-          to: toUserId,  // Recipient's user ID
+          id: requestId,
+          from: userId,
+          to: toUserId,
           status: 'pending',
         }
       );
-      Alert.alert('Friend request sent!');
+      setRequestedUsers((prev) => [...prev, toUserId]); // Update state
     } catch (err) {
       console.error('Friend request error:', err);
       Alert.alert('Error', 'Failed to send friend request');
     }
+  }, [userId]);
+
+  const handleDeleteFriend = async (friendId: string) => {
+    Alert.alert(
+      'Remove Friend',
+      'Are you sure you want to remove this friend?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'OK',
+          onPress: async () => {
+            try {
+              // Optimistically update the UI
+              setFriends((prev) => prev.filter((id) => id !== friendId));
+
+              // Update current user's friend list
+              const updatedUserFriends = friends.filter((id) => id !== friendId);
+              await updateUserProfile(userId, { friends: updatedUserFriends });
+
+              // Update friend's friend list
+              const friendProfile = await getUserProfile(friendId);
+              const updatedFriendFriends = (friendProfile.friends || []).filter(
+                (id: string) => id !== userId
+              );
+              await updateUserProfile(friendId, { friends: updatedFriendFriends });
+
+            } catch (err) {
+              console.error('Delete friend error:', err);
+              Alert.alert('Error', 'Failed to remove friend');
+              // Revert the UI update if the API call fails
+              setFriends((prev) => [...prev, friendId]);
+            }
+          },
+        },
+      ]
+    );
   };
 
-  // Filter users by search query (case-insensitive)
-  const filteredUsers = users.filter((u) =>
-    u.name?.toLowerCase().includes(query.toLowerCase())
-  );
+  const handleCancelFriendRequest = async (toUserId: string) => {
+    try {
+      // Find the friend request document
+      const response = await databases.listDocuments(
+        config.databaseID!,
+        config.friendRequestsCollectionID,
+        [
+          Query.equal('from', userId),
+          Query.equal('to', toUserId),
+        ]
+      );
 
-  // Filter events by search query (title or location)
-  const filteredEvents = events.filter(
-    (e) =>
-      e.title?.toLowerCase().includes(query.toLowerCase()) ||
-      e.location?.toLowerCase().includes(query.toLowerCase())
-  );
+      if (response.documents.length > 0) {
+        const requestId = response.documents[0].$id;
+        await databases.deleteDocument(
+          config.databaseID!,
+          config.friendRequestsCollectionID,
+          requestId
+        );
+        setRequestedUsers((prev) => prev.filter((id) => id !== toUserId)); // Update state
+      }
+    } catch (err) {
+      console.error('Cancel friend request error:', err);
+      Alert.alert('Error', 'Failed to cancel friend request');
+    }
+  };
+
+  const filteredUsers = useMemo(() => {
+    return users.filter((u) =>
+      u.name?.toLowerCase().includes(query.toLowerCase())
+    );
+  }, [query, users]);
+
+  const filteredEvents = useMemo(() => {
+    return eventsWithCreatorNames.filter(
+      (e) =>
+        e.title?.toLowerCase().includes(query.toLowerCase()) ||
+        e.location?.toLowerCase().includes(query.toLowerCase())
+    );
+  }, [query, eventsWithCreatorNames]);
 
   // Check if the user has any pending event invites
   const hasInvites = events.some(
@@ -210,17 +307,41 @@ const Explore = () => {
               filteredUsers.map((user) => {
                 const isFriend = friends.includes(user.$id);
                 return (
-                  <View key={user.$id} className="flex-row items-center justify-between bg-white p-4 rounded-lg shadow-sm mb-3 border border-gray-100">
+                  <View
+                    key={user.$id}
+                    className="flex-row items-center justify-between bg-white p-4 rounded-lg shadow-sm mb-3 border border-gray-100"
+                  >
                     <View className="flex-row items-center">
                       <Image source={images.avatar} className="w-10 h-10 rounded-full mr-3" />
                       <Text className="text-lg font-rubik-medium text-gray-800">{user.name}</Text>
                     </View>
-                    {!isFriend && (
+                    {isFriend ? (
                       <TouchableOpacity
-                        onPress={() => handleSendFriendRequest(user.$id)}
-                        className="bg-green-500 px-4 py-2 rounded-full shadow-sm"
+                        onPress={() => handleDeleteFriend(user.$id)}
+                        className="px-4 py-2 rounded-full shadow-sm bg-red-500"
                       >
-                        <Text className="text-white font-rubik-medium text-sm">Add</Text>
+                        <Text className="font-rubik-medium text-sm text-white">Remove</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (requestedUsers.includes(user.$id)) {
+                            handleCancelFriendRequest(user.$id);
+                          } else {
+                            handleSendFriendRequest(user.$id);
+                          }
+                        }}
+                        className={`px-4 py-2 rounded-full shadow-sm ${
+                          requestedUsers.includes(user.$id) ? 'bg-gray-200' : 'bg-blue-500'
+                        }`}
+                      >
+                        <Text
+                          className={`font-rubik-medium text-sm ${
+                            requestedUsers.includes(user.$id) ? 'text-gray-500' : 'text-white'
+                          }`}
+                        >
+                          {requestedUsers.includes(user.$id) ? 'Requested' : 'Add'}
+                        </Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -236,7 +357,10 @@ const Explore = () => {
                 className="bg-white p-4 rounded-lg shadow-sm mb-3 border border-gray-100"
                 onPress={() => router.push(`/event/${event.$id}`)}
               >
-                <Text className="text-lg font-rubik-semibold text-gray-900 mb-1">{event.title}</Text>
+                <View className="flex-row justify-between items-center mb-1">
+                  <Text className="text-lg font-rubik-semibold text-gray-900">{event.title}</Text>
+                  <Text className="text-xs font-rubik text-gray-500">{event.creatorName}</Text>
+                </View>
                 <Text className="text-sm font-rubik text-gray-600">
                 <TouchableOpacity onPress={() => openInMaps(event.location)}>
                   <Text className="text-blue-600 underline">{event.location}</Text>

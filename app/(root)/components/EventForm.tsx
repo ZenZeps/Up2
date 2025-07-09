@@ -130,136 +130,167 @@ const handleSave = async () => {
   };
 
   return (
-    <Modal visible={visible} animationType="slide">
-      <ScrollView className="p-4">
-        <Text className="text-lg font-bold mb-4">{event ? 'Edit Event' : 'New Event'}</Text>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View className="flex-1 bg-white">
+        {/* Header */}
+        <View className="flex-row items-center justify-between p-4 border-b border-gray-200">
+          <TouchableOpacity onPress={onClose} className="p-2">
+            <Text className="text-blue-500 text-lg">Cancel</Text>
+          </TouchableOpacity>
+          <Text className="text-xl font-bold">{event ? 'Edit Event' : 'New Event'}</Text>
+          {editable && (
+            <TouchableOpacity onPress={handleSave} className="p-2">
+              <Text className="text-blue-500 text-lg font-semibold">Done</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
-        <TextInput
-          placeholder="Event name"
-          value={title}
-          onChangeText={setTitle}
-          className="border p-2 mb-2"
-          editable={editable}
-        />
+        <ScrollView className="flex-1 p-4">
+          <TextInput
+            placeholder="Event name"
+            value={title}
+            onChangeText={setTitle}
+            className="border-b border-gray-300 p-3 mb-4 text-lg"
+            placeholderTextColor="#A0A0A0"
+            editable={editable}
+          />
 
-        <TextInput
-          placeholder="Location"
-          value={location}
-          onChangeText={setLocation}
-          className="border p-2 mb-2"
-          editable={editable}
-        />
+          <TextInput
+            placeholder="Location"
+            value={location}
+            onChangeText={setLocation}
+            className="border-b border-gray-300 p-3 mb-4 text-lg"
+            placeholderTextColor="#A0A0A0"
+            editable={editable}
+          />
 
-        <TextInput
-          placeholder="Description"
-          value={description}
-          onChangeText={setDescription}
-          className="border p-2 mb-4"
-          editable={editable}
-        />
+          <TextInput
+            placeholder="Description"
+            value={description}
+            onChangeText={setDescription}
+            className="border-b border-gray-300 p-3 mb-4 text-lg"
+            placeholderTextColor="#A0A0A0"
+            multiline
+            editable={editable}
+          />
 
-        <Text className="mb-1 font-medium">Start Time</Text>
-        <TouchableOpacity
-          onPress={() => editable && setShowStartPicker(true)}
-          className="border p-2 mb-2 rounded"
-          disabled={!editable}
-        >
-          <Text>{startDate.toLocaleString()}</Text>
-        </TouchableOpacity>
-        <DateTimePickerModal
-          isVisible={showStartPicker}
-          mode="datetime"
-          date={startDate}
-          onConfirm={(date) => {
-            setStartDate(date);
-            setShowStartPicker(false);
-            if (date > endDate) setEndDate(dayjs(date).add(1, 'hour').toDate());
-          }}
-          onCancel={() => setShowStartPicker(false)}
-        />
+          <View className="mb-4">
+            <Text className="text-gray-600 text-base mb-2">Start Time</Text>
+            <TouchableOpacity
+              onPress={() => editable && setShowStartPicker(true)}
+              className="border border-gray-300 p-3 rounded-lg"
+              disabled={!editable}
+            >
+              <Text className="text-lg">{dayjs(startDate).format('MMM D, YYYY h:mm A')}</Text>
+            </TouchableOpacity>
+            <DateTimePickerModal
+              isVisible={showStartPicker}
+              mode="datetime"
+              date={startDate}
+              onConfirm={(date) => {
+                setStartDate(date);
+                setShowStartPicker(false);
+                if (date > endDate) setEndDate(dayjs(date).add(1, 'hour').toDate());
+              }}
+              onCancel={() => setShowStartPicker(false)}
+            />
+          </View>
 
-        <Text className="mb-1 font-medium">End Time</Text>
-        <TouchableOpacity
-          onPress={() => editable && setShowEndPicker(true)}
-          className="border p-2 mb-4 rounded"
-          disabled={!editable}
-        >
-          <Text>{endDate.toLocaleString()}</Text>
-        </TouchableOpacity>
-        <DateTimePickerModal
-          isVisible={showEndPicker}
-          mode="datetime"
-          date={endDate}
-          minimumDate={startDate}
-          onConfirm={(date) => {
-            setEndDate(date);
-            setShowEndPicker(false);
-          }}
-          onCancel={() => setShowEndPicker(false)}
-        />
+          <View className="mb-4">
+            <Text className="text-gray-600 text-base mb-2">End Time</Text>
+            <TouchableOpacity
+              onPress={() => editable && setShowEndPicker(true)}
+              className="border border-gray-300 p-3 rounded-lg"
+              disabled={!editable}
+            >
+              <Text className="text-lg">{dayjs(endDate).format('MMM D, YYYY h:mm A')}</Text>
+            </TouchableOpacity>
+            <DateTimePickerModal
+              isVisible={showEndPicker}
+              mode="datetime"
+              date={endDate}
+              minimumDate={startDate}
+              onConfirm={(date) => {
+                setEndDate(date);
+                setShowEndPicker(false);
+              }}
+              onCancel={() => setShowEndPicker(false)}
+            />
+          </View>
 
-        {/* Invite Friends - only creator can invite */}
-        <Text className="mb-1 font-medium">Invite Friends</Text>
-        
-          <View className="border rounded mb-4">
+          {/* Invite Friends - only creator can invite */}
+          <View className="mb-4">
+            <Text className="text-gray-600 text-base mb-2">Invite Friends</Text>
             {loading ? (
-              <Text className="text-gray-400 p-2">Loading friends...</Text>
+              <Text className="text-gray-400 p-3">Loading friends...</Text>
             ) : friends.length === 0 ? (
-              <Text className="text-gray-400 p-2">You have no friends to invite.</Text>
+              <Text className="text-gray-400 p-3">You have no friends to invite.</Text>
             ) : editable ? (
-              <RNPickerSelect
-                onValueChange={(val: string | null) => {
-                  if (val && !inviteeIds.includes(val)) {
-                    setInviteeIds([...inviteeIds, val]);
-                  }
-                  setSelectedInvitee(null);
-                }}
-                value={selectedInvitee}
-                placeholder={{ label: 'Select friend to invite', value: null }}
-                items={friendUsers.map((user) => ({
-                  label: user.name,
-                  value: user.$id,
-                }))}
-              />
+              <View className="border border-gray-300 rounded-lg overflow-hidden">
+                <RNPickerSelect
+                  onValueChange={(val: string | null) => {
+                    if (val && !inviteeIds.includes(val)) {
+                      setInviteeIds([...inviteeIds, val]);
+                    }
+                    setSelectedInvitee(null);
+                  }}
+                  value={selectedInvitee}
+                  placeholder={{ label: 'Select friend to invite', value: null }}
+                  items={friendUsers.map((user) => ({
+                    label: user.name,
+                    value: user.$id,
+                  }))}
+                  style={{
+                    inputIOS: {
+                      paddingVertical: 12,
+                      paddingHorizontal: 10,
+                      fontSize: 16,
+                      color: 'black',
+                    },
+                    inputAndroid: {
+                      paddingVertical: 12,
+                      paddingHorizontal: 10,
+                      fontSize: 16,
+                      color: 'black',
+                    },
+                    placeholder: {
+                      color: '#A0A0A0',
+                    },
+                  }}
+                />
+              </View>
             ) : (
-              <Text className="text-gray-400 p-2">Only the creator can invite friends.</Text>
+              <Text className="text-gray-400 p-3">Only the creator can invite friends.</Text>
             )}
           </View>
 
-        {/* Show invited users */}
-        {inviteeIds.length > 0 && (
-          <View className="mb-4">
-            <Text className="font-medium mb-1">Attending:</Text>
-            {inviteeIds.map((id) => {
-              const user = (users ?? []).find((u) => u.$id === id);
-              return (
-                <View key={id} className="flex-row justify-between items-center mb-1">
-                  <Text>{user?.name || id}</Text>
-                  {/* Only show remove button if creator and not self */}
-                  {editable && id !== currentUserId && (
-                    <Button
-                      title="Remove"
-                      color="red"
-                      onPress={() => setInviteeIds(inviteeIds.filter((uid) => uid !== id))}
-                    />
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        )}
+          {/* Show invited users */}
+          {inviteeIds.length > 0 && (
+            <View className="mb-4">
+              <Text className="text-gray-600 text-base mb-2">Invited:</Text>
+              {inviteeIds.map((id) => {
+                const user = (users ?? []).find((u) => u.$id === id);
+                return (
+                  <View key={id} className="flex-row justify-between items-center bg-gray-100 p-3 rounded-lg mb-2">
+                    <Text className="text-base">{user?.name || id}</Text>
+                    {/* Only show remove button if creator and not self */}
+                    {editable && id !== currentUserId && (
+                      <TouchableOpacity
+                        onPress={() => setInviteeIds(inviteeIds.filter((uid) => uid !== id))}
+                        className="bg-red-500 px-3 py-1 rounded-md"
+                      >
+                        <Text className="text-white text-sm">Remove</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
 
-        {/* Save/Update button only for creator or new event */}
-        {editable && (
-          <Button title={event ? 'Update Event' : 'Create Event'} onPress={handleSave} />
-        )}
-
-        {/* Delete button only for creator */}
-        {event && isCreator && (
-          <View className="mb-2">
-            <Button
-              title="Delete Event"
-              color="red"
+          {/* Delete button only for creator */}
+          {event && isCreator && (
+            <TouchableOpacity
               onPress={async () => {
                 try {
                   await databases.deleteDocument(
@@ -274,55 +305,56 @@ const handleSave = async () => {
                   alert("Failed to delete event.");
                 }
               }}
-            />
-          </View>
-        )}
+              className="bg-red-500 p-3 rounded-lg items-center mb-4"
+            >
+              <Text className="text-white text-lg font-semibold">Delete Event</Text>
+            </TouchableOpacity>
+          )}
 
-        {/* If not creator, show join/leave button */}
-        {event && !isCreator && (
-          <View className="mb-2">
-            {inviteeIds.includes(currentUserId) ? (
-              <Button
-                title="Leave Event"
-                color="orange"
-                onPress={async () => {
-                  const updatedInvitees = inviteeIds.filter((id) => id !== currentUserId);
-                  await databases.updateDocument(
-                    config.databaseID!,
-                    config.eventsCollectionID!,
-                    event.$id,
-                    { inviteeIds: updatedInvitees }
-                  );
-                  setInviteeIds(updatedInvitees);
-                  await refetchEvents();
-                  onClose();
-                }}
-              />
-            ) : (
-              <Button
-                title="Join Event"
-                color="green"
-                onPress={async () => {
-                  const updatedInvitees = [...inviteeIds, currentUserId];
-                  await databases.updateDocument(
-                    config.databaseID!,
-                    config.eventsCollectionID!,
-                    event.$id,
-                    { inviteeIds: updatedInvitees }
-                  );
-                  setInviteeIds(updatedInvitees);
-                  await refetchEvents();
-                  onClose();
-                }}
-              />
-            )}
-          </View>
-        )}
-
-        <View className="mt-2">
-          <Button title="Cancel" color="gray" onPress={onClose} />
-        </View>
-      </ScrollView>
+          {/* If not creator, show join/leave button */}
+          {event && !isCreator && (
+            <View className="mb-4">
+              {inviteeIds.includes(currentUserId) ? (
+                <TouchableOpacity
+                  onPress={async () => {
+                    const updatedInvitees = inviteeIds.filter((id) => id !== currentUserId);
+                    await databases.updateDocument(
+                      config.databaseID!,
+                      config.eventsCollectionID!,
+                      event.$id,
+                      { inviteeIds: updatedInvitees }
+                    );
+                    setInviteeIds(updatedInvitees);
+                    await refetchEvents();
+                    onClose();
+                  }}
+                  className="bg-orange-500 p-3 rounded-lg items-center"
+                >
+                  <Text className="text-white text-lg font-semibold">Leave Event</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={async () => {
+                    const updatedInvitees = [...inviteeIds, currentUserId];
+                    await databases.updateDocument(
+                      config.databaseID!,
+                      config.eventsCollectionID!,
+                      event.$id,
+                      { inviteeIds: updatedInvitees }
+                    );
+                    setInviteeIds(updatedInvitees);
+                    await refetchEvents();
+                    onClose();
+                  }}
+                  className="bg-green-500 p-3 rounded-lg items-center"
+                >
+                  <Text className="text-white text-lg font-semibold">Join Event</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </ScrollView>
+      </View>
     </Modal>
   );
 }

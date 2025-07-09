@@ -1,6 +1,6 @@
-import { Account, Avatars, Client, Databases, ID } from "react-native-appwrite";
+import { Account, Avatars, Client, Databases, ID, Query } from "react-native-appwrite";
 
-export { ID };
+export { ID, Query };
 
 export const config = {
   platform: "com.Up2.Up2",
@@ -73,10 +73,10 @@ export async function getCurrentUser() {
   try {
     const response = await account.get();
     if (response.$id) {
-      const userAvatar = avatar.getInitials(response.name);
+      const userAvatar = avatar.getInitials(response.name); //Get avatar
       return {
         ...response,
-        avatar: userAvatar.toString(),
+        avatar: userAvatar.toString(), // Adds avatar to response string
       };
     }
     return null;

@@ -19,13 +19,14 @@ const EventsContext = createContext<EventsContextType | undefined>(undefined);
 // ...existing code...
 
 export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
-  console.log('EventsProvider rendering');
+  //
+  // console.log('EventsProvider rendering');
   const [events, setEvents] = useState<Event[]>([]);
 
   // Fetch events from Appwrite
 const refetchEvents = async () => {
   const fetched = await fetchEvents();
-  console.log('Fetched events:', fetched); // <-- Add this line
+  //console.log('Fetched events:', fetched); // <-- Add this line
   setEvents(fetched as Event[]);
 };
 

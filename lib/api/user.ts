@@ -109,7 +109,7 @@ export async function getAllUsers(): Promise<UserProfile[]> {
       ]
     );
 
-    console.log("🔍 getAllUsers:", res.documents);
+    //console.log("🔍 getAllUsers:", res.documents);
 
     return res.documents.map((doc: any) => ({
       $id: doc.$id,

@@ -54,13 +54,17 @@ const Profile = () => {
     try {
       const user = await getCurrentUser();
       setUserId(user.$id);
-      const profile = await getUserProfile(user.$id);
+
+      const [profile, userFriends] = await Promise.all([
+        getUserProfile(user.$id),
+        getFriends(user.$id),
+      ]);
+
       if (profile) {
         setName(profile.name || '');
         setIsPrivate(!profile.isPublic);
         setSelectedEventTypes(profile.preferences || []);
       }
-      const userFriends = await getFriends(user.$id);
       setFriends(userFriends);
     } catch (err) {
       console.error('Failed to load profile:', err);
@@ -95,20 +99,43 @@ const Profile = () => {
   };
 
 const handleRemoveFriend = async (friendId: string) => {
-  // Fetch the latest profile before updating
-  const latestProfile = await getUserProfile(userId);
-  if (!latestProfile) return; // Handle case where profile is null
-  const updatedFriends = (latestProfile?.friends ?? []).filter((id) => id !== friendId);
-  setFriends(friends.filter((friend) => friend.$id !== friendId));
-  await updateUserProfile({
-    $id: userId,
-    name: latestProfile.name,
-    email: latestProfile.email,
-    isPublic: latestProfile.isPublic,
-    preferences: latestProfile.preferences,
-    friends: updatedFriends,
-  });
-};
+    Alert.alert(
+      'Remove Friend',
+      'Are you sure you want to remove this friend?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'OK',
+          onPress: async () => {
+            try {
+              // Optimistically update the UI
+              setFriends((prev) => prev.filter((friend) => friend.$id !== friendId));
+
+              // Update current user's friend list
+              const updatedUserFriends = friends.map(f => f.$id).filter((id) => id !== friendId);
+              await updateUserProfile(userId, { friends: updatedUserFriends });
+
+              // Update friend's friend list
+              const friendProfile = await getUserProfile(friendId);
+              const updatedFriendFriends = (friendProfile.friends || []).filter(
+                (id: string) => id !== userId
+              );
+              await updateUserProfile(friendId, { friends: updatedFriendFriends });
+
+            } catch (err) {
+              console.error('Delete friend error:', err);
+              Alert.alert('Error', 'Failed to remove friend');
+              // Revert the UI update if the API call fails
+              const friendToAdd = friends.find(f => f.$id === friendId);
+              if (friendToAdd) {
+                setFriends((prev) => [...prev, friendToAdd]);
+              }
+            }
+          },
+        },
+      ]
+    );
+  };
 
 const handleSave = async () => {
   try {
@@ -176,100 +203,98 @@ const handleSave = async () => {
           </TouchableOpacity>
         </View>
 
-        {/* Profile Details */}
-        <ScrollView className="flex-1">
-          {/* Name */}
-          <View className="mb-6">
-            <Text className="text-lg font-rubik-semibold mb-2">Name</Text>
-            {isEditing ? (
-              <TextInput
-                className="border border-gray-300 p-3 rounded-lg text-base font-rubik"
-                value={name}
-                onChangeText={setName}
-              />
-            ) : (
-              <Text className="text-base font-rubik text-gray-800">{name}</Text>
-            )}
-          </View>
-
-          {/* Privacy Toggle */}
-          <View className="flex-row items-center justify-between mb-6">
-            <Text className="text-lg font-rubik-semibold">Profile Privacy</Text>
-            <View className="flex-row items-center space-x-2">
-              <Text className="text-base font-rubik text-gray-800">{isPrivate ? 'Private' : 'Public'}</Text>
-              <Switch value={isPrivate} onValueChange={setIsPrivate} />
-            </View>
-          </View>
-
-          {/* Event Type Dropdown */}
-          <View className="mb-6">
-            <Text className="text-lg font-rubik-semibold mb-2">Event Interests</Text>
-            {isEditing ? (
-              <View className="flex-row flex-wrap">
-                {eventTypeOptions.map((option) => (
-                  <TouchableOpacity
-                    key={option.value}
-                    className={`px-4 py-2 rounded-full border mb-2 mr-2 ${
-                      selectedEventTypes.includes(option.value)
-                        ? 'bg-primary-300 border-primary-300'
-                        : 'bg-gray-100 border-gray-300'
-                    }`}
-                    onPress={() => handleInterestToggle(option.value)}
-                  >
-                    <Text
-                      className={`text-base font-rubik-medium ${
-                        selectedEventTypes.includes(option.value) ? 'text-white' : 'text-gray-800'
-                      }`}
-                    >
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+        <FlatList
+          data={friends}
+          keyExtractor={(item) => item.$id}
+          renderItem={({ item }) => (
+            <View key={item.$id} className="flex-row items-center justify-between bg-white p-3 rounded-lg shadow-sm mb-3 border border-gray-100">
+              <View className="flex-row items-center">
+                <Image source={images.avatar} className="w-10 h-10 rounded-full mr-3" />
+                <Text className="text-base font-rubik-medium text-gray-800">{item.name}</Text>
               </View>
-            ) : (
-              <Text className="text-base font-rubik text-gray-800">
-                {selectedEventTypes.length > 0
-                  ? selectedEventTypes.map(value => eventTypeOptions.find(opt => opt.value === value)?.label).join(', ')
-                  : 'None selected'}
-              </Text>
-            )}
-          </View>
-
-          {/* Friends List */}
-          <View className="mb-6">
-            <Text className="text-lg font-rubik-semibold mb-2">Friends</Text>
-            {friends.length === 0 ? (
-              <Text className="text-gray-500 text-center font-rubik">No friends yet.</Text>
-            ) : (
-              <FlatList
-                data={friends}
-                keyExtractor={(item) => item.$id}
-                renderItem={({ item }) => (
-                  <View key={item.$id} className="flex-row items-center justify-between bg-white p-3 rounded-lg shadow-sm mb-3 border border-gray-100">
-                    <View className="flex-row items-center">
-                      <Image source={images.avatar} className="w-10 h-10 rounded-full mr-3" />
-                      <Text className="text-base font-rubik-medium text-gray-800">{item.name}</Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => handleRemoveFriend(item.$id)}
-                      className="bg-red-500 px-4 py-2 rounded-full shadow-sm"
-                    >
-                      <Text className="text-white font-rubik-medium text-sm">Remove</Text>
-                    </TouchableOpacity>
-                  </View>
+              <TouchableOpacity
+                onPress={() => handleRemoveFriend(item.$id)}
+                className="bg-red-500 px-4 py-2 rounded-full shadow-sm"
+              >
+                <Text className="text-white font-rubik-medium text-sm">Remove</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          ListHeaderComponent={
+            <>
+              {/* Name */}
+              <View className="mb-6">
+                <Text className="text-lg font-rubik-semibold mb-2">Name</Text>
+                {isEditing ? (
+                  <TextInput
+                    className="border border-gray-300 p-3 rounded-lg text-base font-rubik"
+                    value={name}
+                    onChangeText={setName}
+                  />
+                ) : (
+                  <Text className="text-base font-rubik text-gray-800">{name}</Text>
                 )}
-              />
-            )}
-          </View>
+              </View>
 
-          {/* Logout Button */}
-          <TouchableOpacity
-            onPress={handleLogout}
-            className="bg-red-500 px-4 py-3 rounded-lg items-center shadow-sm mt-4"
-          >
-            <Text className="text-white text-lg font-rubik-semibold">Log Out</Text>
-          </TouchableOpacity>
-        </ScrollView>
+              {/* Privacy Toggle */}
+              <View className="flex-row items-center justify-between mb-6">
+                <Text className="text-lg font-rubik-semibold">Profile Privacy</Text>
+                <View className="flex-row items-center space-x-2">
+                  <Text className="text-base font-rubik text-gray-800">{isPrivate ? 'Private' : 'Public'}</Text>
+                  <Switch value={isPrivate} onValueChange={setIsPrivate} />
+                </View>
+              </View>
+
+              {/* Event Type Dropdown */}
+              <View className="mb-6">
+                <Text className="text-lg font-rubik-semibold mb-2">Event Interests</Text>
+                {isEditing ? (
+                  <View className="flex-row flex-wrap">
+                    {eventTypeOptions.map((option) => (
+                      <TouchableOpacity
+                        key={option.value}
+                        className={`px-4 py-2 rounded-full border mb-2 mr-2 ${
+                          selectedEventTypes.includes(option.value)
+                            ? 'bg-primary-300 border-primary-300'
+                            : 'bg-gray-100 border-gray-300'
+                        }`}
+                        onPress={() => handleInterestToggle(option.value)}
+                      >
+                        <Text
+                          className={`text-base font-rubik-medium ${
+                            selectedEventTypes.includes(option.value) ? 'text-white' : 'text-gray-800'
+                          }`}
+                        >
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : (
+                  <Text className="text-base font-rubik text-gray-800">
+                    {selectedEventTypes.length > 0
+                      ? selectedEventTypes.map(value => eventTypeOptions.find(opt => opt.value === value)?.label).join(', ')
+                      : 'None selected'}
+                  </Text>
+                )}
+              </View>
+
+              {/* Friends List */}
+              <Text className="text-lg font-rubik-semibold mb-2">Friends</Text>
+              {friends.length === 0 && (
+                <Text className="text-gray-500 text-center font-rubik">No friends yet.</Text>
+              )}
+            </>
+          }
+          ListFooterComponent={
+            <TouchableOpacity
+              onPress={handleLogout}
+              className="bg-red-500 px-4 py-3 rounded-lg items-center shadow-sm mt-4"
+            >
+              <Text className="text-white text-lg font-rubik-semibold">Log Out</Text>
+            </TouchableOpacity>
+          }
+        />
       </View>
     </SafeAreaView>
   );

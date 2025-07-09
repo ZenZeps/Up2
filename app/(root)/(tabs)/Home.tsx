@@ -25,6 +25,7 @@ export default function Home() {
   const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
   // Current calendar view mode
   const [viewMode, setViewMode] = useState<Mode>('week');
+  const [date, setDate] = useState(new Date());
   // Current user's Appwrite ID
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   // Current user's friends (array of user IDs)
@@ -98,7 +99,12 @@ export default function Home() {
           {viewModes.map((mode) => (
             <TouchableOpacity
               key={mode}
-              onPress={() => setViewMode(mode)}
+              onPress={() => {
+                if (mode === 'day') {
+                  setDate(new Date());
+                }
+                setViewMode(mode);
+              }}
               className={`flex-1 items-center py-3 rounded-lg mx-1 ${
                 viewMode === mode ? 'bg-primary-300' : 'bg-gray-200'
               }`}
@@ -130,6 +136,7 @@ export default function Home() {
           }}
         >
           <BigCalendar
+            date={date}
             showAllDayEventCell={false}
             events={calendarEvents}
             height={Platform.OS === 'ios' ? 540 : 520}
