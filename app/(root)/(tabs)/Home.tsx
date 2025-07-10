@@ -8,7 +8,9 @@ import dayjs from 'dayjs';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { account } from '@/lib/appwrite/appwrite';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { getUserProfile } from '@/lib/api/user';
+import { getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { getAllEvents } from '@/lib/api/event';
+import EventDetailsModal from '../components/EventDetailsModal';
 
 // Define available calendar view modes
 const viewModes: Mode[] = ['day', 'week', 'month'];
@@ -30,9 +32,14 @@ export default function Home() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   // Current user's friends (array of user IDs)
   const [friends, setFriends] = useState<string[]>([]);
+  const [startHour, setStartHour] = useState(new Date().getHours() - 4);
+  const [endHour, setEndHour] = useState(new Date().getHours() + 4);
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
 
   // Get route params (for user calendar view)
   const params = useLocalSearchParams();
+
+  const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<AppEvent[]>([]);
 
   // On mount or when params change, fetch current user and their friends
   useFocusEffect(
@@ -47,6 +54,20 @@ export default function Home() {
           // Fetch user profile to get friends list
           const profile = await getUserProfile(user.$id);
           setFriends(profile?.friends ?? []);
+
+          // Fetch all events and add creator names
+          const allEvents = await getAllEvents(); // Assuming getAllEvents exists and fetches all events
+          const uniqueCreatorIds = [...new Set(allEvents.map(event => event.creatorId))];
+          const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
+          const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, profile.name]));
+
+          const eventsWithNames = allEvents.map(event => ({
+            ...event,
+            creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
+          }));
+          setEventsWithCreatorNames(eventsWithNames);
+          console.log('Events with creator names:', eventsWithNames);
+
         } catch (err) {
           // Ignore error if not logged in, otherwise log
           if (err?.message?.includes('missing scope (account)')) return;
@@ -58,8 +79,7 @@ export default function Home() {
     }, [params])
   );
 
-  // Filter events for this user (creator or attendee)
-  const calendarEvents = events
+  const calendarEvents = eventsWithCreatorNames
     .filter(
       (e) =>
         currentUserId &&
@@ -74,7 +94,7 @@ export default function Home() {
       start: new Date(e.startTime),
       end: new Date(e.endTime),
       location: e.location,
-      rawEvent: { ...e, $id: e.$id }, // Keep original event for editing and ensure $id is present
+      rawEvent: { ...e, $id: e.$id, creatorName: e.creatorName }, // Keep original event for editing and ensure $id is present
     }));
 
   // Handler for pressing a calendar cell (to create a new event)
@@ -86,14 +106,19 @@ export default function Home() {
 
   // Handler for pressing an event (to edit)
   const handlePressEvent = (calendarEvent: any) => {
-    setEditingEvent(calendarEvent.rawEvent);
-    setSelectedDateTime(calendarEvent.rawEvent.startTime);
-    setFormVisible(true);
+    setEditingEvent({ ...calendarEvent.rawEvent, creatorName: calendarEvent.rawEvent.creatorName });
+    setDetailsModalVisible(true);
   };
+
+  const renderEvent = (event, { key, ...touchableOpacityProps }) => (
+    <TouchableOpacity key={key} {...touchableOpacityProps}>
+      <Text style={{ fontSize: 10, color: 'black' }} numberOfLines={1}>{event.title}</Text>
+    </TouchableOpacity>
+  );
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <View className="flex-1 p-4 pb-8">
+      <View className="flex-1">
         {/* View Mode Toggle Buttons */}
         <View className="flex-row justify-center mb-4">
           {viewModes.map((mode) => (
@@ -125,43 +150,45 @@ export default function Home() {
 
         {/* Calendar Card */}
         <View
-          className="flex-1 bg-white rounded-2xl shadow-md p-2"
+          className="flex-1 bg-white rounded-2xl shadow-md"
           style={{
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.08,
             shadowRadius: 12,
             elevation: 6,
-            marginBottom: Platform.OS === 'ios' ? 24 : 16,
           }}
         >
           <BigCalendar
             date={date}
             showAllDayEventCell={false}
             events={calendarEvents}
-            height={Platform.OS === 'ios' ? 540 : 520}
+            height={viewMode === 'month' ? undefined : (Platform.OS === 'ios' ? 640 : 620)}
             mode={viewMode}
             onPressCell={handlePressCell}
             onPressEvent={handlePressEvent}
+            renderEvent={renderEvent}
+            dayTextStyle={{ fontSize: 12 }}
+            startHour={startHour}
+            endHour={endHour}
             eventCellStyle={{
-              backgroundColor: '#0061FF1A',
-              borderRadius: 8,
-              borderLeftWidth: 4,
-              borderLeftColor: '#0061FF',
+              backgroundColor: '#E3F2FD',
+              borderColor: '#1E88E5',
+              borderWidth: 1,
+              borderRadius: 0,
             }}
             headerContainerStyle={{
-              backgroundColor: '#F3F6FA',
-              borderTopLeftRadius: 16,
-              borderTopRightRadius: 16,
+              backgroundColor: 'white',
+              borderBottomWidth: 1,
+              borderBottomColor: '#E0E0E0',
             }}
             hourRowStyle={{
-              borderColor: '#E5E7EB',
+              borderColor: '#F5F5F5',
             }}
             bodyContainerStyle={{
-              backgroundColor: '#F9FAFB',
-              borderBottomLeftRadius: 16,
-              borderBottomRightRadius: 16,
+              backgroundColor: 'white',
             }}
+            nowIndicatorColor="red"
           />
         </View>
 
@@ -179,6 +206,19 @@ export default function Home() {
             }}
           />
         )}
+
+        <EventDetailsModal
+          event={editingEvent}
+          isCreator={editingEvent?.creatorId === currentUserId}
+          onClose={() => {
+            setDetailsModalVisible(false);
+            setEditingEvent(null);
+          }}
+          onEdit={() => {
+            setDetailsModalVisible(false);
+            setFormVisible(true);
+          }}
+        />
       </View>
     </SafeAreaView>
   );
