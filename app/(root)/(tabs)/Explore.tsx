@@ -1,26 +1,24 @@
+import icons from '@/constants/icons';
+import images from '@/constants/images';
+import { getAllUsers, getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
+import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
+import dayjs from 'dayjs';
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  TextInput,
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  Image,
   ActivityIndicator,
-  Button,
   Alert,
+  Image,
   Linking,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import images from '@/constants/images';
-import icons from '@/constants/icons';
-import { getAllUsers, getUserProfile, updateUserProfile, getUsersByIds } from '@/lib/api/user';
-import { getAllEvents } from '@/lib/api/event';
-import { getCurrentUser, databases, config } from '@/lib/appwrite/appwrite';
-import { useEvents } from '../context/EventContext';
 import { ID, Query } from 'react-native-appwrite';
-import dayjs from 'dayjs';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEvents } from '../context/EventContext';
 
 const Explore = () => {
   const router = useRouter();
@@ -30,7 +28,7 @@ const Explore = () => {
   const [query, setQuery] = useState(''); // Search query
   const [users, setUsers] = useState<any[]>([]); // All users except current
   const [mode, setMode] = useState<'events' | 'users'>('users'); // 'events' or 'users'
-  
+
   const [loading, setLoading] = useState(true); // Loading state
   const [userId, setUserId] = useState(''); // Current user ID
   const [friends, setFriends] = useState<string[]>([]); // Current user's friends
@@ -93,8 +91,8 @@ const Explore = () => {
   }, [events]);
 
   const openInMaps = (location: string) => {
-  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
-  Linking.openURL(url);
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+    Linking.openURL(url);
   };
 
   // Send a friend request to another user
@@ -258,28 +256,24 @@ const Explore = () => {
         <View className="flex-row mb-6">
           <TouchableOpacity
             onPress={() => setMode('users')}
-            className={`flex-1 items-center py-3 rounded-lg mx-1 ${
-              mode === 'users' ? 'bg-primary-300' : 'bg-gray-100'
-            }`}
+            className={`flex-1 items-center py-3 rounded-lg mx-1 ${mode === 'users' ? 'bg-primary-300' : 'bg-gray-100'
+              }`}
           >
             <Text
-              className={`text-lg font-rubik-medium ${
-                mode === 'users' ? 'text-white' : 'text-gray-700'
-              }`}
+              className={`text-lg font-rubik-medium ${mode === 'users' ? 'text-white' : 'text-gray-700'
+                }`}
             >
               Users
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setMode('events')}
-            className={`flex-1 items-center py-3 rounded-lg mx-1 ${
-              mode === 'events' ? 'bg-primary-300' : 'bg-gray-100'
-            }`}
+            className={`flex-1 items-center py-3 rounded-lg mx-1 ${mode === 'events' ? 'bg-primary-300' : 'bg-gray-100'
+              }`}
           >
             <Text
-              className={`text-lg font-rubik-medium ${
-                mode === 'events' ? 'text-white' : 'text-gray-700'
-              }`}
+              className={`text-lg font-rubik-medium ${mode === 'events' ? 'text-white' : 'text-gray-700'
+                }`}
             >
               Events
             </Text>
@@ -311,10 +305,15 @@ const Explore = () => {
                     key={user.$id}
                     className="flex-row items-center justify-between bg-white p-4 rounded-lg shadow-sm mb-3 border border-gray-100"
                   >
-                    <View className="flex-row items-center">
+                    <TouchableOpacity
+                      className="flex-row items-center flex-1 mr-2"
+                      onPress={() => isFriend ? router.push(`/Calendar/${user.$id}`) : null}
+                    >
                       <Image source={images.avatar} className="w-10 h-10 rounded-full mr-3" />
-                      <Text className="text-lg font-rubik-medium text-gray-800">{user.name}</Text>
-                    </View>
+                      <Text className={`text-lg font-rubik-medium ${isFriend ? 'text-primary-600' : 'text-gray-800'}`}>
+                        {user.name}
+                      </Text>
+                    </TouchableOpacity>
                     {isFriend ? (
                       <TouchableOpacity
                         onPress={() => handleDeleteFriend(user.$id)}
@@ -331,14 +330,12 @@ const Explore = () => {
                             handleSendFriendRequest(user.$id);
                           }
                         }}
-                        className={`px-4 py-2 rounded-full shadow-sm ${
-                          requestedUsers.includes(user.$id) ? 'bg-gray-200' : 'bg-blue-500'
-                        }`}
+                        className={`px-4 py-2 rounded-full shadow-sm ${requestedUsers.includes(user.$id) ? 'bg-gray-200' : 'bg-blue-500'
+                          }`}
                       >
                         <Text
-                          className={`font-rubik-medium text-sm ${
-                            requestedUsers.includes(user.$id) ? 'text-gray-500' : 'text-white'
-                          }`}
+                          className={`font-rubik-medium text-sm ${requestedUsers.includes(user.$id) ? 'text-gray-500' : 'text-white'
+                            }`}
                         >
                           {requestedUsers.includes(user.$id) ? 'Requested' : 'Add'}
                         </Text>
@@ -362,9 +359,9 @@ const Explore = () => {
                   <Text className="text-xs font-rubik text-gray-500">{event.creatorName}</Text>
                 </View>
                 <Text className="text-sm font-rubik text-gray-600">
-                <TouchableOpacity onPress={() => openInMaps(event.location)}>
-                  <Text className="text-blue-600 underline">{event.location}</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity onPress={() => openInMaps(event.location)}>
+                    <Text className="text-blue-600 underline">{event.location}</Text>
+                  </TouchableOpacity>
                 </Text>
                 <Text className="text-xs font-rubik text-gray-500 mt-1">
                   {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
