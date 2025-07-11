@@ -4,7 +4,6 @@ import { getProfilePhotoUrl, pickProfilePhoto, uploadProfilePhoto } from '@/lib/
 import { getFriends, getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { logout } from '@/lib/appwrite/appwrite';
 import { useGlobalContext } from '@/lib/global-provider';
-import { registerForPushNotifications } from '@/lib/notifications/pushNotifications';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -38,7 +37,6 @@ const Profile = () => {
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [stats, setStats] = useState({
     events: 0,
     friends: 0,
@@ -142,24 +140,6 @@ const Profile = () => {
     }
   };
 
-  const handleToggleNotifications = async () => {
-    if (!userId) return;
-
-    try {
-      if (!notificationsEnabled) {
-        await registerForPushNotifications(userId);
-        setNotificationsEnabled(true);
-        Alert.alert('Success', 'Push notifications enabled');
-      } else {
-        setNotificationsEnabled(false);
-        Alert.alert('Success', 'Push notifications disabled');
-      }
-    } catch (err: any) {
-      console.error('Notification toggle error:', err);
-      Alert.alert('Error', err.message || 'Failed to toggle notifications');
-    }
-  };
-
   return (
     <SafeAreaView className="flex-1 bg-white">
       <ScrollView>
@@ -231,10 +211,6 @@ const Profile = () => {
               <Text className="font-rubik-medium">Private Profile</Text>
               <Switch value={isPrivate} onValueChange={setIsPrivate} />
             </View>
-            <View className="flex-row items-center justify-between">
-              <Text className="font-rubik-medium">Push Notifications</Text>
-              <Switch value={notificationsEnabled} onValueChange={handleToggleNotifications} />
-            </View>
           </View>
 
           {/* Interests Section */}
@@ -245,14 +221,18 @@ const Profile = () => {
                 <TouchableOpacity
                   key={option.value}
                   onPress={() => isEditing && handleInterestToggle(option.value)}
-                  className={`px-4 py-2 rounded-full border mr-2 mb-2 ${selectedEventTypes.includes(option.value)
+                  className={`px-4 py-2 rounded-full border mr-2 mb-2 ${
+                    selectedEventTypes.includes(option.value)
                       ? 'bg-primary-300 border-primary-300'
                       : 'bg-gray-100 border-gray-300'
-                    }`}
+                  }`}
                 >
                   <Text
-                    className={`font-rubik-medium ${selectedEventTypes.includes(option.value) ? 'text-white' : 'text-gray-800'
-                      }`}
+                    className={`${
+                      selectedEventTypes.includes(option.value)
+                        ? 'text-white'
+                        : 'text-gray-700'
+                    }`}
                   >
                     {option.label}
                   </Text>
@@ -283,15 +263,17 @@ const Profile = () => {
               }
             />
           </View>
-        </View>
 
-        {/* Logout Button */}
-        <TouchableOpacity
-          onPress={handleLogout}
-          className="mx-4 mt-6 mb-8 bg-red-500 py-3 rounded-full"
-        >
-          <Text className="text-white text-center font-rubik-medium">Log Out</Text>
-        </TouchableOpacity>
+          {/* Logout Button */}
+          <TouchableOpacity
+            onPress={handleLogout}
+            className="mt-8 bg-red-500 py-3 rounded-lg"
+          >
+            <Text className="text-white text-center font-rubik-medium">
+              Log Out
+            </Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
