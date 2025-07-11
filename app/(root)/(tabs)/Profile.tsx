@@ -1,26 +1,24 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-  Text,
-  View,
-  Image,
-  TextInput,
-  FlatList,
-  TouchableOpacity,
-  Switch,
-  Alert,
-  Button,
-  ScrollView,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import RNPickerSelect from 'react-native-picker-select';
 import icons from '@/constants/icons';
 import images from '@/constants/images';
-import { getCurrentUser, logout } from '@/lib/appwrite/appwrite';
-import { getAllUsers, getUserProfile, updateUserProfile, getFriends } from '@/lib/api/user';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { getProfilePhotoUrl, pickProfilePhoto, uploadProfilePhoto } from '@/lib/api/profilePhoto';
+import { getFriends, getUserProfile, updateUserProfile } from '@/lib/api/user';
+import { logout } from '@/lib/appwrite/appwrite';
 import { useGlobalContext } from '@/lib/global-provider';
-
+import { registerForPushNotifications } from '@/lib/notifications/pushNotifications';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import {
+  Alert,
+  FlatList,
+  Image,
+  ScrollView,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const eventTypeOptions = [
   { label: 'Sports', value: 'sports' },
@@ -29,17 +27,78 @@ const eventTypeOptions = [
   { label: 'Family', value: 'family' },
 ];
 
-const mockFriends = ['Alice', 'Bob', 'Charlie', 'Diana'];
-
 const Profile = () => {
   const router = useRouter();
+  const { user, refetch } = useGlobalContext();
+  const userId = user?.$id;
 
   const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState('');
+  const [name, setName] = useState(user?.name || '');
   const [isPrivate, setIsPrivate] = useState(false);
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
-  const [userId, setUserId] = useState('');
-  const [friends, setFriends] = useState<UserProfile[]>([]);
+  const [friends, setFriends] = useState<any[]>([]);
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [stats, setStats] = useState({
+    events: 0,
+    friends: 0,
+    preferences: 0
+  });
+
+  // Load profile data
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!userId) return;
+
+      try {
+        const [profile, userFriends] = await Promise.all([
+          getUserProfile(userId),
+          getFriends(userId)
+        ]);
+
+        if (profile) {
+          setName(profile.name);
+          setIsPrivate(!profile.isPublic);
+          setSelectedEventTypes(profile.preferences || []);
+          setFriends(userFriends || []);
+
+          if (profile.photoId) {
+            const photoUrl = await getProfilePhotoUrl(profile.photoId);
+            setProfilePhotoUrl(photoUrl);
+          }
+
+          // Update stats
+          setStats({
+            events: 0, // You can add event count here
+            friends: userFriends?.length || 0,
+            preferences: profile.preferences?.length || 0
+          });
+        }
+      } catch (err) {
+        console.error('Error loading profile:', err);
+        Alert.alert('Error', 'Failed to load profile');
+      }
+    };
+
+    loadProfile();
+  }, [userId]);
+
+  const handlePhotoUpload = async () => {
+    if (!userId) return;
+
+    try {
+      const image = await pickProfilePhoto();
+      const photoId = await uploadProfilePhoto(userId, image.uri);
+      const photoUrl = await getProfilePhotoUrl(photoId);
+      setProfilePhotoUrl(photoUrl);
+      Alert.alert('Success', 'Profile photo updated');
+    } catch (err: any) {
+      if (err.message !== 'Image selection was cancelled') {
+        console.error('Photo upload error:', err);
+        Alert.alert('Error', err.message || 'Failed to upload photo');
+      }
+    }
+  };
 
   const handleInterestToggle = (interest: string) => {
     setSelectedEventTypes((prev) =>
@@ -49,120 +108,29 @@ const Profile = () => {
     );
   };
 
-  // Fetch current user and profile on mount
-  const loadUser = useCallback(async () => {
+  const handleSave = async () => {
+    if (!userId) return;
+
     try {
-      const user = await getCurrentUser();
-      setUserId(user.$id);
+      const latestProfile = await getUserProfile(userId);
+      if (!latestProfile) return;
 
-      const [profile, userFriends] = await Promise.all([
-        getUserProfile(user.$id),
-        getFriends(user.$id),
-      ]);
+      await updateUserProfile({
+        $id: userId,
+        name,
+        email: latestProfile.email,
+        isPublic: !isPrivate,
+        preferences: selectedEventTypes,
+        friends: friends.map(f => f.$id),
+      });
 
-      if (profile) {
-        setName(profile.name || '');
-        setIsPrivate(!profile.isPublic);
-        setSelectedEventTypes(profile.preferences || []);
-      }
-      setFriends(userFriends);
+      setIsEditing(false);
+      Alert.alert('Success', 'Profile updated');
     } catch (err) {
-      console.error('Failed to load profile:', err);
-      Alert.alert('Error', 'Failed to load profile');
+      console.error('Update failed:', err);
+      Alert.alert('Error', 'Failed to update profile');
     }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadUser();
-    }, [loadUser])
-  );
-
-  const handleAddFriend = async (friendId: string) => {
-    // Fetch the latest profile before updating
-    const latestProfile = await getUserProfile(userId);
-    if (!latestProfile) return; // Handle case where profile is null
-    const updatedFriends = Array.from(new Set([...(latestProfile?.friends ?? []), friendId]));
-    const newFriendProfile = await getUserProfile(friendId);
-    if (newFriendProfile) {
-      setFriends([...friends, newFriendProfile]);
-    }
-    await updateUserProfile({
-      $id: userId,
-      name: latestProfile.name,
-      email: latestProfile.email,
-      isPublic: latestProfile.isPublic,
-      preferences: latestProfile.preferences,
-      friends: updatedFriends,
-    });
-    console.log('Updated user profile:', userId, updatedFriends);
   };
-
-const handleRemoveFriend = async (friendId: string) => {
-    Alert.alert(
-      'Remove Friend',
-      'Are you sure you want to remove this friend?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'OK',
-          onPress: async () => {
-            try {
-              // Optimistically update the UI
-              setFriends((prev) => prev.filter((friend) => friend.$id !== friendId));
-
-              // Update current user's friend list
-              const updatedUserFriends = friends.map(f => f.$id).filter((id) => id !== friendId);
-              await updateUserProfile(userId, { friends: updatedUserFriends });
-
-              // Update friend's friend list
-              const friendProfile = await getUserProfile(friendId);
-              const updatedFriendFriends = (friendProfile.friends || []).filter(
-                (id: string) => id !== userId
-              );
-              await updateUserProfile(friendId, { friends: updatedFriendFriends });
-
-            } catch (err) {
-              console.error('Delete friend error:', err);
-              Alert.alert('Error', 'Failed to remove friend');
-              // Revert the UI update if the API call fails
-              const friendToAdd = friends.find(f => f.$id === friendId);
-              if (friendToAdd) {
-                setFriends((prev) => [...prev, friendToAdd]);
-              }
-            }
-          },
-        },
-      ]
-    );
-  };
-
-const handleSave = async () => {
-  try {
-    const latestProfile = await getUserProfile(userId);
-    if (!latestProfile) return; // Handle case where profile is null
-
-    const latestFriends = latestProfile.friends ?? [];
-    const mergedFriends = Array.from(new Set([...latestFriends, ...friends.map(f => f.$id)]));
-
-    await updateUserProfile({
-      $id: userId,
-      name,
-      email: latestProfile.email,
-      isPublic: !isPrivate,
-      preferences: selectedEventTypes,
-      friends: mergedFriends, // 👈 Use merged list
-    });
-
-    setFriends(mergedFriends); // Optional: update local state
-    setIsEditing(false);
-    Alert.alert('Success', 'Profile updated');
-  } catch (err) {
-    console.error('Update failed:', err);
-    Alert.alert('Error', 'Failed to update profile');
-  }
-};
-
 
   const handleLogout = async () => {
     try {
@@ -174,128 +142,157 @@ const handleSave = async () => {
     }
   };
 
-  const toggleEditing = () => {
-    if (isEditing) {
-      handleSave();
-    } else {
-      setIsEditing(true);
+  const handleToggleNotifications = async () => {
+    if (!userId) return;
+
+    try {
+      if (!notificationsEnabled) {
+        await registerForPushNotifications(userId);
+        setNotificationsEnabled(true);
+        Alert.alert('Success', 'Push notifications enabled');
+      } else {
+        setNotificationsEnabled(false);
+        Alert.alert('Success', 'Push notifications disabled');
+      }
+    } catch (err: any) {
+      console.error('Notification toggle error:', err);
+      Alert.alert('Error', err.message || 'Failed to toggle notifications');
     }
   };
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <View className="px-5 pt-5 flex-1">
+      <ScrollView>
         {/* Header */}
-        <View className="flex-row items-center justify-between mb-6">
-          <View className="flex-row items-center">
-            <Image source={images.avatar} className="w-12 h-12 rounded-full" />
-            <View className="ml-3">
-              <Text className="text-base font-rubik-medium text-gray-600">Hello,</Text>
-              <Text className="text-xl font-rubik-semibold text-gray-900">{name || 'User'}</Text>
-            </View>
-          </View>
-          <TouchableOpacity onPress={toggleEditing}>
+        <View className="px-4 py-3 flex-row items-center justify-between border-b border-gray-200">
+          <Text className="text-2xl font-rubik-semibold">{name}</Text>
+          <TouchableOpacity onPress={() => setIsEditing(!isEditing)}>
             <Image
               source={isEditing ? icons.check : icons.edit}
-              className="w-7 h-7"
+              className="w-6 h-6"
               resizeMode="contain"
             />
           </TouchableOpacity>
         </View>
 
-        <FlatList
-          data={friends}
-          keyExtractor={(item) => item.$id}
-          renderItem={({ item }) => (
-            <View key={item.$id} className="flex-row items-center justify-between bg-white p-3 rounded-lg shadow-sm mb-3 border border-gray-100">
-              <View className="flex-row items-center">
-                <Image source={images.avatar} className="w-10 h-10 rounded-full mr-3" />
-                <Text className="text-base font-rubik-medium text-gray-800">{item.name}</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => handleRemoveFriend(item.$id)}
-                className="bg-red-500 px-4 py-2 rounded-full shadow-sm"
-              >
-                <Text className="text-white font-rubik-medium text-sm">Remove</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          ListHeaderComponent={
-            <>
-              {/* Name */}
-              <View className="mb-6">
-                <Text className="text-lg font-rubik-semibold mb-2">Name</Text>
-                {isEditing ? (
-                  <TextInput
-                    className="border border-gray-300 p-3 rounded-lg text-base font-rubik"
-                    value={name}
-                    onChangeText={setName}
-                  />
-                ) : (
-                  <Text className="text-base font-rubik text-gray-800">{name}</Text>
-                )}
-              </View>
-
-              {/* Privacy Toggle */}
-              <View className="flex-row items-center justify-between mb-6">
-                <Text className="text-lg font-rubik-semibold">Profile Privacy</Text>
-                <View className="flex-row items-center space-x-2">
-                  <Text className="text-base font-rubik text-gray-800">{isPrivate ? 'Private' : 'Public'}</Text>
-                  <Switch value={isPrivate} onValueChange={setIsPrivate} />
-                </View>
-              </View>
-
-              {/* Event Type Dropdown */}
-              <View className="mb-6">
-                <Text className="text-lg font-rubik-semibold mb-2">Event Interests</Text>
-                {isEditing ? (
-                  <View className="flex-row flex-wrap">
-                    {eventTypeOptions.map((option) => (
-                      <TouchableOpacity
-                        key={option.value}
-                        className={`px-4 py-2 rounded-full border mb-2 mr-2 ${
-                          selectedEventTypes.includes(option.value)
-                            ? 'bg-primary-300 border-primary-300'
-                            : 'bg-gray-100 border-gray-300'
-                        }`}
-                        onPress={() => handleInterestToggle(option.value)}
-                      >
-                        <Text
-                          className={`text-base font-rubik-medium ${
-                            selectedEventTypes.includes(option.value) ? 'text-white' : 'text-gray-800'
-                          }`}
-                        >
-                          {option.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ) : (
-                  <Text className="text-base font-rubik text-gray-800">
-                    {selectedEventTypes.length > 0
-                      ? selectedEventTypes.map(value => eventTypeOptions.find(opt => opt.value === value)?.label).join(', ')
-                      : 'None selected'}
+        {/* Profile Info Section */}
+        <View className="px-4 py-4">
+          <View className="flex-row items-center">
+            {/* Profile Photo */}
+            <TouchableOpacity onPress={handlePhotoUpload} className="mr-6">
+              {profilePhotoUrl ? (
+                <Image
+                  source={{ uri: profilePhotoUrl }}
+                  className="w-20 h-20 rounded-full"
+                />
+              ) : (
+                <View className="w-20 h-20 rounded-full bg-gray-200 items-center justify-center">
+                  <Text className="text-4xl text-gray-400 font-rubik-medium">
+                    {name?.charAt(0)?.toUpperCase()}
                   </Text>
-                )}
-              </View>
-
-              {/* Friends List */}
-              <Text className="text-lg font-rubik-semibold mb-2">Friends</Text>
-              {friends.length === 0 && (
-                <Text className="text-gray-500 text-center font-rubik">No friends yet.</Text>
+                </View>
               )}
-            </>
-          }
-          ListFooterComponent={
-            <TouchableOpacity
-              onPress={handleLogout}
-              className="bg-red-500 px-4 py-3 rounded-lg items-center shadow-sm mt-4"
-            >
-              <Text className="text-white text-lg font-rubik-semibold">Log Out</Text>
             </TouchableOpacity>
-          }
-        />
-      </View>
+
+            {/* Stats */}
+            <View className="flex-row flex-1 justify-around">
+              <View className="items-center">
+                <Text className="text-xl font-rubik-semibold">{stats.events}</Text>
+                <Text className="text-gray-600">Events</Text>
+              </View>
+              <View className="items-center">
+                <Text className="text-xl font-rubik-semibold">{stats.friends}</Text>
+                <Text className="text-gray-600">Friends</Text>
+              </View>
+              <View className="items-center">
+                <Text className="text-xl font-rubik-semibold">{stats.preferences}</Text>
+                <Text className="text-gray-600">Interests</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Bio Section */}
+          <View className="mt-4">
+            {isEditing ? (
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                className="text-base font-rubik mb-2 border border-gray-300 p-2 rounded"
+                placeholder="Your name"
+              />
+            ) : (
+              <Text className="text-base font-rubik mb-2">{name}</Text>
+            )}
+          </View>
+
+          {/* Settings Section */}
+          <View className="mt-4 bg-gray-50 rounded-lg p-4">
+            <View className="flex-row items-center justify-between mb-4">
+              <Text className="font-rubik-medium">Private Profile</Text>
+              <Switch value={isPrivate} onValueChange={setIsPrivate} />
+            </View>
+            <View className="flex-row items-center justify-between">
+              <Text className="font-rubik-medium">Push Notifications</Text>
+              <Switch value={notificationsEnabled} onValueChange={handleToggleNotifications} />
+            </View>
+          </View>
+
+          {/* Interests Section */}
+          <View className="mt-6">
+            <Text className="text-lg font-rubik-semibold mb-3">Interests</Text>
+            <View className="flex-row flex-wrap">
+              {eventTypeOptions.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  onPress={() => isEditing && handleInterestToggle(option.value)}
+                  className={`px-4 py-2 rounded-full border mr-2 mb-2 ${selectedEventTypes.includes(option.value)
+                      ? 'bg-primary-300 border-primary-300'
+                      : 'bg-gray-100 border-gray-300'
+                    }`}
+                >
+                  <Text
+                    className={`font-rubik-medium ${selectedEventTypes.includes(option.value) ? 'text-white' : 'text-gray-800'
+                      }`}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Friends Section */}
+          <View className="mt-6">
+            <Text className="text-lg font-rubik-semibold mb-3">Friends</Text>
+            <FlatList
+              data={friends}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.$id}
+              renderItem={({ item }) => (
+                <View className="mr-4 items-center">
+                  <Image
+                    source={item.photoId ? { uri: getProfilePhotoUrl(item.photoId) } : images.avatar}
+                    className="w-16 h-16 rounded-full"
+                  />
+                  <Text className="text-sm font-rubik mt-1">{item.name}</Text>
+                </View>
+              )}
+              ListEmptyComponent={
+                <Text className="text-gray-500 font-rubik">No friends yet</Text>
+              }
+            />
+          </View>
+        </View>
+
+        {/* Logout Button */}
+        <TouchableOpacity
+          onPress={handleLogout}
+          className="mx-4 mt-6 mb-8 bg-red-500 py-3 rounded-full"
+        >
+          <Text className="text-white text-center font-rubik-medium">Log Out</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 };
