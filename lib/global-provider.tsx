@@ -1,51 +1,89 @@
-import { createContext, ReactNode, useContext } from "react";
+import { createContext, ReactNode, useContext, useEffect } from "react";
+import { account, getCurrentUser } from "./appwrite/appwrite";
 import { useAppwrite } from "./appwrite/useAppwrite";
-import { getCurrentUser} from "./appwrite/appwrite"
+import { authDebug } from "./debug/authDebug";
 
-interface User{
+interface User {
     $id: string;
     name: string;
     email: string;
     avatar: string;
 }
-interface GlobalContextType{
+interface GlobalContextType {
     isLoggedIn: boolean;
     user: User | null;
     loading: boolean;
     refetch: (newParams?: Record<string, string | number>) => Promise<void>;
 }
 
-const GlobalContext = createContext<GlobalContextType | undefined> (undefined)
+const GlobalContext = createContext<GlobalContextType | undefined>(undefined)
 
-export const GlobalProvider = ({children}: { children: ReactNode}) => {
+export const GlobalProvider = ({ children }: { children: ReactNode }) => {
     const {
         data: user,
         loading,
-        refetch
+        refetch,
+        error
     } = useAppwrite({
-        fn: getCurrentUser,
+        fn: getCurrentUser as unknown as (params?: Record<string, string | number>) => Promise<User>,
     });
 
     const isLoggedIn = !!user; // If you call ! on null then it is true. Turns nulls into booleans.
 
-    console.log(JSON.stringify(user,null,2));
+    // Log authentication status for debugging
+    useEffect(() => {
+        authDebug.logAuthState(isLoggedIn, loading);
 
-    return ( 
-    <GlobalContext.Provider value = {{
-        isLoggedIn,
-        user,
-        loading,
-        refetch,
-    }}> 
-        {children}
-    </GlobalContext.Provider>
+        if (isLoggedIn && user) {
+            authDebug.info(`User authenticated: ${user.$id}`);
+        } else if (!loading) {
+            if (error) {
+                authDebug.info(`Not authenticated: ${error}`);
+            } else {
+                authDebug.info("Not authenticated (no error)");
+            }
+
+            // For debugging only - check if we have active sessions
+            account.listSessions()
+                .then(sessions => {
+                    if (sessions.sessions.length > 0) {
+                        authDebug.warn(`Found ${sessions.sessions.length} active session(s) but user is not authenticated!`,
+                            sessions.sessions.map(s => ({
+                                id: s.$id,
+                                provider: s.provider,
+                                expire: new Date(Number(s.expire) * 1000).toLocaleString()
+                            }))
+                        );
+                    } else {
+                        authDebug.info("No active sessions found");
+                    }
+                })
+                .catch(err => {
+                    // This error is expected for non-authenticated users
+                    const errMsg = err?.message || String(err);
+                    if (!errMsg.includes('missing scope') && !errMsg.includes('User (role: guests)')) {
+                        authDebug.error("Error checking sessions", err);
+                    }
+                });
+        }
+    }, [isLoggedIn, loading, user, error]);
+
+    return (
+        <GlobalContext.Provider value={{
+            isLoggedIn,
+            user,
+            loading,
+            refetch,
+        }}>
+            {children}
+        </GlobalContext.Provider>
     )
 }
 
 export const useGlobalContext = (): GlobalContextType => {
     const context = useContext(GlobalContext);
 
-    if(!context) {
+    if (!context) {
         throw new Error('useGlobalContext must be used within a Global Provider');
 
     }

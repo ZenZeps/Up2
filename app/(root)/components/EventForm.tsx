@@ -1,15 +1,13 @@
-import { View, TextInput, Modal, Button, Text, ScrollView, TouchableOpacity } from 'react-native';
-import React, { useState, useEffect } from 'react';
-import RNPickerSelect from 'react-native-picker-select';
-import { Event } from '@/lib/types/Events';
-import { useAppwrite } from '@/lib/appwrite/useAppwrite';
-import { getAllUsers } from '@/lib/api/user';
-import { databases, config } from '@/lib/appwrite/appwrite';
-import { ID } from '@/lib/appwrite/appwrite';
 import { createEvent } from '@/lib/api/event';
-import { useEvents } from '../context/EventContext';
-import DateTimePickerModal from "react-native-modal-datetime-picker";
+import { getAllUsers } from '@/lib/api/user';
+import { config, databases, ID } from '@/lib/appwrite/appwrite';
+import { Event } from '@/lib/types/Events';
 import dayjs from 'dayjs';
+import React, { useEffect, useState } from 'react';
+import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import DateTimePickerModal from "react-native-modal-datetime-picker";
+import RNPickerSelect from 'react-native-picker-select';
+import { useEvents } from '../context/EventContext';
 
 interface Props {
   visible: boolean;
@@ -29,34 +27,58 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [description, setDescription] = useState('');
   const [inviteeIds, setInviteeIds] = useState<string[]>([]);
   const [selectedInvitee, setSelectedInvitee] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState<Date>(event ? new Date(event.startTime) : new Date(selectedDateTime));
+  // Safely parse date with validation and proper time information
+  const safeParseDate = (dateString: string): Date => {
+    try {
+      const date = new Date(dateString);
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        throw new Error('Invalid date');
+      }
+      return date;
+    } catch (error) {
+      // Return current date if parsing fails
+      console.warn('Failed to parse date:', dateString, error);
+      return new Date();
+    }
+  };
+
+  // Calculate end time based on start time and duration
+  const calculateEndTime = (start: Date, durationMinutes: number): Date => {
+    return new Date(start.getTime() + durationMinutes * 60000);
+  };
+
+  const [startDate, setStartDate] = useState<Date>(
+    event && event.startTime ? safeParseDate(event.startTime) : safeParseDate(selectedDateTime)
+  );
+
   const [endDate, setEndDate] = useState<Date>(
-    event
-      ? new Date(event.endTime)
-      : dayjs(selectedDateTime).add(1, 'hour').toDate()
+    event && event.endTime
+      ? safeParseDate(event.endTime)
+      : calculateEndTime(safeParseDate(selectedDateTime), duration)
   );
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
-const [users, setUsers] = useState<any[]>([]);
-const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-useEffect(() => {
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const allUsers = await getAllUsers(); // <-- use getAllUsers
-      setUsers(allUsers);
-    } catch (err) {
-      setUsers([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-  fetchUsers();
-}, []);
+  useEffect(() => {
+    const fetchUsers = async () => {
+      setLoading(true);
+      try {
+        const allUsers = await getAllUsers(); // <-- use getAllUsers
+        setUsers(allUsers);
+      } catch (err) {
+        setUsers([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUsers();
+  }, []);
 
-    const friendUsers = users.filter(
+  const friendUsers = users.filter(
     (u) =>
       u.$id !== currentUserId &&
       friends.includes(u.$id) &&
@@ -69,55 +91,82 @@ useEffect(() => {
 
   const { refetchEvents } = useEvents();
 
-useEffect(() => {
-  if (event) {
-    setTitle(event.title || '');
-    setLocation(event.location || '');
-    setDescription(event.description || '');
-    setInviteeIds(event.inviteeIds ?? []);
-    setStartDate(new Date(event.startTime));
-    setEndDate(new Date(event.endTime));
-  } else {
-    setTitle('');
-    setLocation('');
-    setDescription('');
-    setInviteeIds([]);
-    setStartDate(new Date(selectedDateTime));
-    setEndDate(dayjs(selectedDateTime).add(1, 'hour').toDate());
-  }
-}, [event, selectedDateTime]);
+  useEffect(() => {
+    if (event) {
+      setTitle(event.title || '');
+      setLocation(event.location || '');
+      setDescription(event.description || '');
+      setInviteeIds(event.inviteeIds ?? []);
 
+      // Safely set dates with validation
+      try {
+        const startTime = new Date(event.startTime);
+        const endTime = new Date(event.endTime);
 
-const newEvent: Event = {
-  $id: event?.$id ?? ID.unique(),
-  id: event?.$id ?? ID.unique(),
-  title,
-  location,
-  startTime: startDate.toISOString(),
-  endTime: endDate.toISOString(),
-  creatorId: currentUserId,
-  inviteeIds,
-  description,
-};
+        if (!isNaN(startTime.getTime())) {
+          setStartDate(startTime);
+        }
 
-    
-
-const handleSave = async () => {
-  try {
-    if (event && event.$id) { // Ensure event and event.$id exist for update
-      await databases.updateDocument(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        event.$id,
-        newEvent
-      );
-    } else if (!event) { // Only create if event is undefined (new event)
-      await createEvent(newEvent);
+        if (!isNaN(endTime.getTime())) {
+          setEndDate(endTime);
+        }
+      } catch (error) {
+        console.error('Error parsing event dates:', error);
+      }
     } else {
-      console.error("Error: Event or event.$id is missing for update operation.", event);
-      alert("Failed to save event: Missing event ID.");
-      return;
+      setTitle('');
+      setLocation('');
+      setDescription('');
+      setInviteeIds([]);
+
+      // Safely set default dates
+      try {
+        const newStartDate = new Date(selectedDateTime);
+        if (!isNaN(newStartDate.getTime())) {
+          setStartDate(newStartDate);
+          setEndDate(dayjs(newStartDate).add(1, 'hour').toDate());
+        }
+      } catch (error) {
+        console.error('Error setting default dates:', error);
+        setStartDate(new Date());
+        setEndDate(dayjs().add(1, 'hour').toDate());
+      }
     }
+  }, [event, selectedDateTime]);
+
+
+  const eventId = event?.$id ?? ID.unique();
+  const newEvent: Event = {
+    $id: eventId,
+    id: eventId, // Set the 'id' field to match the $id field for Appwrite
+    title,
+    location,
+    startTime: startDate.toISOString(),
+    endTime: endDate.toISOString(),
+    creatorId: currentUserId,
+    inviteeIds,
+    attendees: event?.attendees || [],
+    description,
+  };
+
+
+
+  const handleSave = async () => {
+    try {
+      if (event && event.$id) { // Ensure event and event.$id exist for update
+        await databases.updateDocument(
+          config.databaseID!,
+          config.eventsCollectionID!,
+          event.$id,
+          newEvent
+        );
+      } else if (!event) { // Only create if event is undefined (new event)
+        await createEvent(newEvent);
+      } else {
+        console.error("Error: Event or event.$id is missing for update operation.", event);
+        alert("Failed to save event: Missing event ID.");
+        return;
+      }
 
 
       await refetchEvents(); // <-- refetch after save
@@ -127,6 +176,42 @@ const handleSave = async () => {
       console.error("Error saving event:", err);
       alert("Failed to save event.");
     }
+  };
+
+  // Handle date picker confirmations with proper time handling
+  const handleStartDateConfirm = (date: Date) => {
+    setShowStartPicker(false);
+    setStartDate(date);
+
+    // Update end date based on duration if it was before the new start date
+    if (endDate <= date) {
+      setEndDate(calculateEndTime(date, duration));
+    }
+  };
+
+  const handleEndDateConfirm = (date: Date) => {
+    setShowEndPicker(false);
+
+    // Make sure end date is after start date
+    if (date > startDate) {
+      setEndDate(date);
+
+      // Update duration based on new end time
+      const newDurationMinutes = Math.round((date.getTime() - startDate.getTime()) / 60000);
+      if (newDurationMinutes > 0 && newDurationMinutes <= 180) {
+        setDuration(newDurationMinutes);
+      }
+    } else {
+      // If selected end date is before start date, set it to start date + duration
+      setEndDate(calculateEndTime(startDate, duration));
+      alert('End time must be after start time');
+    }
+  };
+
+  // Handle duration changes
+  const handleDurationChange = (newDuration: number) => {
+    setDuration(newDuration);
+    setEndDate(calculateEndTime(startDate, newDuration));
   };
 
   return (
@@ -187,11 +272,7 @@ const handleSave = async () => {
               isVisible={showStartPicker}
               mode="datetime"
               date={startDate}
-              onConfirm={(date) => {
-                setStartDate(date);
-                setShowStartPicker(false);
-                if (date > endDate) setEndDate(dayjs(date).add(1, 'hour').toDate());
-              }}
+              onConfirm={handleStartDateConfirm}
               onCancel={() => setShowStartPicker(false)}
             />
           </View>
@@ -210,12 +291,43 @@ const handleSave = async () => {
               mode="datetime"
               date={endDate}
               minimumDate={startDate}
-              onConfirm={(date) => {
-                setEndDate(date);
-                setShowEndPicker(false);
-              }}
+              onConfirm={handleEndDateConfirm}
               onCancel={() => setShowEndPicker(false)}
             />
+          </View>
+
+          {/* Add Duration Picker */}
+          <View className="mb-4">
+            <Text className="text-gray-600 text-base mb-2">Duration (minutes)</Text>
+            <View className="border border-gray-300 rounded-lg overflow-hidden">
+              <RNPickerSelect
+                onValueChange={(val: number) => {
+                  if (val && editable) {
+                    handleDurationChange(val);
+                  }
+                }}
+                value={duration}
+                disabled={!editable}
+                items={durationOptions.map((mins) => ({
+                  label: `${mins} minutes`,
+                  value: mins,
+                }))}
+                style={{
+                  inputIOS: {
+                    paddingVertical: 12,
+                    paddingHorizontal: 10,
+                    fontSize: 16,
+                    color: 'black',
+                  },
+                  inputAndroid: {
+                    paddingVertical: 12,
+                    paddingHorizontal: 10,
+                    fontSize: 16,
+                    color: 'black',
+                  },
+                }}
+              />
+            </View>
           </View>
 
           {/* Invite Friends - only creator can invite */}

@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEvents } from './context/EventContext';
-import { getCurrentUser, databases, config } from '@/lib/appwrite/appwrite';
-import { useRouter } from 'expo-router';
-import { Query } from 'react-native-appwrite';
-import { getUserProfile, updateUserProfile } from '@/lib/api/user';
 import icons from '@/constants/icons';
 import images from '@/constants/images';
+import { getUserProfile, updateUserProfile } from '@/lib/api/user';
+import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Query } from 'react-native-appwrite';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEvents } from './context/EventContext';
 
 
 export default function Invites() {
@@ -29,7 +29,9 @@ export default function Invites() {
   // Fetch friend requests for this user
   useEffect(() => {
     const fetchFriendRequests = async () => {
-      if (!userId) return;
+      if (!userId) {
+        return; // Early return if no userId
+      }
       const res = await databases.listDocuments(
         config.databaseID!,
         config.friendRequestsCollectionID,

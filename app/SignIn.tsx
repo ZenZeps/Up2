@@ -1,29 +1,30 @@
+import images from "@/constants/images";
+import {
+  createUserProfile,
+  getUserProfile,
+  updateUserProfile,
+} from "@/lib/api/user";
+import {
+  account,
+  forgotPassword,
+  loginWithEmail,
+  signupWithEmail,
+} from "@/lib/appwrite/appwrite";
+import { authDebug } from "@/lib/debug/authDebug";
+import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
-import {
-  loginWithEmail,
-  signupWithEmail,
-  account,
-  forgotPassword,
-} from "@/lib/appwrite/appwrite";
-import {
-  getUserProfile,
-  createUserProfile,
-  updateUserProfile,
-} from "@/lib/api/user";
-import images from "@/constants/images";
 
 const SignIn = () => {
   const router = useRouter();
@@ -38,6 +39,7 @@ const SignIn = () => {
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedName = name.trim();
 
+    // Input validation
     if (!trimmedEmail || !password || (mode === "signup" && (!trimmedName || !confirmPassword))) {
       Alert.alert("Error", "Please fill in all required fields.");
       return;
@@ -56,19 +58,29 @@ const SignIn = () => {
     try {
       setLoading(true);
 
-    if (mode === "signup") {
-      await signupWithEmail(trimmedEmail, password, trimmedName);
-      // Log in to create a session so verification can be sent
-      await loginWithEmail(trimmedEmail, password);
-      await account.createVerification(`myapp://auth/verify`);
-      Alert.alert("Verify Email", "Check your email to verify your account.");
-      return;
-}
+      if (mode === "signup") {
+        authDebug.info("Starting signup process");
+        await signupWithEmail(trimmedEmail, password, trimmedName);
+        authDebug.info("User created, logging in to create session");
 
+        // Log in to create a session so verification can be sent
+        await loginWithEmail(trimmedEmail, password);
+        authDebug.info("Creating email verification");
+        await account.createVerification(`myapp://auth/verify`);
+        Alert.alert("Verify Email", "Check your email to verify your account.");
+        return;
+      }
+
+      // For login flow
+      authDebug.info("Logging in user");
       await loginWithEmail(trimmedEmail, password);
+
+      authDebug.info("Fetching user details after login");
       const user = await account.get();
+      authDebug.logUser(user);
 
       if (!user.emailVerification) {
+        authDebug.warn("Email not verified, ending session");
         Alert.alert("Email Not Verified", "Please verify your email first.");
         await account.deleteSession("current");
         return;
@@ -76,34 +88,43 @@ const SignIn = () => {
 
       let existingProfile = null;
       try {
-        console.log("Attempting to fetch user profile...");
+        authDebug.info("Fetching user profile");
         existingProfile = await getUserProfile(user.$id);
+        authDebug.info("Profile found", { profileId: existingProfile?.$id });
       } catch (profileError: any) {
-        console.error("Error fetching user profile in SignIn.tsx:", profileError);
-        // Continue with the flow, assuming profile might not exist yet
+        authDebug.warn("Error fetching profile, will create if needed", profileError);
       }
 
       if (!existingProfile) {
+        authDebug.info("Creating new user profile");
         await createUserProfile({
-          id: user.$id,
+          $id: user.$id,
           name: user.name || trimmedName || "Unnamed",
           email: user.email ?? trimmedEmail,
           isPublic: true,
           preferences: [],
+          friends: [],
         });
       } else {
+        authDebug.info("Updating existing user profile");
         await updateUserProfile({
-          id: user.$id,
+          $id: user.$id,
           name: user.name || existingProfile.name,
           email: user.email ?? existingProfile.email,
           isPublic: existingProfile.isPublic,
           preferences: existingProfile.preferences,
+          friends: existingProfile.friends || [],
         });
       }
 
-      router.replace("/Home");
+      // Navigate to the home screen after successful login
+      authDebug.info("Authentication successful, navigating to home");
+
+      // Using replace() with string path
+      router.replace("/(root)" as any);
+
     } catch (err: any) {
-      console.error("Auth error:", err);
+      authDebug.error("Authentication failed", err);
       Alert.alert("Error", err?.message || "Authentication failed");
     } finally {
       setLoading(false);
@@ -130,106 +151,105 @@ const SignIn = () => {
 
   return (
     <SafeAreaView className="bg-white h-full">
-       <KeyboardAvoidingView
+      <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-      <ScrollView contentContainerClassName="h-full justify-center">
-        <Image
-          source={images.onboarding}
-          className="w-full h-2/5"
-          resizeMode="contain"
-        />
-        <View className="px-10 mt-6">
-          <Text className="text-3xl font-rubik-semibold text-black-300 text-center mb-4">
-            {mode === "login" ? "Welcome Back" : "Create Account"}
-          </Text>
-
-          {mode === "signup" && (
-            <>
-              <TextInput
-                placeholder="Full Name"
-                value={name}
-                onChangeText={setName}
-                className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
-                placeholderTextColor="#aaa"
-                autoCapitalize="words"
-              />
-            </>
-          )}
-
-          <TextInput
-            placeholder="Email"
-            value={email}
-            onChangeText={setEmail}
-            className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            placeholderTextColor="#aaa"
+        <ScrollView contentContainerClassName="h-full justify-center">
+          <Image
+            source={images.onboarding}
+            className="w-full h-2/5"
+            resizeMode="contain"
           />
+          <View className="px-10 mt-6">
+            <Text className="text-3xl font-rubik-semibold text-black-300 text-center mb-4">
+              {mode === "login" ? "Welcome Back" : "Create Account"}
+            </Text>
 
-          <TextInput
-            placeholder="Password"
-            value={password}
-            onChangeText={setPassword}
-            className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
-            secureTextEntry
-            placeholderTextColor="#aaa"
-          />
+            {mode === "signup" && (
+              <>
+                <TextInput
+                  placeholder="Full Name"
+                  value={name}
+                  onChangeText={setName}
+                  className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
+                  placeholderTextColor="#aaa"
+                  autoCapitalize="words"
+                />
+              </>
+            )}
 
-          {mode === "signup" && (
             <TextInput
-              placeholder="Confirm Password"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
+              placeholder="Email"
+              value={email}
+              onChangeText={setEmail}
+              className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholderTextColor="#aaa"
+            />
+
+            <TextInput
+              placeholder="Password"
+              value={password}
+              onChangeText={setPassword}
               className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
               secureTextEntry
               placeholderTextColor="#aaa"
             />
-          )}
 
-          <TouchableOpacity
-            onPress={handleAuth}
-            disabled={loading}
-            className={`rounded-full py-4 mt-2 ${
-              loading ? "bg-gray-300" : "bg-primary-300"
-            }`}
-          >
-            <Text className="text-white text-lg font-rubik-medium text-center">
-              {loading
-                ? "Please wait..."
-                : mode === "login"
-                ? "Login"
-                : "Sign Up"}
-            </Text>
-          </TouchableOpacity>
+            {mode === "signup" && (
+              <TextInput
+                placeholder="Confirm Password"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
+                secureTextEntry
+                placeholderTextColor="#aaa"
+              />
+            )}
 
-          <TouchableOpacity
-            onPress={() =>
-              setMode((prev) => (prev === "login" ? "signup" : "login"))
-            }
-            className="mt-4"
-          >
-            <Text className="text-center text-black-200 font-rubik">
-              {mode === "login"
-                ? "Don't have an account? Sign Up"
-                : "Already have an account? Log In"}
-            </Text>
-          </TouchableOpacity>
-
-          {mode === "login" && (
             <TouchableOpacity
-              onPress={handleForgotPassword}
-              className="mt-2 self-center"
+              onPress={handleAuth}
+              disabled={loading}
+              className={`rounded-full py-4 mt-2 ${loading ? "bg-gray-300" : "bg-primary-300"
+                }`}
             >
-              <Text className="text-primary-300 font-rubik-medium">
-                Forgot Password?
+              <Text className="text-white text-lg font-rubik-medium text-center">
+                {loading
+                  ? "Please wait..."
+                  : mode === "login"
+                    ? "Login"
+                    : "Sign Up"}
               </Text>
             </TouchableOpacity>
-          )}
-        </View>
-      </ScrollView>
+
+            <TouchableOpacity
+              onPress={() =>
+                setMode((prev) => (prev === "login" ? "signup" : "login"))
+              }
+              className="mt-4"
+            >
+              <Text className="text-center text-black-200 font-rubik">
+                {mode === "login"
+                  ? "Don't have an account? Sign Up"
+                  : "Already have an account? Log In"}
+              </Text>
+            </TouchableOpacity>
+
+            {mode === "login" && (
+              <TouchableOpacity
+                onPress={handleForgotPassword}
+                className="mt-2 self-center"
+              >
+                <Text className="text-primary-300 font-rubik-medium">
+                  Forgot Password?
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

@@ -6,6 +6,18 @@ import dayjs from 'dayjs';
 import React, { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { Event } from '@/lib/types/Events';
+
+interface EventDetailsModalProps {
+  event: Event;
+  isCreator: boolean;
+  onClose: () => void;
+  onEdit: (event: Event) => void;
+  onAttend: () => void;
+  onNotAttend: () => void;
+  currentUserId: string;
+}
+
 const EventDetailsModal = ({
   event,
   isCreator,
@@ -14,8 +26,8 @@ const EventDetailsModal = ({
   onAttend,
   onNotAttend,
   currentUserId
-}) => {
-  const [attendeeProfiles, setAttendeeProfiles] = useState([]);
+}: EventDetailsModalProps) => {
+  const [attendeeProfiles, setAttendeeProfiles] = useState<any[]>([]);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
 
   useEffect(() => {
@@ -37,10 +49,21 @@ const EventDetailsModal = ({
 
   const isAttending = event.attendees?.includes(currentUserId);
 
-  const AttendeesList = ({ profiles, limit = null, onPress = null }) => (
+  interface AttendeeProfile {
+    $id: string;
+    name: string;
+  }
+
+  interface AttendeesListProps {
+    profiles: AttendeeProfile[];
+    limit?: number | null;
+    onPress?: (() => void) | null;
+  }
+
+  const AttendeesList = ({ profiles, limit = null, onPress = null }: AttendeesListProps) => (
     <View style={styles.attendeesContainer}>
       <View style={styles.attendeesRow}>
-        {(limit ? profiles.slice(0, limit) : profiles).map((profile, index) => (
+        {(limit ? profiles.slice(0, limit) : profiles).map((profile: AttendeeProfile, index: number) => (
           <View key={profile.$id} style={[styles.attendeeItem, index > 0 && { marginLeft: -10 }]}>
             <Image
               source={images.avatar}
@@ -78,7 +101,10 @@ const EventDetailsModal = ({
             {/* Creator Info */}
             <View style={styles.creatorInfo}>
               <Image source={images.avatar} style={styles.avatar} />
-              <Text style={styles.creatorName}>{event.creatorName || 'Unknown Creator'}</Text>
+              <Text style={styles.creatorName}>
+                {/* TypeScript workaround for extended Event with creatorName */}
+                {(event as any).creatorName || 'Unknown Creator'}
+              </Text>
             </View>
 
             {/* Event Image (Placeholder) */}
@@ -95,7 +121,9 @@ const EventDetailsModal = ({
             <View style={styles.detailRow}>
               <Image source={icons.calendar} style={styles.detailIcon} />
               <Text style={styles.detailText}>
-                {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
+                {event.startTime && dayjs(event.startTime).isValid() ? dayjs(event.startTime).format('MMM D, YYYY h:mm A') : 'Invalid date'}
+                -
+                {event.endTime && dayjs(event.endTime).isValid() ? dayjs(event.endTime).format('h:mm A') : 'Invalid date'}
               </Text>
             </View>
 
@@ -110,7 +138,7 @@ const EventDetailsModal = ({
                     Attending ({attendeeProfiles.length})
                   </Text>
                 </Pressable>
-                <AttendeesList profiles={attendeeProfiles} limit={5} />
+                <AttendeesList profiles={attendeeProfiles} limit={5 as any} />
               </View>
             )}
 
@@ -119,7 +147,7 @@ const EventDetailsModal = ({
               {isCreator ? (
                 <TouchableOpacity
                   style={[styles.button, styles.editButton]}
-                  onPress={onEdit}
+                  onPress={() => onEdit(event)}
                 >
                   <Text style={styles.buttonText}>Edit Event</Text>
                 </TouchableOpacity>

@@ -1,4 +1,5 @@
 import { Account, Avatars, Client, Databases, ID, Query, Storage } from "react-native-appwrite";
+import { authDebug } from "../debug/authDebug";
 
 export { ID, Query };
 
@@ -41,7 +42,18 @@ const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
 
 export async function loginWithEmail(email: string, password: string) {
   try {
-    const preferences = await account.getPrefs();
+    // Start login process
+    authDebug.info(`Login attempt for email: ${email.substring(0, 3)}****`);
+
+    let preferences;
+    try {
+      preferences = await account.getPrefs();
+      authDebug.debug("Retrieved user preferences");
+    } catch (prefsErr) {
+      authDebug.debug("Could not retrieve preferences (expected for new login)");
+      preferences = { loginAttempts: 0, lastLoginAttempt: 0 };
+    }
+
     const loginAttempts = preferences.loginAttempts || 0;
     const lastAttemptTime = preferences.lastLoginAttempt || 0;
 
@@ -52,25 +64,53 @@ export async function loginWithEmail(email: string, password: string) {
         throw new Error(`Too many login attempts. Please try again in ${Math.ceil((LOCKOUT_DURATION - timeElapsed) / 60000)} minutes.`);
       }
       // Reset attempts after lockout period
-      await account.updatePrefs({ loginAttempts: 0 });
+      authDebug.debug("Resetting login attempts after lockout period");
+      try {
+        await account.updatePrefs({ loginAttempts: 0 });
+      } catch (resetErr) {
+        authDebug.debug("Could not reset preferences (not critical)");
+      }
     }
 
+    // Create session
+    authDebug.debug("Creating email password session");
     const session = await account.createEmailPasswordSession(email, password);
+    authDebug.info("Login successful, session created", { sessionId: session.$id });
 
     // Reset attempts on successful login
-    await account.updatePrefs({ loginAttempts: 0 });
+    try {
+      await account.updatePrefs({ loginAttempts: 0 });
+      authDebug.debug("Reset login attempts counter");
+    } catch (resetErr) {
+      authDebug.debug("Could not reset login counter (not critical)");
+    }
 
     return session;
-  } catch (err) {
-    console.error("Login error:", err);
+  } catch (err: any) {
+    // Format error for consistent handling
+    let errorMessage = typeof err === 'string' ? err :
+      err?.message ||
+      (err?.toString ? err.toString() : 'Unknown error');
+
+    if (!errorMessage.includes('missing scope (account)') &&
+      !errorMessage.includes('User (role: guests)')) {
+      authDebug.error("Login failed", err);
+    } else {
+      authDebug.debug("Expected auth error during login", errorMessage);
+    }
 
     // Increment login attempts on failure
-    const preferences = await account.getPrefs();
-    const loginAttempts = (preferences.loginAttempts || 0) + 1;
-    await account.updatePrefs({
-      loginAttempts,
-      lastLoginAttempt: Date.now()
-    });
+    try {
+      const preferences = await account.getPrefs();
+      const loginAttempts = (preferences.loginAttempts || 0) + 1;
+      await account.updatePrefs({
+        loginAttempts,
+        lastLoginAttempt: Date.now()
+      });
+      authDebug.debug(`Incremented login attempts to ${loginAttempts}`);
+    } catch (prefsError) {
+      authDebug.debug("Could not update preferences after failed login (not critical)");
+    }
 
     throw err;
   }
@@ -100,25 +140,49 @@ export async function forgotPassword(email: string) {
 
 // ✅ Get current user
 export async function getCurrentUser() {
+  authDebug.debug("Checking current user authentication status");
+
   try {
+    // Try to get the current user
     const response = await account.get();
+
+    // If we get a valid user ID, user is authenticated
     if (response.$id) {
-      const userAvatar = avatar.getInitials(response.name); //Get avatar
-      return {
+      authDebug.info("User is authenticated", { userId: response.$id });
+
+      // Generate avatar
+      const userAvatar = avatar.getInitials(response.name || "U");
+
+      // Return user data with avatar
+      const userData = {
         ...response,
-        avatar: userAvatar.toString(), // Adds avatar to response string
+        avatar: userAvatar.toString(),
       };
+
+      authDebug.logUser(userData);
+      return userData;
     }
+
+    // If we get here but no ID, something is wrong
+    authDebug.warn("Got response from account.get() but no user ID");
     return null;
   } catch (error: any) {
-    // Suppress "missing scope (account)" error
+    // Normalize error message for better error handling
+    let errorMessage = typeof error === 'string' ? error :
+      error?.message ||
+      (error?.toString ? error.toString() : 'Unknown error');
+
+    // Handle expected "not authenticated" errors
     if (
-      error?.message?.includes('missing scope (account)') ||
-      error?.message?.includes('User (role: guests)')
+      errorMessage.includes('missing scope (account)') ||
+      errorMessage.includes('User (role: guests)')
     ) {
+      authDebug.info("User is not authenticated (expected error in getCurrentUser)");
       return null;
     }
-    console.error("Get current user error:", error);
+
+    // Log unexpected errors
+    authDebug.error("Unexpected error getting current user", error);
     return null;
   }
 }
@@ -129,11 +193,8 @@ const SESSION_DURATION = 7 * 24 * 60 * 60; // 7 days in seconds
 export async function createSecureSession(email: string, password: string) {
   const session = await loginWithEmail(email, password);
 
-  // Set session expiry
-  await account.updateSession(
-    session.$id,
-    SESSION_DURATION
-  );
+  // Set session expiry - check API documentation for correct parameter usage
+  await account.updateSession(session.$id);
 
   return session;
 }

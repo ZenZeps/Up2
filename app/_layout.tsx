@@ -1,10 +1,10 @@
+import { account } from "@/lib/appwrite/client";
+import GlobalProvider from "@/lib/global-provider";
 import { useFonts } from "expo-font";
+import * as Linking from "expo-linking";
 import { SplashScreen, Stack } from "expo-router";
 import { useEffect, useState } from "react";
-import * as Linking from "expo-linking";
 import "./globals.css";
-import GlobalProvider from "@/lib/global-provider";
-import { account } from "@/lib/appwrite/client";
 
 const prefix = Linking.createURL("/");
 
@@ -25,7 +25,21 @@ export default function RootLayout() {
       try {
         await account.get(); // Will throw if not logged in
         setIsAuthenticated(true);
-      } catch {
+        console.log("User is authenticated");
+      } catch (err: any) {
+        // These errors are expected for unauthenticated users, don't log them
+        let errorMessage = typeof err === 'string' ? err :
+          err?.message ||
+          (err?.toString ? err.toString() : 'Unknown error');
+
+        if (
+          !errorMessage.includes('missing scope (account)') &&
+          !errorMessage.includes('User (role: guests)')
+        ) {
+          console.error("Auth error:", err);
+        } else {
+          console.log("User is not authenticated (expected behavior)");
+        }
         setIsAuthenticated(false);
       } finally {
         setIsAppReady(true);

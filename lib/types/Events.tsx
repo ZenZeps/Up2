@@ -1,5 +1,6 @@
 export interface Event {
-  $id: string;
+  $id: string;  // Internal ID used by the app
+  id?: string;  // Required ID field for Appwrite - will match $id
   title: string;
   location: string;
   startTime: string; // ISO format

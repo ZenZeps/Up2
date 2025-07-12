@@ -1,5 +1,7 @@
-import { Account, Avatars, Client, Databases, ID } from "react-native-appwrite";
+import { Account, Avatars, Client, Databases, Storage } from "react-native-appwrite";
+import { authDebug } from "../debug/authDebug";
 
+// Exported configuration 
 export const config = {
   platform: "com.Up2.Up2",
   endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT!,
@@ -9,61 +11,26 @@ export const config = {
   eventsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_EVENTS_COLLECTION_ID!,
 };
 
-const client = new Client()
+// Initialize Appwrite client
+const client = new Client();
+
+// Configure client with debug logs
+authDebug.info("Initializing Appwrite client", {
+  endpoint: config.endpoint,
+  projectID: config.projectID,
+  platform: config.platform
+});
+
+client
   .setEndpoint(config.endpoint)
   .setProject(config.projectID)
   .setPlatform(config.platform);
 
+// Export client services
 export const account = new Account(client);
 export const databases = new Databases(client);
 export const avatar = new Avatars(client);
+export const storage = new Storage(client);
 
-// ✅ Email/password signup
-export async function signupWithEmail(email: string, password: string, name: string) {
-  try {
-    const user = await account.create(ID.unique(), email, password, name);
-    return user;
-  } catch (err) {
-    console.error("Signup error:", err);
-    throw err;
-  }
-}
-
-// ✅ Email/password login
-export async function loginWithEmail(email: string, password: string) {
-  try {
-    const session = await account.createEmailPasswordSession(email, password);
-    return session;
-  } catch (err) {
-    console.error("Login error:", err);
-    throw err;
-  }
-}
-
-// ✅ Logout
-export async function logout() {
-  try {
-    await account.deleteSession("current");
-    return true;
-  } catch (error) {
-    console.error("Logout error:", error);
-    return false;
-  }
-}
-
-// ✅ Get current user with avatar
-export async function getCurrentUser() {
-  try {
-    const user = await account.get();
-    if (!user?.$id) return null;
-
-    const userAvatar = avatar.getInitials(user.name || "U");
-    return {
-      ...user,
-      avatar: userAvatar.toString(),
-    };
-  } catch (error) {
-    console.error("Get current user error:", error);
-    return null;
-  }
-}
+// NOTE: All auth functions have been moved to appwrite.ts
+// This file only exports the client configuration
