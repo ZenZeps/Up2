@@ -58,6 +58,7 @@ export default function Home() {
   const [selectedEvent, setSelectedEvent] = useState<AppEvent | null>(null);
   const [startHour, setStartHour] = useState(new Date().getHours() - 4);
   const [endHour, setEndHour] = useState(new Date().getHours() + 4);
+  const [calendarHeight, setCalendarHeight] = useState(0);
 
   // Get route params (for user calendar view)
   const params = useLocalSearchParams();
@@ -208,7 +209,7 @@ export default function Home() {
   }, [userEvents, getCreatorName]);
 
   // Custom render function for events with type safety
-  const renderEvent = (event: any) => {
+  const renderEvent = (event: any, touchableOpacityProps: any) => {
     // Safety check to prevent rendering invalid events
     if (!event || !event.rawEvent) {
       return null;
@@ -218,8 +219,9 @@ export default function Home() {
 
     return (
       <TouchableOpacity
+        {...touchableOpacityProps}
         className={`p-1 rounded-md ${
-          isMonthView ? 'bg-primary-100' : 'bg-primary-300 h-full'
+          isMonthView ? 'bg-primary-100' : 'bg-primary-300'
         }`}
         onPress={() => handlePressEvent(event)}
         key={event.rawEvent.$id || `event-${Math.random()}`} // Ensure unique key
@@ -376,17 +378,26 @@ export default function Home() {
       </View>
 
       {/* Calendar component */}
-      <View style={{ flex: 1 }}>
-      <BigCalendar
-        events={calendarEvents as any[]}
-        mode={viewMode}
-        date={date}
-        onPressCell={handleCellPress}
-        onPressEvent={handlePressEvent}
-        renderEvent={renderEvent}
-        swipeEnabled={true}
-        overlapOffset={8}
-      />
+      <View
+        className="flex-1"
+        onLayout={(event) => {
+          const { height } = event.nativeEvent.layout;
+          setCalendarHeight(height);
+        }}
+      >
+        {calendarHeight > 0 && (
+          <BigCalendar
+            events={calendarEvents as any[]}
+            height={calendarHeight}
+            mode={viewMode}
+            date={date}
+            onPressCell={handleCellPress}
+            onPressEvent={handlePressEvent}
+            renderEvent={renderEvent}
+            swipeEnabled={true}
+            overlapOffset={8}
+          />
+        )}
       </View>
 
       {/* Add Event FAB */}
