@@ -396,6 +396,8 @@ export default function Home() {
             renderEvent={renderEvent}
             swipeEnabled={true}
             overlapOffset={8}
+            ampm={false}
+            headerContainerStyle={{ height: 50 }}
           />
         )}
       </View>
