@@ -214,16 +214,25 @@ export default function Home() {
       return null;
     }
 
+    const isMonthView = viewMode === 'month';
+
     return (
       <TouchableOpacity
-        className="bg-primary-300 p-1 rounded-md h-full"
+        className={`p-1 rounded-md ${
+          isMonthView ? 'bg-primary-100' : 'bg-primary-300 h-full'
+        }`}
         onPress={() => handlePressEvent(event)}
         key={event.rawEvent.$id || `event-${Math.random()}`} // Ensure unique key
       >
-        <Text className="text-white text-xs font-rubik-medium">
+        <Text
+          className={`text-xs font-rubik-medium ${
+            isMonthView ? 'text-black-300' : 'text-white'
+          }`}
+          numberOfLines={1}
+        >
           {event.title || 'Untitled'}
         </Text>
-        {viewMode !== 'month' && (
+        {!isMonthView && (
           <>
             <Text className="text-white text-xs">
               {event.location || 'No location'}
@@ -367,18 +376,18 @@ export default function Home() {
       </View>
 
       {/* Calendar component */}
+      <View style={{ flex: 1 }}>
       <BigCalendar
         events={calendarEvents as any[]}
-        height={600}
         mode={viewMode}
         date={date}
-        
         onPressCell={handleCellPress}
         onPressEvent={handlePressEvent}
         renderEvent={renderEvent}
         swipeEnabled={true}
         overlapOffset={8}
       />
+      </View>
 
       {/* Add Event FAB */}
       <TouchableOpacity
