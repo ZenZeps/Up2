@@ -116,7 +116,7 @@ export default function Home() {
   // Create a stable function to get creator name with caching
   const getCreatorName = React.useCallback((creatorId: string): string => {
     return creatorNameCache.get(creatorId) || 'Unknown Creator';
-  }, []);
+  }, [creatorProfiles]);
 
   // Filter events for the current user
   const userEvents = useMemo(() => {
