@@ -1,8 +1,12 @@
+import { getActiveTravelForUser } from '@/lib/api/travel';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { account } from '@/lib/appwrite/appwrite';
 import { useAppwrite } from '@/lib/appwrite/useAppwrite';
+import { useTheme } from '@/lib/context/ThemeContext';
 import { authDebug } from '@/lib/debug/authDebug';
 import { Event as AppEvent } from '@/lib/types/Events';
+import { TravelAnnouncement } from '@/lib/types/Travel';
+import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -20,6 +24,8 @@ const viewModes: Mode[] = ['day', 'week', 'month'];
 const creatorNameCache = new Map<string, string>();
 
 export default function Home() {
+  const { colors } = useTheme();
+
   // Safely access the context values
   const eventsContext = React.useContext(EventsContext);
 
@@ -59,6 +65,7 @@ export default function Home() {
   const [startHour, setStartHour] = useState(new Date().getHours() - 4);
   const [endHour, setEndHour] = useState(new Date().getHours() + 4);
   const [calendarHeight, setCalendarHeight] = useState(0);
+  const [userTravelData, setUserTravelData] = useState<TravelAnnouncement[]>([]);
 
   // Get route params (for user calendar view)
   const params = useLocalSearchParams();
@@ -77,6 +84,17 @@ export default function Home() {
       return await getUserProfile(currentUser.$id);
     },
     cacheKey: currentUser?.$id ? `user-profile-${currentUser.$id}` : undefined,
+    dependencies: [currentUser?.$id],
+    skip: !currentUser?.$id,
+  });
+
+  // Fetch user's travel data for calendar highlighting
+  const { data: travelData } = useAppwrite({
+    fn: async () => {
+      if (!currentUser?.$id) return [];
+      return await getActiveTravelForUser(currentUser.$id);
+    },
+    cacheKey: currentUser?.$id ? `user-travel-${currentUser.$id}` : undefined,
     dependencies: [currentUser?.$id],
     skip: !currentUser?.$id,
   });
@@ -220,16 +238,14 @@ export default function Home() {
     return (
       <TouchableOpacity
         {...touchableOpacityProps}
-        className={`p-1 rounded-md ${
-          isMonthView ? 'bg-primary-100' : 'bg-primary-300'
-        }`}
+        className={`p-1 rounded-md ${isMonthView ? 'bg-primary-100' : 'bg-primary-300'
+          }`}
         onPress={() => handlePressEvent(event)}
         key={event.rawEvent.$id || `event-${Math.random()}`} // Ensure unique key
       >
         <Text
-          className={`text-xs font-rubik-medium ${
-            isMonthView ? 'text-black-300' : 'text-white'
-          }`}
+          className={`text-xs font-rubik-medium ${isMonthView ? 'text-black-300' : 'text-white'
+            }`}
           numberOfLines={1}
         >
           {event.title || 'Untitled'}
@@ -252,6 +268,47 @@ export default function Home() {
   const handleCellPress = (date: Date) => {
     setSelectedDateTime(date.toISOString());
     setFormVisible(true);
+  };
+
+  // Custom date renderer for month view to highlight travel dates
+  const renderCustomDateForMonth = (date: Date) => {
+    const isTravelDate = travelData && isDateInTravelPeriod(date, travelData);
+
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: 32,
+          backgroundColor: isTravelDate ? '#e3f2fd' : 'transparent',
+          borderRadius: isTravelDate ? 6 : 0,
+          margin: isTravelDate ? 2 : 0,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 16,
+            fontWeight: isTravelDate ? 'bold' : 'normal',
+            color: isTravelDate ? '#1976d2' : '#333',
+          }}
+        >
+          {date.getDate()}
+        </Text>
+      </View>
+    );
+  };
+
+  // Dynamic cell style function for travel date highlighting
+  const getCalendarCellStyle = (date?: Date) => {
+    if (!date || !travelData) return {};
+
+    const isTravelDate = isDateInTravelPeriod(date, travelData);
+    return isTravelDate ? {
+      backgroundColor: '#e3f2fd',
+      borderRadius: 6,
+      margin: 2,
+    } : {};
   };
 
   // Handler for pressing an event (to view/edit)
@@ -352,9 +409,9 @@ export default function Home() {
   }, [eventsContext, refetchEvents]);
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
       <View className="flex-row justify-between items-center p-4">
-        <Text className="text-2xl font-rubik-semibold text-black-300">
+        <Text className="text-2xl font-rubik-semibold" style={{ color: colors.text }}>
           Calendar
         </Text>
         <View className="flex-row">
@@ -363,12 +420,16 @@ export default function Home() {
             <TouchableOpacity
               key={mode}
               onPress={() => setViewMode(mode)}
-              className={`px-3 py-1 rounded-full mx-1 ${viewMode === mode ? 'bg-primary-300' : 'bg-gray-200'
-                }`}
+              className={`px-3 py-1 rounded-full mx-1`}
+              style={{
+                backgroundColor: viewMode === mode ? colors.primary : colors.surface
+              }}
             >
               <Text
-                className={`font-rubik ${viewMode === mode ? 'text-white' : 'text-black-300'
-                  }`}
+                className="font-rubik"
+                style={{
+                  color: viewMode === mode ? colors.background : colors.text
+                }}
               >
                 {mode.charAt(0).toUpperCase() + mode.slice(1)}
               </Text>
@@ -394,6 +455,8 @@ export default function Home() {
             onPressCell={handleCellPress}
             onPressEvent={handlePressEvent}
             renderEvent={renderEvent}
+            renderCustomDateForMonth={renderCustomDateForMonth}
+            calendarCellStyle={getCalendarCellStyle}
             swipeEnabled={true}
             overlapOffset={8}
             ampm={false}
@@ -404,14 +467,22 @@ export default function Home() {
 
       {/* Add Event FAB */}
       <TouchableOpacity
-        className="absolute bottom-8 right-8 bg-primary-300 w-16 h-16 rounded-full items-center justify-center"
+        className="absolute bottom-8 right-8 w-16 h-16 rounded-full items-center justify-center"
+        style={{
+          backgroundColor: colors.primary,
+          shadowColor: colors.shadow,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4,
+          elevation: 5,
+        }}
         onPress={() => {
           setSelectedDateTime(new Date().toISOString());
           setEditingEvent(null);
           setFormVisible(true);
         }}
       >
-        <Text className="text-white text-2xl">+</Text>
+        <Text className="text-2xl" style={{ color: colors.background }}>+</Text>
       </TouchableOpacity>
 
       {/* Event Form Modal */}

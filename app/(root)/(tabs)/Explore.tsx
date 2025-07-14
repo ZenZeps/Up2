@@ -3,6 +3,7 @@ import images from '@/constants/images';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getAllUsers, getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
+import { useTheme } from '@/lib/context/ThemeContext';
 import dayjs from 'dayjs';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -23,6 +24,7 @@ import { useEvents } from '../context/EventContext';
 
 const Explore = () => {
   const router = useRouter();
+  const { colors } = useTheme();
   const { events, refetchEvents } = useEvents();
 
   // State variables
@@ -263,7 +265,7 @@ const Explore = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
       <View className="px-5 pt-5 flex-1">
         {/* Header */}
         <View className="flex-row items-center justify-between mb-6">
@@ -273,15 +275,15 @@ const Explore = () => {
               className="w-12 h-12 rounded-full"
             />
             <View className="ml-3">
-              <Text className="text-base font-rubik-medium text-gray-600">Welcome back,</Text>
-              <Text className="text-xl font-rubik-semibold text-gray-900">{profile?.name || 'User'}</Text>
+              <Text className="text-base font-rubik-medium" style={{ color: colors.textSecondary }}>Welcome back,</Text>
+              <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{profile?.name || 'User'}</Text>
             </View>
           </View>
           <TouchableOpacity onPress={() => router.push('/Invites')} className="relative">
             <Image
               source={icons.bell}
               className="w-7 h-7"
-              style={{ tintColor: hasInvites ? '#FF3B30' : '#666876' }}
+              style={{ tintColor: hasInvites ? '#FF3B30' : colors.text }}
             />
             {hasInvites && (
               <View className="absolute -top-1 -right-1 bg-red-500 rounded-full w-3 h-3 items-center justify-center">
@@ -295,24 +297,32 @@ const Explore = () => {
         <View className="flex-row mb-6">
           <TouchableOpacity
             onPress={() => setMode('users')}
-            className={`flex-1 items-center py-3 rounded-lg mx-1 ${mode === 'users' ? 'bg-primary-300' : 'bg-gray-100'
-              }`}
+            className="flex-1 items-center py-3 rounded-lg mx-1"
+            style={{
+              backgroundColor: mode === 'users' ? colors.primary : colors.surface
+            }}
           >
             <Text
-              className={`text-lg font-rubik-medium ${mode === 'users' ? 'text-white' : 'text-gray-700'
-                }`}
+              className="text-lg font-rubik-medium"
+              style={{
+                color: mode === 'users' ? colors.background : colors.text
+              }}
             >
               Users
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setMode('events')}
-            className={`flex-1 items-center py-3 rounded-lg mx-1 ${mode === 'events' ? 'bg-primary-300' : 'bg-gray-100'
-              }`}
+            className="flex-1 items-center py-3 rounded-lg mx-1"
+            style={{
+              backgroundColor: mode === 'events' ? colors.primary : colors.surface
+            }}
           >
             <Text
-              className={`text-lg font-rubik-medium ${mode === 'events' ? 'text-white' : 'text-gray-700'
-                }`}
+              className="text-lg font-rubik-medium"
+              style={{
+                color: mode === 'events' ? colors.background : colors.text
+              }}
             >
               Events
             </Text>
@@ -320,14 +330,15 @@ const Explore = () => {
         </View>
 
         {/* Search Bar */}
-        <View className="flex-row items-center bg-gray-100 rounded-xl px-4 py-3 mb-6 border border-gray-200">
-          <Image source={icons.search} className="w-5 h-5 mr-3" resizeMode="contain" tintColor="#888" />
+        <View className="flex-row items-center rounded-xl px-4 py-3 mb-6 border" style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
+          <Image source={icons.search} className="w-5 h-5 mr-3" resizeMode="contain" style={{ tintColor: colors.textSecondary }} />
           <TextInput
             placeholder={`Search ${mode}...`}
             value={query}
             onChangeText={setQuery}
-            className="flex-1 text-base font-rubik text-gray-800"
-            placeholderTextColor="#888"
+            className="flex-1 text-base font-rubik"
+            style={{ color: colors.text }}
+            placeholderTextColor={colors.textSecondary}
           />
         </View>
 
@@ -342,7 +353,8 @@ const Explore = () => {
                 return (
                   <View
                     key={user.$id}
-                    className="flex-row items-center justify-between bg-white p-4 rounded-lg shadow-sm mb-3 border border-gray-100"
+                    className="flex-row items-center justify-between p-4 rounded-lg shadow-sm mb-3 border"
+                    style={{ backgroundColor: colors.card, borderColor: colors.border }}
                   >
                     <TouchableOpacity
                       className="flex-row items-center flex-1 mr-2"
@@ -352,16 +364,20 @@ const Explore = () => {
                         source={userPhotoUrls[user.$id] ? { uri: userPhotoUrls[user.$id] } : images.avatar}
                         className="w-10 h-10 rounded-full mr-3"
                       />
-                      <Text className={`text-lg font-rubik-medium ${isFriend ? 'text-primary-600' : 'text-gray-800'}`}>
+                      <Text 
+                        className="text-lg font-rubik-medium"
+                        style={{ color: isFriend ? colors.primary : colors.text }}
+                      >
                         {user.name}
                       </Text>
                     </TouchableOpacity>
                     {isFriend ? (
                       <TouchableOpacity
                         onPress={() => handleDeleteFriend(user.$id)}
-                        className="px-4 py-2 rounded-full shadow-sm bg-red-500"
+                        className="px-4 py-2 rounded-full shadow-sm"
+                        style={{ backgroundColor: colors.error }}
                       >
-                        <Text className="font-rubik-medium text-sm text-white">Remove</Text>
+                        <Text className="font-rubik-medium text-sm" style={{ color: colors.background }}>Remove</Text>
                       </TouchableOpacity>
                     ) : (
                       <TouchableOpacity
@@ -372,12 +388,16 @@ const Explore = () => {
                             handleSendFriendRequest(user.$id);
                           }
                         }}
-                        className={`px-4 py-2 rounded-full shadow-sm ${requestedUsers.includes(user.$id) ? 'bg-gray-200' : 'bg-blue-500'
-                          }`}
+                        className="px-4 py-2 rounded-full shadow-sm"
+                        style={{ 
+                          backgroundColor: requestedUsers.includes(user.$id) ? colors.secondary : colors.primary
+                        }}
                       >
                         <Text
-                          className={`font-rubik-medium text-sm ${requestedUsers.includes(user.$id) ? 'text-gray-500' : 'text-white'
-                            }`}
+                          className="font-rubik-medium text-sm"
+                          style={{ 
+                            color: requestedUsers.includes(user.$id) ? colors.text : colors.background 
+                          }}
                         >
                           {requestedUsers.includes(user.$id) ? 'Requested' : 'Add'}
                         </Text>
@@ -387,31 +407,32 @@ const Explore = () => {
                 );
               })
             ) : (
-              <Text className="text-gray-500 mt-4 text-center font-rubik">No users found</Text>
+              <Text className="mt-4 text-center font-rubik" style={{ color: colors.textSecondary }}>No users found</Text>
             )
           ) : filteredEvents.length > 0 ? (
             filteredEvents.map((event) => (
               <TouchableOpacity
                 key={event.$id}
-                className="bg-white p-4 rounded-lg shadow-sm mb-3 border border-gray-100"
+                className="p-4 rounded-lg shadow-sm mb-3 border"
+                style={{ backgroundColor: colors.card, borderColor: colors.border }}
                 onPress={() => router.push(`/event/${event.$id}`)}
               >
                 <View className="flex-row justify-between items-center mb-1">
-                  <Text className="text-lg font-rubik-semibold text-gray-900">{event.title}</Text>
-                  <Text className="text-xs font-rubik text-gray-500">{event.creatorName}</Text>
+                  <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>{event.title}</Text>
+                  <Text className="text-xs font-rubik" style={{ color: colors.textSecondary }}>{event.creatorName}</Text>
                 </View>
-                <Text className="text-sm font-rubik text-gray-600">
+                <Text className="text-sm font-rubik" style={{ color: colors.textSecondary }}>
                   <TouchableOpacity onPress={() => openInMaps(event.location)}>
-                    <Text className="text-blue-600 underline">{event.location}</Text>
+                    <Text className="underline" style={{ color: colors.primary }}>{event.location}</Text>
                   </TouchableOpacity>
                 </Text>
-                <Text className="text-xs font-rubik text-gray-500 mt-1">
+                <Text className="text-xs font-rubik mt-1" style={{ color: colors.textSecondary }}>
                   {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
                 </Text>
               </TouchableOpacity>
             ))
           ) : (
-            <Text className="text-gray-500 mt-4 text-center font-rubik">No events found</Text>
+            <Text className="mt-4 text-center font-rubik" style={{ color: colors.textSecondary }}>No events found</Text>
           )}
         </ScrollView>
       </View>

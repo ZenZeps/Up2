@@ -1,5 +1,6 @@
 import { account } from "@/lib/appwrite/client";
 import GlobalProvider from "@/lib/global-provider";
+import { ThemeProvider } from "@/lib/context/ThemeContext";
 import { useFonts } from "expo-font";
 import * as Linking from "expo-linking";
 import { SplashScreen, Stack } from "expo-router";
@@ -54,12 +55,14 @@ export default function RootLayout() {
 
   if (!fontsLoaded || !isAppReady || isAuthenticated === null) return null;
 
-  // Wrap the Stack in GlobalProvider
+  // Wrap the Stack in ThemeProvider and GlobalProvider
   return (
-    <GlobalProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(root)" />
-      </Stack>
-    </GlobalProvider>
+    <ThemeProvider>
+      <GlobalProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(root)" />
+        </Stack>
+      </GlobalProvider>
+    </ThemeProvider>
   );
 }

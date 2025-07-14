@@ -2,6 +2,7 @@ import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { account, config, databases, Query } from '@/lib/appwrite/appwrite';
+import { useTheme } from '@/lib/context/ThemeContext';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { useLocalSearchParams } from 'expo-router';
@@ -24,6 +25,7 @@ dayjs.extend(relativeTime);
 // Combined feed item type
 type FeedItem = (AppEvent & { type: 'event'; creatorName?: string }) | (TravelAnnouncementWithUserInfo & { type: 'travel' });
 export default function Feed() {
+  const { colors } = useTheme();
   const { events, refetchEvents } = useEvents();
   const params = useLocalSearchParams();
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<AppEvent[]>([]);
@@ -310,16 +312,16 @@ export default function Feed() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-100">
+    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.surface }}>
       {/* Header */}
-      <View className="flex-row items-center justify-between p-4 bg-white border-b border-gray-200">
-        <Text className="text-2xl font-rubik-extrabold">Up2 You</Text>
+      <View className="flex-row items-center justify-between p-4 border-b" style={{ backgroundColor: colors.background, borderBottomColor: colors.border }}>
+        <Text className="text-2xl font-rubik-extrabold" style={{ color: colors.text }}>Up2 You</Text>
         <View className="flex-row space-x-3">
           <TouchableOpacity onPress={() => setTravelFormVisible(true)}>
-            <Image source={icons.location} className="w-6 h-6" resizeMode="contain" />
+            <Image source={icons.location} className="w-6 h-6" resizeMode="contain" style={{ tintColor: colors.text }} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setFormVisible(true)}>
-            <Image source={icons.edit} className="w-6 h-6" resizeMode="contain" />
+            <Image source={icons.edit} className="w-6 h-6" resizeMode="contain" style={{ tintColor: colors.text }} />
           </TouchableOpacity>
         </View>
       </View>

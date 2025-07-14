@@ -3,6 +3,7 @@ import images from '@/constants/images';
 import { getProfilePhotoUrl, pickProfilePhoto, uploadProfilePhoto } from '@/lib/api/profilePhoto';
 import { getFriends, getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { logout } from '@/lib/appwrite/appwrite';
+import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -29,6 +30,7 @@ const eventTypeOptions = [
 const Profile = () => {
   const router = useRouter();
   const { user, refetch } = useGlobalContext();
+  const { isDark, toggleTheme, colors } = useTheme();
   const userId = user?.$id;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -151,16 +153,17 @@ const Profile = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
       <ScrollView>
         {/* Header */}
-        <View className="px-4 py-3 flex-row items-center justify-between border-b border-gray-200">
-          <Text className="text-2xl font-rubik-semibold">{name}</Text>
+        <View className="px-4 py-3 flex-row items-center justify-between border-b" style={{ borderBottomColor: colors.border }}>
+          <Text className="text-2xl font-rubik-semibold" style={{ color: colors.text }}>{name}</Text>
           <TouchableOpacity onPress={() => setIsEditing(!isEditing)}>
             <Image
               source={isEditing ? icons.check : icons.edit}
               className="w-6 h-6"
               resizeMode="contain"
+              style={{ tintColor: colors.text }}
             />
           </TouchableOpacity>
         </View>
@@ -187,16 +190,16 @@ const Profile = () => {
             {/* Stats */}
             <View className="flex-row flex-1 justify-around">
               <View className="items-center">
-                <Text className="text-xl font-rubik-semibold">{stats.events}</Text>
-                <Text className="text-gray-600">Events</Text>
+                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.events}</Text>
+                <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Events</Text>
               </View>
               <View className="items-center">
-                <Text className="text-xl font-rubik-semibold">{stats.friends}</Text>
-                <Text className="text-gray-600">Friends</Text>
+                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.friends}</Text>
+                <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Friends</Text>
               </View>
               <View className="items-center">
-                <Text className="text-xl font-rubik-semibold">{stats.preferences}</Text>
-                <Text className="text-gray-600">Interests</Text>
+                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.preferences}</Text>
+                <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Interests</Text>
               </View>
             </View>
           </View>
@@ -207,42 +210,62 @@ const Profile = () => {
               <TextInput
                 value={name}
                 onChangeText={setName}
-                className="text-base font-rubik mb-2 border border-gray-300 p-2 rounded"
+                className="text-base font-rubik mb-2 border p-2 rounded"
+                style={{
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
+                  color: colors.text
+                }}
                 placeholder="Your name"
+                placeholderTextColor={colors.textSecondary}
               />
             ) : (
-              <Text className="text-base font-rubik mb-2">{name}</Text>
+              <Text className="text-base font-rubik mb-2" style={{ color: colors.text }}>{name}</Text>
             )}
           </View>
 
           {/* Settings Section */}
-          <View className="mt-4 bg-gray-50 rounded-lg p-4">
+          <View className="mt-4 bg-gray-50 rounded-lg p-4" style={{ backgroundColor: colors.surface }}>
             <View className="flex-row items-center justify-between mb-4">
-              <Text className="font-rubik-medium">Private Profile</Text>
+              <Text className="font-rubik-medium" style={{ color: colors.text }}>Private Profile</Text>
               <Switch value={isPrivate} onValueChange={setIsPrivate} />
+            </View>
+
+            <View className="flex-row items-center justify-between">
+              <Text className="font-rubik-medium" style={{ color: colors.text }}>Dark Mode</Text>
+              <Switch
+                value={isDark}
+                onValueChange={toggleTheme}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={isDark ? colors.background : colors.surface}
+              />
             </View>
           </View>
 
           {/* Interests Section */}
           <View className="mt-6">
-            <Text className="text-lg font-rubik-semibold mb-3">Interests</Text>
+            <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>Interests</Text>
             <View className="flex-row flex-wrap">
               {eventTypeOptions.map((option) => (
                 <TouchableOpacity
                   key={option.value}
                   onPress={() => isEditing && handleInterestToggle(option.value)}
-                  className={`px-4 py-2 rounded-full border mr-2 mb-2 ${
-                    selectedEventTypes.includes(option.value)
-                      ? 'bg-primary-300 border-primary-300'
-                      : 'bg-gray-100 border-gray-300'
-                  }`}
+                  className={`px-4 py-2 rounded-full border mr-2 mb-2`}
+                  style={{
+                    backgroundColor: selectedEventTypes.includes(option.value)
+                      ? colors.primary
+                      : colors.surface,
+                    borderColor: selectedEventTypes.includes(option.value)
+                      ? colors.primary
+                      : colors.border,
+                  }}
                 >
                   <Text
-                    className={`${
-                      selectedEventTypes.includes(option.value)
-                        ? 'text-white'
-                        : 'text-gray-700'
-                    }`}
+                    style={{
+                      color: selectedEventTypes.includes(option.value)
+                        ? colors.background
+                        : colors.text
+                    }}
                   >
                     {option.label}
                   </Text>
@@ -253,7 +276,7 @@ const Profile = () => {
 
           {/* Friends Section */}
           <View className="mt-6">
-            <Text className="text-lg font-rubik-semibold mb-3">Friends</Text>
+            <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>Friends</Text>
             <FlatList
               data={friends}
               horizontal
@@ -265,11 +288,11 @@ const Profile = () => {
                     source={item.photoId ? { uri: getProfilePhotoUrl(item.photoId) } : images.avatar}
                     className="w-16 h-16 rounded-full"
                   />
-                  <Text className="text-sm font-rubik mt-1">{item.name}</Text>
+                  <Text className="text-sm font-rubik mt-1" style={{ color: colors.text }}>{item.name}</Text>
                 </View>
               )}
               ListEmptyComponent={
-                <Text className="text-gray-500 font-rubik">No friends yet</Text>
+                <Text className="text-gray-500 font-rubik" style={{ color: colors.textSecondary }}>No friends yet</Text>
               }
             />
           </View>
