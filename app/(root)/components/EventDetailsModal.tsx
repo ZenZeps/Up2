@@ -1,6 +1,7 @@
 import icons from '@/constants/icons';
 import images from '@/constants/images';
 import { getUsersByIds } from '@/lib/api/user';
+import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import React, { useEffect, useState } from 'react';
@@ -29,6 +30,8 @@ const EventDetailsModal = ({
 }: EventDetailsModalProps) => {
   const [attendeeProfiles, setAttendeeProfiles] = useState<any[]>([]);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
+  const [creatorPhotoUrl, setCreatorPhotoUrl] = useState<string | null>(null);
+  const [attendeePhotoUrls, setAttendeePhotoUrls] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
     const fetchAttendeeProfiles = async () => {
@@ -36,6 +39,19 @@ const EventDetailsModal = ({
         try {
           const profiles = await getUsersByIds(event.attendees);
           setAttendeeProfiles(profiles);
+          
+          // Fetch profile photos for attendees
+          const photoUrls: Record<string, string | null> = {};
+          for (const profile of profiles) {
+            try {
+              const photoUrl = await getUserProfilePhotoUrl(profile.$id);
+              photoUrls[profile.$id] = photoUrl;
+            } catch (error) {
+              console.error(`Error fetching photo for attendee ${profile.$id}:`, error);
+              photoUrls[profile.$id] = null;
+            }
+          }
+          setAttendeePhotoUrls(photoUrls);
         } catch (error) {
           console.error('Error fetching attendee profiles:', error);
         }
@@ -44,6 +60,22 @@ const EventDetailsModal = ({
 
     fetchAttendeeProfiles();
   }, [event?.attendees]);
+
+  // Fetch creator's profile photo
+  useEffect(() => {
+    const fetchCreatorPhoto = async () => {
+      if (event?.creatorId) {
+        try {
+          const photoUrl = await getUserProfilePhotoUrl(event.creatorId);
+          setCreatorPhotoUrl(photoUrl);
+        } catch (error) {
+          console.error('Error fetching creator photo:', error);
+        }
+      }
+    };
+
+    fetchCreatorPhoto();
+  }, [event?.creatorId]);
 
   if (!event) return null;
 
@@ -66,7 +98,7 @@ const EventDetailsModal = ({
         {(limit ? profiles.slice(0, limit) : profiles).map((profile: AttendeeProfile, index: number) => (
           <View key={profile.$id} style={[styles.attendeeItem, index > 0 && { marginLeft: -10 }]}>
             <Image
-              source={images.avatar}
+              source={attendeePhotoUrls[profile.$id] ? { uri: attendeePhotoUrls[profile.$id] } : images.avatar}
               style={styles.attendeeAvatar}
             />
             {!limit && <Text style={styles.attendeeName}>{profile.name.split(' ')[0]}</Text>}
@@ -100,7 +132,10 @@ const EventDetailsModal = ({
           <ScrollView showsVerticalScrollIndicator={false}>
             {/* Creator Info */}
             <View style={styles.creatorInfo}>
-              <Image source={images.avatar} style={styles.avatar} />
+              <Image 
+                source={creatorPhotoUrl ? { uri: creatorPhotoUrl } : images.avatar} 
+                style={styles.avatar} 
+              />
               <Text style={styles.creatorName}>
                 {/* TypeScript workaround for extended Event with creatorName */}
                 {(event as any).creatorName || 'Unknown Creator'}

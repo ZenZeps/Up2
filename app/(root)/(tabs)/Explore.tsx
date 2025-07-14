@@ -1,6 +1,7 @@
 import icons from '@/constants/icons';
 import images from '@/constants/images';
 import { getAllUsers, getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
+import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import dayjs from 'dayjs';
 import { useRouter } from 'expo-router';
@@ -33,6 +34,8 @@ const Explore = () => {
   const [userId, setUserId] = useState(''); // Current user ID
   const [friends, setFriends] = useState<string[]>([]); // Current user's friends
   const [profile, setProfile] = useState<any>(null); // Current user's profile
+  const [currentUserPhotoUrl, setCurrentUserPhotoUrl] = useState<string | null>(null); // Current user's profile photo
+  const [userPhotoUrls, setUserPhotoUrls] = useState<Record<string, string | null>>({}); // All users' profile photos
   const [requestedUsers, setRequestedUsers] = useState<string[]>([]); // Users who have sent friend requests
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<any[]>([]);
 
@@ -42,14 +45,37 @@ const Explore = () => {
       try {
         // Get current user and their profile
         const currentUser = await getCurrentUser();  // Gets the current user from Appwrite
-        setUserId(currentUser?.$id); // Function to define the currentUser statd with information form Appwrite
-        const userProfile = await getUserProfile(currentUser?.$id); // Fetches the user profile for the specified user from Appwrite
+        if (!currentUser?.$id) {
+          console.error('No current user found');
+          return;
+        }
+        
+        setUserId(currentUser.$id); // Function to define the currentUser statd with information form Appwrite
+        const userProfile = await getUserProfile(currentUser.$id); // Fetches the user profile for the specified user from Appwrite
         setProfile(userProfile); // Sets the profile state to the found user profile
         setFriends(userProfile?.friends ?? []); // Sets the friends state to the users friend list attribute
 
+        // Get current user's profile photo
+        const currentUserPhoto = await getUserProfilePhotoUrl(currentUser.$id);
+        setCurrentUserPhotoUrl(currentUserPhoto);
+
         // Get all users except current user
         const userRes = await getAllUsers();
-        setUsers((userRes || []).filter((u: any) => u.$id !== currentUser?.$id));
+        const otherUsers = (userRes || []).filter((u: any) => u.$id !== currentUser.$id);
+        setUsers(otherUsers);
+
+        // Get profile photos for all users
+        const photoUrls: Record<string, string | null> = {};
+        for (const user of otherUsers) {
+          try {
+            const photoUrl = await getUserProfilePhotoUrl(user.$id);
+            photoUrls[user.$id] = photoUrl;
+          } catch (error) {
+            console.error(`Error fetching photo for user ${user.$id}:`, error);
+            photoUrls[user.$id] = null;
+          }
+        }
+        setUserPhotoUrls(photoUrls);
 
         // Get pending friend requests sent by the current user
         const requestsRes = await databases.listDocuments(
@@ -132,14 +158,24 @@ const Explore = () => {
 
               // Update current user's friend list
               const updatedUserFriends = friends.filter((id) => id !== friendId);
-              await updateUserProfile(userId, { friends: updatedUserFriends });
+              if (profile) {
+                await updateUserProfile({
+                  ...profile,
+                  friends: updatedUserFriends
+                });
+              }
 
               // Update friend's friend list
               const friendProfile = await getUserProfile(friendId);
-              const updatedFriendFriends = (friendProfile.friends || []).filter(
-                (id: string) => id !== userId
-              );
-              await updateUserProfile(friendId, { friends: updatedFriendFriends });
+              if (friendProfile) {
+                const updatedFriendFriends = (friendProfile.friends || []).filter(
+                  (id: string) => id !== userId
+                );
+                await updateUserProfile({
+                  ...friendProfile,
+                  friends: updatedFriendFriends
+                });
+              }
 
             } catch (err) {
               console.error('Delete friend error:', err);
@@ -232,7 +268,10 @@ const Explore = () => {
         {/* Header */}
         <View className="flex-row items-center justify-between mb-6">
           <View className="flex-row items-center">
-            <Image source={images.avatar} className="w-12 h-12 rounded-full" />
+            <Image 
+              source={currentUserPhotoUrl ? { uri: currentUserPhotoUrl } : images.avatar} 
+              className="w-12 h-12 rounded-full" 
+            />
             <View className="ml-3">
               <Text className="text-base font-rubik-medium text-gray-600">Welcome back,</Text>
               <Text className="text-xl font-rubik-semibold text-gray-900">{profile?.name || 'User'}</Text>
@@ -309,7 +348,10 @@ const Explore = () => {
                       className="flex-row items-center flex-1 mr-2"
                       onPress={() => isFriend ? router.push(`/Calendar/${user.$id}`) : null}
                     >
-                      <Image source={images.avatar} className="w-10 h-10 rounded-full mr-3" />
+                      <Image 
+                        source={userPhotoUrls[user.$id] ? { uri: userPhotoUrls[user.$id] } : images.avatar} 
+                        className="w-10 h-10 rounded-full mr-3" 
+                      />
                       <Text className={`text-lg font-rubik-medium ${isFriend ? 'text-primary-600' : 'text-gray-800'}`}>
                         {user.name}
                       </Text>

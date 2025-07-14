@@ -31,6 +31,7 @@ export async function createUserProfile(profile: UserProfile) {
         isPublic: profile.isPublic,
         preferences: profile.preferences,
         friends: profile.friends ?? [],
+        photoId: profile.photoId,
       },
       [
         Permission.read(Role.any()), // or Role.user(profile.$id) for private
@@ -114,6 +115,7 @@ export async function updateUserProfile(profile: UserProfile) {
         isPublic: profile.isPublic,
         preferences: profile.preferences,
         friends: profile.friends,
+        photoId: profile.photoId,
       }
     );
 
