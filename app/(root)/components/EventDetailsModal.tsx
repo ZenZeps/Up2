@@ -1,7 +1,7 @@
 import icons from '@/constants/icons';
 import images from '@/constants/images';
-import { getUsersByIds } from '@/lib/api/user';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
+import { getUsersByIds } from '@/lib/api/user';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import React, { useEffect, useState } from 'react';
@@ -39,7 +39,7 @@ const EventDetailsModal = ({
         try {
           const profiles = await getUsersByIds(event.attendees);
           setAttendeeProfiles(profiles);
-          
+
           // Fetch profile photos for attendees
           const photoUrls: Record<string, string | null> = {};
           for (const profile of profiles) {
@@ -132,9 +132,9 @@ const EventDetailsModal = ({
           <ScrollView showsVerticalScrollIndicator={false}>
             {/* Creator Info */}
             <View style={styles.creatorInfo}>
-              <Image 
-                source={creatorPhotoUrl ? { uri: creatorPhotoUrl } : images.avatar} 
-                style={styles.avatar} 
+              <Image
+                source={creatorPhotoUrl ? { uri: creatorPhotoUrl } : images.avatar}
+                style={styles.avatar}
               />
               <Text style={styles.creatorName}>
                 {/* TypeScript workaround for extended Event with creatorName */}

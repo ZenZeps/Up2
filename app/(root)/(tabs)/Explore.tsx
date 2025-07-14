@@ -1,7 +1,7 @@
 import icons from '@/constants/icons';
 import images from '@/constants/images';
-import { getAllUsers, getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
+import { getAllUsers, getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import dayjs from 'dayjs';
 import { useRouter } from 'expo-router';
@@ -49,7 +49,7 @@ const Explore = () => {
           console.error('No current user found');
           return;
         }
-        
+
         setUserId(currentUser.$id); // Function to define the currentUser statd with information form Appwrite
         const userProfile = await getUserProfile(currentUser.$id); // Fetches the user profile for the specified user from Appwrite
         setProfile(userProfile); // Sets the profile state to the found user profile
@@ -268,9 +268,9 @@ const Explore = () => {
         {/* Header */}
         <View className="flex-row items-center justify-between mb-6">
           <View className="flex-row items-center">
-            <Image 
-              source={currentUserPhotoUrl ? { uri: currentUserPhotoUrl } : images.avatar} 
-              className="w-12 h-12 rounded-full" 
+            <Image
+              source={currentUserPhotoUrl ? { uri: currentUserPhotoUrl } : images.avatar}
+              className="w-12 h-12 rounded-full"
             />
             <View className="ml-3">
               <Text className="text-base font-rubik-medium text-gray-600">Welcome back,</Text>
@@ -348,9 +348,9 @@ const Explore = () => {
                       className="flex-row items-center flex-1 mr-2"
                       onPress={() => isFriend ? router.push(`/Calendar/${user.$id}`) : null}
                     >
-                      <Image 
-                        source={userPhotoUrls[user.$id] ? { uri: userPhotoUrls[user.$id] } : images.avatar} 
-                        className="w-10 h-10 rounded-full mr-3" 
+                      <Image
+                        source={userPhotoUrls[user.$id] ? { uri: userPhotoUrls[user.$id] } : images.avatar}
+                        className="w-10 h-10 rounded-full mr-3"
                       />
                       <Text className={`text-lg font-rubik-medium ${isFriend ? 'text-primary-600' : 'text-gray-800'}`}>
                         {user.name}

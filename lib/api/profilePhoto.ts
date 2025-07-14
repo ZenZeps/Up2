@@ -57,11 +57,11 @@ export const uploadProfilePhoto = async (userId: string, uri: string) => {
 
     // Get current user profile
     const currentProfile = await getUserProfile(userId);
-    
+
     if (!currentProfile) {
       throw new Error('User profile not found');
     }
-    
+
     // Update user profile with the new photo ID in the database
     await updateUserProfile({
       ...currentProfile,

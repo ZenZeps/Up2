@@ -1,7 +1,7 @@
 import icons from '@/constants/icons';
 import images from '@/constants/images';
-import { getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
+import { getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -46,7 +46,7 @@ export default function Invites() {
         })
       );
       setFriendRequests(requestsWithSenderNames);
-      
+
       // Fetch profile photos for senders
       const photoUrls: Record<string, string | null> = {};
       for (const req of res.documents) {
@@ -154,9 +154,9 @@ export default function Invites() {
             friendRequests.map((req) => (
               <View key={req.$id} className="flex-row items-center justify-between bg-white p-3 rounded-lg shadow-sm mb-3 border border-gray-100">
                 <View className="flex-row items-center">
-                  <Image 
-                    source={senderPhotoUrls[req.from] ? { uri: senderPhotoUrls[req.from] } : images.avatar} 
-                    className="w-10 h-10 rounded-full mr-3" 
+                  <Image
+                    source={senderPhotoUrls[req.from] ? { uri: senderPhotoUrls[req.from] } : images.avatar}
+                    className="w-10 h-10 rounded-full mr-3"
                   />
                   <Text className="text-base font-rubik-medium text-gray-800">{req.senderName}</Text>
                 </View>
