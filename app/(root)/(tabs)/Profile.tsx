@@ -86,6 +86,16 @@ const Profile = () => {
 
     try {
       const image = await pickProfilePhoto();
+      if (!image?.uri) {
+        if (image === null) {
+          // This case is for when permissions are denied.
+          // The alert is already shown in pickProfilePhoto.
+          return;
+        }
+        // For other cases where URI might be missing.
+        throw new Error('Failed to get image URI.');
+      }
+
       const photoId = await uploadProfilePhoto(userId, image.uri);
       const photoUrl = await getProfilePhotoUrl(photoId);
       setProfilePhotoUrl(photoUrl);

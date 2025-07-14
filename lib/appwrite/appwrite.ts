@@ -1,7 +1,7 @@
-import { Account, Avatars, Client, Databases, ID, Query, Storage } from "react-native-appwrite";
+import { Account, Avatars, Client, Databases, ID, InputFile, Query, Storage } from "react-native-appwrite";
 import { authDebug } from "../debug/authDebug";
 
-export { ID, Query };
+export { ID, Query, InputFile };
 
 export const config = {
   platform: "com.Up2.Up2",

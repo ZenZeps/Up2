@@ -1,96 +1,65 @@
-import { config, databases, storage } from '@/lib/appwrite/appwrite';
-import { validateInput } from '@/lib/utils/validation';
+import { account, storage, ID, InputFile } from '@/lib/appwrite/appwrite';
 import * as ImagePicker from 'expo-image-picker';
-import { Platform } from 'react-native';
-import { ID } from 'react-native-appwrite';
+import { Alert } from 'react-native';
 
-export async function pickProfilePhoto() {
-    // Request permission
-    if (Platform.OS !== 'web') {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-            throw new Error('Permission to access media library was denied');
-        }
-    }
+// Get the URL of a profile photo
+export const getProfilePhotoUrl = (fileId: string) => {
+  try {
+    return storage.getFileView(process.env.EXPO_PUBLIC_APPWRITE_PROFILE_PHOTOS_BUCKET_ID!, fileId).href;
+  } catch (error) {
+    console.error('Error getting profile photo URL:', error);
+    return null;
+  }
+};
 
-    // Pick the image
-    const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-        maxWidth: 1000,
-        maxHeight: 1000,
-    });
+// Pick a profile photo from the device's library
+export const pickProfilePhoto = async () => {
+  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status !== 'granted') {
+    Alert.alert('Permission Denied', 'Sorry, we need camera roll permissions to make this work!');
+    return null;
+  }
 
-    if (result.canceled) {
-        throw new Error('Image selection was cancelled');
-    }
+  const result = await ImagePicker.launchImageLibraryAsync({
+    allowsEditing: true,
+    aspect: [1, 1],
+    quality: 1,
+  });
 
-    return result.assets[0];
-}
+  if (result.canceled) {
+    throw new Error('Image selection was cancelled');
+  }
 
-export async function uploadProfilePhoto(userId: string, imageUri: string) {
-    try {
-        // Convert image URI to Blob
-        const response = await fetch(imageUri);
-        const blob = await response.blob();
+  return result.assets[0];
+};
 
-        // Validate file
-        if (!validateInput.imageFile(blob as File)) {
-            throw new Error('Invalid image file. Please upload a JPEG, PNG, or GIF under 5MB.');
-        }
+// Upload a profile photo and return the file ID
+export const uploadProfilePhoto = async (userId: string, uri: string) => {
+  try {
+    // Get file size
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    
+    // For React Native, create file object with required properties
+    const file = {
+      name: 'profile_photo.jpg',
+      type: 'image/jpeg',
+      size: blob.size,
+      uri: uri,
+    };
 
-        // Upload to Appwrite Storage
-        const file = await storage.createFile(
-            config.profilePhotosBucketID,
-            ID.unique(),
-            blob
-        );
+    const uploadedFile = await storage.createFile(
+      process.env.EXPO_PUBLIC_APPWRITE_PROFILE_PHOTOS_BUCKET_ID!,
+      ID.unique(),
+      file
+    );
 
-        // Update user profile with new photo ID
-        await databases.updateDocument(
-            config.databaseID,
-            config.usersCollectionID,
-            userId,
-            {
-                photoId: file.$id
-            }
-        );
+    // Update user profile with the new photo ID
+    await account.updatePrefs({ ...await account.getPrefs(), photoId: uploadedFile.$id });
 
-        return file.$id;
-    } catch (error) {
-        console.error('Error uploading profile photo:', error);
-        throw error;
-    }
-}
-
-export async function getProfilePhotoUrl(photoId: string) {
-    try {
-        const result = await storage.getFileView(config.profilePhotosBucketID, photoId);
-        return result.href;
-    } catch (error) {
-        console.error('Error getting profile photo URL:', error);
-        return null;
-    }
-}
-
-export async function deleteProfilePhoto(userId: string, photoId: string) {
-    try {
-        // Delete from storage
-        await storage.deleteFile(config.profilePhotosBucketID, photoId);
-
-        // Update user profile
-        await databases.updateDocument(
-            config.databaseID,
-            config.usersCollectionID,
-            userId,
-            {
-                photoId: null
-            }
-        );
-    } catch (error) {
-        console.error('Error deleting profile photo:', error);
-        throw error;
-    }
-} 
+    return uploadedFile.$id;
+  } catch (err) {
+    console.error('Error uploading profile photo:', err);
+    throw err;
+  }
+};
