@@ -1,30 +1,39 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, Image, Linking } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams } from 'expo-router';
+import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
+import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
+import { getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { account, config, databases, Query } from '@/lib/appwrite/appwrite';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import { databases, config, account, Query } from '@/lib/appwrite/appwrite';
-import { getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { FlatList, Image, Linking, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import icons from '@/constants/icons';
 import images from '@/constants/images';
 import { Alert } from 'react-native';
 
-import { useEvents } from '../context/EventContext';
-import EventForm from '../components/EventForm';
 import { Event as AppEvent } from '@/lib/types/Events';
+import { TravelAnnouncementWithUserInfo } from '@/lib/types/Travel';
+import EventForm from '../components/EventForm';
+import TravelForm from '../components/TravelForm';
+import { useEvents } from '../context/EventContext';
 
 dayjs.extend(relativeTime);
+
+// Combined feed item type
+type FeedItem = (AppEvent & { type: 'event'; creatorName?: string }) | (TravelAnnouncementWithUserInfo & { type: 'travel' });
 export default function Feed() {
   const { events, refetchEvents } = useEvents();
   const params = useLocalSearchParams();
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<AppEvent[]>([]);
+  const [travelAnnouncements, setTravelAnnouncements] = useState<TravelAnnouncementWithUserInfo[]>([]);
   const [formVisible, setFormVisible] = useState(false);
+  const [travelFormVisible, setTravelFormVisible] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [friends, setFriends] = useState<string[]>([]);
 
- useEffect(() => {
+  useEffect(() => {
     const init = async () => {
       try {
         const user = await account.get();
@@ -35,6 +44,7 @@ export default function Feed() {
         setFriends(userFriends);
 
         if (userFriends.length > 0) {
+          // Fetch friend events
           const friendEvents = await databases.listDocuments(
             config.databaseID!,
             config.eventsCollectionID!,
@@ -53,13 +63,16 @@ export default function Feed() {
               return hasNotHappened;
             })
             .map(event => ({
-              ...event,
+              ...(event as unknown as AppEvent),
               creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
               isAttending: event.attendees?.includes(user.$id ?? ''),
             }));
-          setEventsWithCreatorNames(filteredAndMappedEvents);
+          setEventsWithCreatorNames(filteredAndMappedEvents as AppEvent[]);
+
+          // Fetch travel announcements
+          await fetchTravelAnnouncements(userFriends);
         }
-      } catch (err) {
+      } catch (err: any) {
         if (err?.message?.includes('missing scope (account)')) return;
         console.error('Error getting current user or friends:', err);
       }
@@ -68,10 +81,34 @@ export default function Feed() {
     refetchEvents();
   }, []);
 
+  const fetchTravelAnnouncements = async (friendIds: string[]) => {
+    try {
+      const travelData = await getFriendsTravelAnnouncements(friendIds);
+
+      // Fetch user names and photos for each travel announcement
+      const travelWithUserInfo = await Promise.all(
+        travelData.map(async (travel) => {
+          const userProfile = await getUserProfile(travel.userId);
+          const userPhotoUrl = await getUserProfilePhotoUrl(travel.userId);
+
+          return {
+            ...travel,
+            userName: userProfile?.name || 'Unknown User',
+            userPhotoUrl,
+          } as TravelAnnouncementWithUserInfo;
+        })
+      );
+
+      setTravelAnnouncements(travelWithUserInfo);
+    } catch (error) {
+      console.error('Error fetching travel announcements:', error);
+    }
+  };
+
   const openInMaps = (location: string) => {
-  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
-  Linking.openURL(url);
-};
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+    Linking.openURL(url);
+  };
 
   const handleAttend = async (event: AppEvent) => {
     if (!currentUserId) return;
@@ -135,12 +172,22 @@ export default function Feed() {
     return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
   });
 
-  const renderEventItem = ({ item }: { item: AppEvent }) => (
+  // Combine and sort events and travel announcements for the feed
+  const feedItems: FeedItem[] = [
+    ...eventsWithCreatorNames.map(event => ({ ...event, type: 'event' as const })),
+    ...travelAnnouncements.map(travel => ({ ...travel, type: 'travel' as const }))
+  ].sort((a, b) => {
+    const aDate = a.type === 'event' ? new Date(a.startTime) : new Date(a.createdAt);
+    const bDate = b.type === 'event' ? new Date(b.startTime) : new Date(b.createdAt);
+    return bDate.getTime() - aDate.getTime();
+  });
+
+  const renderEventItem = ({ item }: { item: AppEvent & { creatorName?: string } }) => (
     <View className="bg-white rounded-lg shadow-md mb-4 mx-4">
       {/* Event Header */}
       <View className="flex-row items-center p-3">
         <Image
-          source={images.avatar} // Placeholder for creator's avatar
+          source={images.avatar} // TODO: Use profile photo
           className="w-10 h-10 rounded-full mr-3"
         />
         <View>
@@ -199,21 +246,89 @@ export default function Feed() {
     </View>
   );
 
+  const renderTravelItem = ({ item }: { item: TravelAnnouncementWithUserInfo }) => (
+    <View className="bg-white rounded-lg shadow-md mb-4 mx-4">
+      {/* Travel Header */}
+      <View className="flex-row items-center p-3">
+        <Image
+          source={item.userPhotoUrl ? { uri: item.userPhotoUrl } : images.avatar}
+          className="w-10 h-10 rounded-full mr-3"
+        />
+        <View>
+          <Text className="font-rubik-semibold text-base">{item.userName}</Text>
+          <Text className="text-gray-500 text-xs">{dayjs(item.createdAt).fromNow()}</Text>
+        </View>
+      </View>
+
+      {/* Travel Image - Using a travel/destination placeholder */}
+      <Image
+        source={images.onboarding} // You could add a travel-specific placeholder
+        className="w-full h-48 object-cover"
+      />
+
+      {/* Travel Details */}
+      <View className="p-3">
+        <View className="flex-row items-center mb-2">
+          <Image source={icons.location} className="w-5 h-5 mr-2" resizeMode="contain" />
+          <Text className="font-rubik-bold text-lg text-primary-600">
+            Traveling to {item.destination}
+          </Text>
+        </View>
+
+        <View className="flex-row items-center mb-2">
+          <Image source={icons.calendar} className="w-4 h-4 mr-2" resizeMode="contain" />
+          <Text className="text-gray-700 text-sm">
+            {dayjs(item.startDate).format('MMM D')} - {dayjs(item.endDate).format('MMM D, YYYY')}
+          </Text>
+        </View>
+
+        {item.description && (
+          <Text className="text-gray-800 text-base mt-2">{item.description}</Text>
+        )}
+      </View>
+
+      {/* Travel Actions */}
+      <View className="flex-row justify-around p-3 border-t border-gray-200">
+        <TouchableOpacity className="flex-row items-center">
+          <Image source={icons.heart} className="w-5 h-5 mr-1" resizeMode="contain" />
+          <Text className="text-primary-500 font-rubik-medium">Like</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => Alert.alert('Message', 'Messaging feature coming soon!')} className="flex-row items-center">
+          <Image source={icons.chat} className="w-5 h-5 mr-1" resizeMode="contain" />
+          <Text className="text-primary-500 font-rubik-medium">Message</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const renderFeedItem = ({ item }: { item: FeedItem }) => {
+    if (item.type === 'event') {
+      return renderEventItem({ item: item as AppEvent & { creatorName?: string } });
+    } else {
+      return renderTravelItem({ item: item as TravelAnnouncementWithUserInfo });
+    }
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-gray-100">
       {/* Header */}
       <View className="flex-row items-center justify-between p-4 bg-white border-b border-gray-200">
-        <Text className="text-2xl font-rubik-extrabold">For You</Text>
-        <TouchableOpacity onPress={() => setFormVisible(true)}>
-          <Image source={icons.edit} className="w-6 h-6" resizeMode="contain" />
-        </TouchableOpacity>
+        <Text className="text-2xl font-rubik-extrabold">Up2 You</Text>
+        <View className="flex-row space-x-3">
+          <TouchableOpacity onPress={() => setTravelFormVisible(true)}>
+            <Image source={icons.location} className="w-6 h-6" resizeMode="contain" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setFormVisible(true)}>
+            <Image source={icons.edit} className="w-6 h-6" resizeMode="contain" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Event Feed */}
       <FlatList
-        data={sortedEvents}
-        keyExtractor={(item) => item.$id}
-        renderItem={renderEventItem}
+        data={feedItems}
+        keyExtractor={(item) => `${item.type}-${item.$id}`}
+        renderItem={renderFeedItem}
         contentContainerStyle={{ paddingVertical: 16, paddingBottom: 70 }}
         showsVerticalScrollIndicator={false}
       />
@@ -225,6 +340,22 @@ export default function Feed() {
           onClose={() => setFormVisible(false)}
           currentUserId={currentUserId ?? ''}
           friends={friends}
+          selectedDateTime={new Date().toISOString()}
+        />
+      )}
+
+      {/* Travel Form Modal */}
+      {travelFormVisible && (
+        <TravelForm
+          visible={travelFormVisible}
+          onClose={() => setTravelFormVisible(false)}
+          onSuccess={() => {
+            // Refresh travel announcements
+            if (friends.length > 0) {
+              fetchTravelAnnouncements(friends);
+            }
+          }}
+          currentUserId={currentUserId ?? ''}
         />
       )}
     </SafeAreaView>

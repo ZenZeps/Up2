@@ -1,7 +1,7 @@
 import { Account, Avatars, Client, Databases, ID, InputFile, Query, Storage } from "react-native-appwrite";
 import { authDebug } from "../debug/authDebug";
 
-export { ID, Query, InputFile };
+export { ID, InputFile, Query };
 
 export const config = {
   platform: "com.Up2.Up2",
@@ -11,6 +11,7 @@ export const config = {
   usersCollectionID: process.env.EXPO_PUBLIC_APPWRITE_USERS_COLLECTION_ID!,
   eventsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_EVENTS_COLLECTION_ID!,
   friendRequestsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_FRIENDREQUESTS_COLLECTION_ID!,
+  travelCollectionID: process.env.EXPO_PUBLIC_APPWRITE_TRAVEL_COLLECTION_ID!,
   profilePhotosBucketID: process.env.EXPO_PUBLIC_APPWRITE_PROFILE_PHOTOS_BUCKET_ID!,
 };
 
