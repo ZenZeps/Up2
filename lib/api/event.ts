@@ -269,9 +269,9 @@ export async function fetchUserEvents(userId: string): Promise<Event[]> {
       ...attendeeEvents.documents,
       ...inviteeEvents.documents
     ];
-    
+
     // Remove duplicates based on $id
-    const uniqueDocuments = allDocuments.filter((doc, index, self) => 
+    const uniqueDocuments = allDocuments.filter((doc, index, self) =>
       self.findIndex(d => d.$id === doc.$id) === index
     );
 

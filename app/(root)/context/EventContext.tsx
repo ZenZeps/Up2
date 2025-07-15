@@ -25,10 +25,10 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Debug user changes
   React.useEffect(() => {
-    authDebug.info('EventContext: User changed', { 
-      hasUser: !!user, 
+    authDebug.info('EventContext: User changed', {
+      hasUser: !!user,
       userId: userId,
-      userEmail: user?.email 
+      userEmail: user?.email
     });
   }, [userId, user?.email]);
 
@@ -70,10 +70,10 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Update local state when fetched events change
   React.useEffect(() => {
-    authDebug.info('EventContext: fetchedEvents changed', { 
-      hasEvents: !!fetchedEvents, 
+    authDebug.info('EventContext: fetchedEvents changed', {
+      hasEvents: !!fetchedEvents,
       eventsCount: fetchedEvents?.length || 0,
-      userId 
+      userId
     });
     if (fetchedEvents) {
       setEvents(fetchedEvents);
@@ -86,7 +86,7 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
   // Refetch events and invalidate cache
   const refetchEvents = useCallback(async () => {
     if (!userId) return;
-    
+
     authDebug.info(`Refetching events for user: ${userId}`);
     invalidateCache(new RegExp(`events-user-${userId}`)); // Invalidate user-specific cache
     await refetch();

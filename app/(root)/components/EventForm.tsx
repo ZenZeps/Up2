@@ -1,9 +1,9 @@
+import { CATEGORIES } from '@/constants/categories';
 import { createEvent } from '@/lib/api/event';
 import { getAllUsers } from '@/lib/api/user';
-import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { config, databases, ID } from '@/lib/appwrite/appwrite';
 import { Event } from '@/lib/types/Events';
-import { CATEGORIES } from '@/constants/categories';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import dayjs from 'dayjs';
 import React, { useEffect, useState } from 'react';
 import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -142,8 +142,8 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
   // Handle tag selection
   const handleTagToggle = (tagValue: string) => {
-    setTags(prev => 
-      prev.includes(tagValue) 
+    setTags(prev =>
+      prev.includes(tagValue)
         ? prev.filter(t => t !== tagValue)
         : [...prev, tagValue]
     );

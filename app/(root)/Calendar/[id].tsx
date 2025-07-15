@@ -1,10 +1,10 @@
+import { getEventColor } from '@/constants/categories';
 import icons from '@/constants/icons';
 import { getAllEvents } from '@/lib/api/event';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
-import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { account, config, databases } from '@/lib/appwrite/appwrite';
 import { Event as AppEvent } from '@/lib/types/Events';
-import { getEventColor } from '@/constants/categories';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Alert, Image, Platform, Text, TouchableOpacity, View } from 'react-native';

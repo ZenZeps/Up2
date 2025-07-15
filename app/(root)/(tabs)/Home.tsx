@@ -1,6 +1,6 @@
+import { getEventColor } from '@/constants/categories';
 import { getActiveTravelForUser } from '@/lib/api/travel';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
-import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { account } from '@/lib/appwrite/appwrite';
 import { useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
@@ -8,7 +8,7 @@ import { authDebug } from '@/lib/debug/authDebug';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
-import { getEventColor } from '@/constants/categories';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { useLocalSearchParams } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
@@ -237,7 +237,7 @@ export default function Home() {
 
     const isMonthView = viewMode === 'month';
     const eventColor = event.color || colors.primary;
-    
+
     // Convert hex color to rgba for opacity in month view
     const hexToRgba = (hex: string, alpha: number) => {
       const r = parseInt(hex.slice(1, 3), 16);
@@ -246,7 +246,7 @@ export default function Home() {
       return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     };
 
-    const backgroundColor = isMonthView 
+    const backgroundColor = isMonthView
       ? hexToRgba(eventColor, 0.4) // 40% opacity for month view
       : eventColor; // Full opacity for week/day view
 

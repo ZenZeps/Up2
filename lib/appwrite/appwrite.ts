@@ -85,13 +85,13 @@ export async function logout() {
   try {
     // Import cache manager
     const { cacheManager } = await import("../debug/cacheManager");
-    
+
     // Clear all cached data to prevent cross-user contamination
     cacheManager.clear();
-    
+
     // Delete the current session
     await account.deleteSession("current");
-    
+
     return true;
   } catch (error) {
     console.error("Logout error:", error);
@@ -174,7 +174,7 @@ export async function getCurrentUserWithProfile() {
     try {
       const { getUserProfile } = await import('../api/user');
       const profile = await getUserProfile(currentUser.$id);
-      
+
       return {
         ...currentUser,
         profile

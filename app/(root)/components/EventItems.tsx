@@ -1,8 +1,8 @@
 // components/EventItem.tsx
-import React from 'react';
-import { View, Text, Button } from 'react-native';
-import { Event } from '@/lib/types/Events';
 import { getCategoriesByValues } from '@/constants/categories';
+import { Event } from '@/lib/types/Events';
+import React from 'react';
+import { Button, Text, View } from 'react-native';
 import { useEvents } from '../context/EventContext';
 
 export default function EventItem({ event }: { event: Event }) {
@@ -15,7 +15,7 @@ export default function EventItem({ event }: { event: Event }) {
       <Text className="text-sm text-gray-600">{event.location}</Text>
       <Text className="text-xs text-gray-500">{event.startTime}</Text>
       <Text className="text-xs text-gray-500">{event.endTime}</Text>
-      
+
       {/* Display tags */}
       {eventCategories.length > 0 && (
         <View className="flex-row flex-wrap mt-1">
@@ -27,7 +27,7 @@ export default function EventItem({ event }: { event: Event }) {
           ))}
         </View>
       )}
-      
+
       <Button title="Delete" color="red" onPress={() => deleteEvent(event.$id)} />
     </View>
   );

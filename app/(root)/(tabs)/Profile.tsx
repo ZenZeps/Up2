@@ -1,12 +1,12 @@
+import { CATEGORIES } from '@/constants/categories';
 import icons from '@/constants/icons';
 import images from '@/constants/images';
-import { CATEGORIES } from '@/constants/categories';
 import { getProfilePhotoUrl, pickProfilePhoto, uploadProfilePhoto } from '@/lib/api/profilePhoto';
 import { getFriends, getUserProfile, updateUserProfile } from '@/lib/api/user';
-import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { logout } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -49,7 +49,7 @@ const Profile = () => {
       try {
         // Check if we already have profile data in global context
         const existingProfile = user?.profile;
-        
+
         const [profile, userFriends] = await Promise.all([
           existingProfile || getUserProfile(userId), // Use cached data if available
           getFriends(userId)
@@ -161,7 +161,7 @@ const Profile = () => {
   const handleLogout = async () => {
     try {
       await logout();
-      
+
       // Wait a moment for logout to complete, then force refetch to clear any cached user data
       setTimeout(async () => {
         try {
@@ -170,7 +170,7 @@ const Profile = () => {
           // Ignore errors during refetch after logout
         }
       }, 100);
-      
+
       router.replace('/SignIn');
     } catch (err) {
       console.error('Logout failed:', err);

@@ -1,8 +1,8 @@
-import React from 'react';
 import { AuthDebugger } from '@/components/AuthDebugger';
+import React from 'react';
 
 const AuthDebug = () => {
-  return <AuthDebugger />;
+    return <AuthDebugger />;
 };
 
 export default AuthDebug;
