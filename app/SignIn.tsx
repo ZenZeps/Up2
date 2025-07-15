@@ -11,6 +11,7 @@ import {
   signupWithEmail,
 } from "@/lib/appwrite/appwrite";
 import { authDebug } from "@/lib/debug/authDebug";
+import { useGlobalContext } from "@/lib/global-provider";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -28,6 +29,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 const SignIn = () => {
   const router = useRouter();
+  const { refetch } = useGlobalContext();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -57,6 +59,19 @@ const SignIn = () => {
 
     try {
       setLoading(true);
+
+      // Clear any existing sessions before login attempt
+      try {
+        const sessions = await account.listSessions();
+        if (sessions.sessions.length > 0) {
+          authDebug.info("Clearing existing sessions before login");
+          for (const session of sessions.sessions) {
+            await account.deleteSession(session.$id);
+          }
+        }
+      } catch (clearError) {
+        authDebug.debug("Could not clear sessions (this is normal for guest users)");
+      }
 
       if (mode === "signup") {
         authDebug.info("Starting signup process");
@@ -118,10 +133,10 @@ const SignIn = () => {
       }
 
       // Navigate to the home screen after successful login
-      authDebug.info("Authentication successful, navigating to home");
+      authDebug.info("Authentication successful - navigating to home");
 
-      // Using replace() with string path
-      router.replace("/(root)" as any);
+      // Immediately navigate to home - the global state will catch up
+      router.replace("/(root)/(tabs)/Home");
 
     } catch (err: any) {
       authDebug.error("Authentication failed", err);

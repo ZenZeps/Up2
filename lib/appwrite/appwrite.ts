@@ -4,7 +4,7 @@ import { authDebug } from "../debug/authDebug";
 export { ID, InputFile, Query };
 
 export const config = {
-  platform: "com.Up2.Up2",
+  platform: "com.up2.Up2", // Fixed to match app.json iOS bundle identifier
   endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT!,
   projectID: process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID!,
   databaseID: process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID!,
@@ -46,39 +46,12 @@ export async function loginWithEmail(email: string, password: string) {
     // Start login process
     authDebug.info(`Login attempt for email: ${email.substring(0, 3)}****`);
 
-    let preferences;
-    try {
-      preferences = await account.getPrefs();
-      authDebug.debug("Retrieved user preferences");
-    } catch (prefsErr) {
-      authDebug.debug("Could not retrieve preferences (expected for new login)");
-      preferences = { loginAttempts: 0, lastLoginAttempt: 0 };
-    }
-
-    const loginAttempts = preferences.loginAttempts || 0;
-    const lastAttemptTime = preferences.lastLoginAttempt || 0;
-
-    // Check if user is locked out
-    if (loginAttempts >= MAX_LOGIN_ATTEMPTS) {
-      const timeElapsed = Date.now() - lastAttemptTime;
-      if (timeElapsed < LOCKOUT_DURATION) {
-        throw new Error(`Too many login attempts. Please try again in ${Math.ceil((LOCKOUT_DURATION - timeElapsed) / 60000)} minutes.`);
-      }
-      // Reset attempts after lockout period
-      authDebug.debug("Resetting login attempts after lockout period");
-      try {
-        await account.updatePrefs({ loginAttempts: 0 });
-      } catch (resetErr) {
-        authDebug.debug("Could not reset preferences (not critical)");
-      }
-    }
-
-    // Create session
+    // Create session directly without checking preferences first
     authDebug.debug("Creating email password session");
     const session = await account.createEmailPasswordSession(email, password);
     authDebug.info("Login successful, session created", { sessionId: session.$id });
 
-    // Reset attempts on successful login
+    // Reset attempts on successful login (optional, only if session exists)
     try {
       await account.updatePrefs({ loginAttempts: 0 });
       authDebug.debug("Reset login attempts counter");
@@ -100,18 +73,8 @@ export async function loginWithEmail(email: string, password: string) {
       authDebug.debug("Expected auth error during login", errorMessage);
     }
 
-    // Increment login attempts on failure
-    try {
-      const preferences = await account.getPrefs();
-      const loginAttempts = (preferences.loginAttempts || 0) + 1;
-      await account.updatePrefs({
-        loginAttempts,
-        lastLoginAttempt: Date.now()
-      });
-      authDebug.debug(`Incremented login attempts to ${loginAttempts}`);
-    } catch (prefsError) {
-      authDebug.debug("Could not update preferences after failed login (not critical)");
-    }
+    // Simple error logging without preference manipulation during failure
+    authDebug.debug("Could not update preferences after failed login (not critical)");
 
     throw err;
   }

@@ -3,7 +3,7 @@ import { authDebug } from "../debug/authDebug";
 
 // Exported configuration 
 export const config = {
-  platform: "com.Up2.Up2",
+  platform: "com.up2.Up2", // Fixed to match app.json iOS bundle identifier
   endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT!,
   projectID: process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID!,
   databaseID: process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID!,
