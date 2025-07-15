@@ -210,7 +210,7 @@ const SignUp = () => {
   };
 
   const renderStep1 = () => (
-    <View className="px-10 mt-6">
+    <View className="px-10 mt-6 pb-8">
       <Text className="text-3xl font-rubik-semibold text-black-300 text-center mb-6">
         Create Your Account
       </Text>
@@ -282,7 +282,7 @@ const SignUp = () => {
   );
 
   const renderStep2 = () => (
-    <View className="px-10 mt-6">
+    <View className="px-10 mt-6 pb-8">
       <Text className="text-3xl font-rubik-semibold text-black-300 text-center mb-6">
         Add Profile Photo
       </Text>
@@ -340,7 +340,7 @@ const SignUp = () => {
   );
 
   const renderStep3 = () => (
-    <View className="px-10 mt-6">
+    <View className="px-10 mt-6 flex-1">
       <Text className="text-3xl font-rubik-semibold text-black-300 text-center mb-4">
         Choose Your Interests
       </Text>
@@ -348,32 +348,35 @@ const SignUp = () => {
         Select what you're interested in (you can change this later)
       </Text>
 
-      <FlatList
-        data={preferenceOptions}
-        numColumns={2}
-        keyExtractor={(item) => item.value}
-        contentContainerStyle={{ paddingBottom: 20 }}
-        renderItem={({ item }) => {
-          const isSelected = signUpData.preferences.includes(item.value);
-          return (
-            <TouchableOpacity
-              onPress={() => togglePreference(item.value)}
-              className={`flex-1 m-2 p-4 rounded-lg border-2 items-center min-h-[100px] justify-center ${
-                isSelected ? 'border-primary-300 bg-blue-50' : 'border-gray-300 bg-white'
-              }`}
-            >
-              <Text className="text-3xl mb-2">{item.emoji}</Text>
-              <Text className={`font-rubik-medium ${
-                isSelected ? 'text-primary-300' : 'text-black-300'
-              }`}>
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        }}
-      />
+      <View className="flex-1">
+        <FlatList
+          data={preferenceOptions}
+          numColumns={2}
+          keyExtractor={(item) => item.value}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => {
+            const isSelected = signUpData.preferences.includes(item.value);
+            return (
+              <TouchableOpacity
+                onPress={() => togglePreference(item.value)}
+                className={`flex-1 m-2 p-4 rounded-lg border-2 items-center min-h-[100px] justify-center ${
+                  isSelected ? 'border-primary-300 bg-blue-50' : 'border-gray-300 bg-white'
+                }`}
+              >
+                <Text className="text-3xl mb-2">{item.emoji}</Text>
+                <Text className={`font-rubik-medium ${
+                  isSelected ? 'text-primary-300' : 'text-black-300'
+                }`}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
 
-      <View className="flex-row justify-between mt-4">
+      <View className="flex-row justify-between mt-4 pb-4">
         <TouchableOpacity
           onPress={handleBack}
           className="rounded-full py-4 px-8 bg-gray-300 flex-1 mr-2"
@@ -424,25 +427,40 @@ const SignUp = () => {
   );
 
   return (
-    <SafeAreaView className="bg-white h-full">
+    <SafeAreaView className="bg-white flex-1">
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        <ScrollView contentContainerClassName="h-full justify-center">
-          <Image
-            source={images.onboarding}
-            className="w-full h-2/5"
-            resizeMode="contain"
-          />
-          
-          {renderProgressIndicator()}
-          
-          {currentStep === 1 && renderStep1()}
-          {currentStep === 2 && renderStep2()}
-          {currentStep === 3 && renderStep3()}
-        </ScrollView>
+        {currentStep === 3 ? (
+          // Step 3 needs different layout for the FlatList
+          <View className="flex-1">
+            <Image
+              source={images.onboarding}
+              className="w-full h-1/4"
+              resizeMode="contain"
+            />
+            
+            {renderProgressIndicator()}
+            
+            {renderStep3()}
+          </View>
+        ) : (
+          // Steps 1 and 2 use ScrollView
+          <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+            <Image
+              source={images.onboarding}
+              className="w-full h-2/5"
+              resizeMode="contain"
+            />
+            
+            {renderProgressIndicator()}
+            
+            {currentStep === 1 && renderStep1()}
+            {currentStep === 2 && renderStep2()}
+          </ScrollView>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
