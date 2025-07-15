@@ -61,6 +61,8 @@ export default function RootLayout() {
       <GlobalProvider>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(root)" />
+          <Stack.Screen name="SignIn" />
+          <Stack.Screen name="SignUp" />
         </Stack>
       </GlobalProvider>
     </ThemeProvider>

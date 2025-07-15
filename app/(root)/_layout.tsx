@@ -1,5 +1,5 @@
 import { useGlobalContext } from '@/lib/global-provider';
-import { Redirect, Slot } from 'expo-router';
+import { Slot, useRouter } from 'expo-router';
 import React from 'react';
 import { EventsProvider } from './context/EventContext';
 
@@ -14,6 +14,7 @@ const isDev = __DEV__;
 export default function RootLayout() {
   const { isLoggedIn, loading } = useGlobalContext();
   const [showDebug, setShowDebug] = React.useState(false);
+  const router = useRouter();
 
   // Only mount the debug dashboard after the component is rendered
   React.useEffect(() => {
@@ -25,7 +26,17 @@ export default function RootLayout() {
     }
   }, []);
 
-  if (!loading && !isLoggedIn) return <Redirect href="/SignIn" />;
+  // Handle authentication redirect
+  React.useEffect(() => {
+    if (!loading && !isLoggedIn) {
+      router.replace('/SignIn');
+    }
+  }, [loading, isLoggedIn, router]);
+
+  // Don't render authenticated content if not logged in
+  if (!loading && !isLoggedIn) {
+    return null; // Let the useEffect handle navigation
+  }
 
   return (
     <EventsProvider>

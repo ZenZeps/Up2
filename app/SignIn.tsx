@@ -1,14 +1,8 @@
 import images from "@/constants/images";
 import {
-  createUserProfile,
-  getUserProfile,
-  updateUserProfile,
-} from "@/lib/api/user";
-import {
   account,
   forgotPassword,
   loginWithEmail,
-  signupWithEmail,
 } from "@/lib/appwrite/appwrite";
 import { authDebug } from "@/lib/debug/authDebug";
 import { useGlobalContext } from "@/lib/global-provider";
@@ -30,30 +24,21 @@ import { SafeAreaView } from "react-native-safe-area-context";
 const SignIn = () => {
   const router = useRouter();
   const { refetch } = useGlobalContext();
-  const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState(""); // NEW
-  const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleAuth = async () => {
+  const handleLogin = async () => {
     const trimmedEmail = email.trim().toLowerCase();
-    const trimmedName = name.trim();
 
     // Input validation
-    if (!trimmedEmail || !password || (mode === "signup" && (!trimmedName || !confirmPassword))) {
+    if (!trimmedEmail || !password) {
       Alert.alert("Error", "Please fill in all required fields.");
       return;
     }
 
     if (password.length < 8) {
       Alert.alert("Weak Password", "Password must be at least 8 characters.");
-      return;
-    }
-
-    if (mode === "signup" && password !== confirmPassword) {
-      Alert.alert("Mismatch", "Passwords do not match.");
       return;
     }
 
@@ -73,20 +58,7 @@ const SignIn = () => {
         authDebug.debug("Could not clear sessions (this is normal for guest users)");
       }
 
-      if (mode === "signup") {
-        authDebug.info("Starting signup process");
-        await signupWithEmail(trimmedEmail, password, trimmedName);
-        authDebug.info("User created, logging in to create session");
-
-        // Log in to create a session so verification can be sent
-        await loginWithEmail(trimmedEmail, password);
-        authDebug.info("Creating email verification");
-        await account.createVerification(`myapp://auth/verify`);
-        Alert.alert("Verify Email", "Check your email to verify your account.");
-        return;
-      }
-
-      // For login flow
+      // Login flow
       authDebug.info("Logging in user");
       await loginWithEmail(trimmedEmail, password);
 
@@ -101,41 +73,8 @@ const SignIn = () => {
         return;
       }
 
-      let existingProfile = null;
-      try {
-        authDebug.info("Fetching user profile");
-        existingProfile = await getUserProfile(user.$id);
-        authDebug.info("Profile found", { profileId: existingProfile?.$id });
-      } catch (profileError: any) {
-        authDebug.warn("Error fetching profile, will create if needed", profileError);
-      }
-
-      if (!existingProfile) {
-        authDebug.info("Creating new user profile");
-        await createUserProfile({
-          $id: user.$id,
-          name: user.name || trimmedName || "Unnamed",
-          email: user.email ?? trimmedEmail,
-          isPublic: true,
-          preferences: [],
-          friends: [],
-        });
-      } else {
-        authDebug.info("Updating existing user profile");
-        await updateUserProfile({
-          $id: user.$id,
-          name: user.name || existingProfile.name,
-          email: user.email ?? existingProfile.email,
-          isPublic: existingProfile.isPublic,
-          preferences: existingProfile.preferences,
-          friends: existingProfile.friends || [],
-        });
-      }
-
-      // Navigate to the home screen after successful login
+      // Navigate to home
       authDebug.info("Authentication successful - navigating to home");
-
-      // Immediately navigate to home - the global state will catch up
       router.replace("/(root)/(tabs)/Home");
 
       // Trigger global state refresh in the background (non-blocking)
@@ -189,21 +128,8 @@ const SignIn = () => {
           />
           <View className="px-10 mt-6">
             <Text className="text-3xl font-rubik-semibold text-black-300 text-center mb-4">
-              {mode === "login" ? "Welcome Back" : "Create Account"}
+              Welcome Back
             </Text>
-
-            {mode === "signup" && (
-              <>
-                <TextInput
-                  placeholder="Full Name"
-                  value={name}
-                  onChangeText={setName}
-                  className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
-                  placeholderTextColor="#aaa"
-                  autoCapitalize="words"
-                />
-              </>
-            )}
 
             <TextInput
               placeholder="Email"
@@ -224,55 +150,34 @@ const SignIn = () => {
               placeholderTextColor="#aaa"
             />
 
-            {mode === "signup" && (
-              <TextInput
-                placeholder="Confirm Password"
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
-                secureTextEntry
-                placeholderTextColor="#aaa"
-              />
-            )}
-
             <TouchableOpacity
-              onPress={handleAuth}
+              onPress={handleLogin}
               disabled={loading}
               className={`rounded-full py-4 mt-2 ${loading ? "bg-gray-300" : "bg-primary-300"
                 }`}
             >
               <Text className="text-white text-lg font-rubik-medium text-center">
-                {loading
-                  ? "Please wait..."
-                  : mode === "login"
-                    ? "Login"
-                    : "Sign Up"}
+                {loading ? "Please wait..." : "Login"}
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() =>
-                setMode((prev) => (prev === "login" ? "signup" : "login"))
-              }
+              onPress={() => router.push('/SignUp')}
               className="mt-4"
             >
               <Text className="text-center text-black-200 font-rubik">
-                {mode === "login"
-                  ? "Don't have an account? Sign Up"
-                  : "Already have an account? Log In"}
+                Don't have an account? Sign Up
               </Text>
             </TouchableOpacity>
 
-            {mode === "login" && (
-              <TouchableOpacity
-                onPress={handleForgotPassword}
-                className="mt-2 self-center"
-              >
-                <Text className="text-primary-300 font-rubik-medium">
-                  Forgot Password?
-                </Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              onPress={handleForgotPassword}
+              className="mt-2 self-center"
+            >
+              <Text className="text-primary-300 font-rubik-medium">
+                Forgot Password?
+              </Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
