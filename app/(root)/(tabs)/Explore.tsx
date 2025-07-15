@@ -364,7 +364,7 @@ const Explore = () => {
                         source={userPhotoUrls[user.$id] ? { uri: userPhotoUrls[user.$id] } : images.avatar}
                         className="w-10 h-10 rounded-full mr-3"
                       />
-                      <Text 
+                      <Text
                         className="text-lg font-rubik-medium"
                         style={{ color: isFriend ? colors.primary : colors.text }}
                       >
@@ -389,14 +389,14 @@ const Explore = () => {
                           }
                         }}
                         className="px-4 py-2 rounded-full shadow-sm"
-                        style={{ 
+                        style={{
                           backgroundColor: requestedUsers.includes(user.$id) ? colors.secondary : colors.primary
                         }}
                       >
                         <Text
                           className="font-rubik-medium text-sm"
-                          style={{ 
-                            color: requestedUsers.includes(user.$id) ? colors.text : colors.background 
+                          style={{
+                            color: requestedUsers.includes(user.$id) ? colors.text : colors.background
                           }}
                         >
                           {requestedUsers.includes(user.$id) ? 'Requested' : 'Add'}

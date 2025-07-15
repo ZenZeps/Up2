@@ -281,16 +281,19 @@ export default function Home() {
           alignItems: 'center',
           justifyContent: 'center',
           minHeight: 32,
-          backgroundColor: isTravelDate ? '#e3f2fd' : 'transparent',
-          borderRadius: isTravelDate ? 6 : 0,
-          margin: isTravelDate ? 2 : 0,
+          // More subtle highlighting that looks like a header badge
+          backgroundColor: isTravelDate ? colors.primary + '15' : 'transparent',
+          borderWidth: isTravelDate ? 2 : 0,
+          borderColor: isTravelDate ? colors.primary : 'transparent',
+          borderRadius: isTravelDate ? 16 : 0,
+          margin: isTravelDate ? 1 : 0,
         }}
       >
         <Text
           style={{
             fontSize: 16,
             fontWeight: isTravelDate ? 'bold' : 'normal',
-            color: isTravelDate ? '#1976d2' : '#333',
+            color: isTravelDate ? colors.primary : colors.text,
           }}
         >
           {date.getDate()}
@@ -298,19 +301,7 @@ export default function Home() {
       </View>
     );
   };
-
-  // Dynamic cell style function for travel date highlighting
-  const getCalendarCellStyle = (date?: Date) => {
-    if (!date || !travelData) return {};
-
-    const isTravelDate = isDateInTravelPeriod(date, travelData);
-    return isTravelDate ? {
-      backgroundColor: '#e3f2fd',
-      borderRadius: 6,
-      margin: 2,
-    } : {};
-  };
-
+  // Custom header renderer for highlighting travel days
   // Handler for pressing an event (to view/edit)
   const handlePressEvent = (event: any) => {
     if (event && event.rawEvent) {
@@ -456,11 +447,13 @@ export default function Home() {
             onPressEvent={handlePressEvent}
             renderEvent={renderEvent}
             renderCustomDateForMonth={renderCustomDateForMonth}
-            calendarCellStyle={getCalendarCellStyle}
             swipeEnabled={true}
             overlapOffset={8}
             ampm={false}
-            headerContainerStyle={{ height: 50 }}
+            headerContainerStyle={{
+              height: 50,
+              backgroundColor: colors.surface,
+            }}
           />
         )}
       </View>
