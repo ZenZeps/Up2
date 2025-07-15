@@ -111,6 +111,7 @@ export async function debugUserEvents() {
         console.log(`    Creator: ${event.creatorId}`);
         console.log(`    Start: ${event.startTime}`);
         console.log(`    Attendees: ${event.attendees?.length || 0}`);
+        console.log(`    Tags: ${event.tags?.join(', ') || 'No tags'}`);
       });
     } else {
       console.log('  ⚠️  No events found for this user');

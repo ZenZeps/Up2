@@ -1,5 +1,6 @@
 import icons from '@/constants/icons';
 import images from '@/constants/images';
+import { CATEGORIES } from '@/constants/categories';
 import { getProfilePhotoUrl, pickProfilePhoto, uploadProfilePhoto } from '@/lib/api/profilePhoto';
 import { getFriends, getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
@@ -20,13 +21,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-const eventTypeOptions = [
-  { label: 'Sports', value: 'sports' },
-  { label: 'Party', value: 'party' },
-  { label: 'Study', value: 'study' },
-  { label: 'Family', value: 'family' },
-];
 
 const Profile = () => {
   const router = useRouter();
@@ -296,7 +290,7 @@ const Profile = () => {
           <View className="mt-6">
             <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>Interests</Text>
             <View className="flex-row flex-wrap">
-              {eventTypeOptions.map((option) => (
+              {CATEGORIES.map((option) => (
                 <TouchableOpacity
                   key={option.value}
                   onPress={() => isEditing && handleInterestToggle(option.value)}

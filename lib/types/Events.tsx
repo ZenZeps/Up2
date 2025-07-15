@@ -10,6 +10,7 @@ export interface Event {
   attendees: string[]; // Users who have confirmed attendance
   isAttending?: boolean;
   description?: string;
+  tags: string[]; // Event categories/tags (sports, music, art, etc.)
 }
 
 export interface EventWithDetails extends Event {

@@ -3,6 +3,7 @@ import { getAllUsers } from '@/lib/api/user';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { config, databases, ID } from '@/lib/appwrite/appwrite';
 import { Event } from '@/lib/types/Events';
+import { CATEGORIES } from '@/constants/categories';
 import dayjs from 'dayjs';
 import React, { useEffect, useState } from 'react';
 import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -28,6 +29,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [description, setDescription] = useState('');
   const [inviteeIds, setInviteeIds] = useState<string[]>([]);
   const [selectedInvitee, setSelectedInvitee] = useState<string | null>(null);
+  const [tags, setTags] = useState<string[]>([]);
   // Safely parse date with validation and proper time information
   const safeParseDate = (dateString: string): Date => {
     try {
@@ -98,6 +100,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setLocation(event.location || '');
       setDescription(event.description || '');
       setInviteeIds(event.inviteeIds ?? []);
+      setTags(event.tags || []);
 
       // Safely set dates with validation
       try {
@@ -119,6 +122,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setLocation('');
       setDescription('');
       setInviteeIds([]);
+      setTags([]);
 
       // Safely set default dates
       try {
@@ -136,6 +140,15 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   }, [event, selectedDateTime]);
 
 
+  // Handle tag selection
+  const handleTagToggle = (tagValue: string) => {
+    setTags(prev => 
+      prev.includes(tagValue) 
+        ? prev.filter(t => t !== tagValue)
+        : [...prev, tagValue]
+    );
+  };
+
   const eventId = event?.$id ?? ID.unique();
   const newEvent: Event = {
     $id: eventId,
@@ -148,6 +161,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
     inviteeIds,
     attendees: event?.attendees || [],
     description,
+    tags,
   };
 
 
@@ -259,6 +273,35 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
             multiline
             editable={editable}
           />
+
+          {/* Tags Section */}
+          <View className="mb-4">
+            <Text className="text-gray-600 text-base mb-2">Event Tags</Text>
+            <View className="flex-row flex-wrap">
+              {CATEGORIES.map((category) => (
+                <TouchableOpacity
+                  key={category.value}
+                  onPress={() => editable && handleTagToggle(category.value)}
+                  className={`px-3 py-2 rounded-full border mr-2 mb-2 flex-row items-center`}
+                  style={{
+                    backgroundColor: tags.includes(category.value) ? '#007AFF' : '#F5F5F5',
+                    borderColor: tags.includes(category.value) ? '#007AFF' : '#E0E0E0',
+                  }}
+                  disabled={!editable}
+                >
+                  <Text className="mr-1">{category.emoji}</Text>
+                  <Text
+                    style={{
+                      color: tags.includes(category.value) ? 'white' : '#333',
+                      fontSize: 14,
+                    }}
+                  >
+                    {category.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
 
           <View className="mb-4">
             <Text className="text-gray-600 text-base mb-2">Start Time</Text>

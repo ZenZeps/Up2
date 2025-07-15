@@ -4,6 +4,7 @@ import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { account, config, databases, Query } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { getCategoriesByValues } from '@/constants/categories';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { useLocalSearchParams } from 'expo-router';
@@ -96,7 +97,7 @@ export default function Feed() {
 
           return {
             ...travel,
-            userName: userDisplayUtils.getFullName(userProfile, 'Unknown User'),
+            userName: userDisplayUtils.getFullName(userProfile || {}, 'Unknown User'),
             userPhotoUrl,
           } as TravelAnnouncementWithUserInfo;
         })
@@ -219,6 +220,19 @@ export default function Feed() {
         <Text className="text-gray-700 text-sm mb-2">
           {dayjs(item.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(item.endTime).format('h:mm A')}
         </Text>
+        
+        {/* Display event tags */}
+        {item.tags && item.tags.length > 0 && (
+          <View className="flex-row flex-wrap mb-2">
+            {getCategoriesByValues(item.tags).map((category) => (
+              <View key={category.value} className="bg-blue-100 px-2 py-1 rounded-full mr-1 mb-1 flex-row items-center">
+                <Text className="text-xs mr-1">{category.emoji}</Text>
+                <Text className="text-xs text-blue-800">{category.label}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+        
         <Text className="text-gray-800 text-base">{item.description}</Text>
       </View>
 

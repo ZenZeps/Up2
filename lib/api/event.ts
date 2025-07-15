@@ -65,6 +65,7 @@ export async function fetchEvents(): Promise<Event[]> {
         inviteeIds: Array.isArray(doc.inviteeIds) ? doc.inviteeIds : [],
         description: doc.description || '',
         attendees: Array.isArray(doc.attendees) ? doc.attendees : [],
+        tags: Array.isArray(doc.tags) ? doc.tags : [], // Include tags field
       };
     });
 
@@ -113,6 +114,7 @@ export async function fetchEventById(id: string): Promise<Event | null> {
       inviteeIds: doc.inviteeIds || [],
       description: doc.description || '',
       attendees: doc.attendees || [],
+      tags: Array.isArray(doc.tags) ? doc.tags : [], // Include tags field
     };
 
     // Cache the event
@@ -283,6 +285,7 @@ export async function fetchUserEvents(userId: string): Promise<Event[]> {
       inviteeIds: doc.inviteeIds || [],
       description: doc.description || '',
       attendees: doc.attendees || [],
+      tags: Array.isArray(doc.tags) ? doc.tags : [], // Include tags field
     }));
 
     // Cache user events

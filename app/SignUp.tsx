@@ -1,4 +1,5 @@
 import images from "@/constants/images";
+import { CATEGORIES } from "@/constants/categories";
 import {
   createUserProfile,
   updateUserProfile,
@@ -36,18 +37,6 @@ interface SignUpData {
   profilePhoto?: string;
   preferences: string[];
 }
-
-const preferenceOptions = [
-  { label: 'Sports', value: 'sports', emoji: '⚽' },
-  { label: 'Music', value: 'music', emoji: '🎵' },
-  { label: 'Art', value: 'art', emoji: '🎨' },
-  { label: 'Family', value: 'family', emoji: '👨‍👩‍👧‍👦' },
-  { label: 'Nature', value: 'nature', emoji: '🌿' },
-  { label: 'Outdoors', value: 'outdoors', emoji: '🏔️' },
-  { label: 'Party', value: 'party', emoji: '🎉' },
-  { label: 'Festival', value: 'festival', emoji: '🎪' },
-  { label: 'Food', value: 'food', emoji: '🍽️' },
-];
 
 const SignUp = () => {
   const router = useRouter();
@@ -350,7 +339,7 @@ const SignUp = () => {
 
       <View className="flex-1">
         <FlatList
-          data={preferenceOptions}
+          data={CATEGORIES}
           numColumns={2}
           keyExtractor={(item) => item.value}
           contentContainerStyle={{ paddingBottom: 100 }}
