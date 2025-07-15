@@ -51,8 +51,11 @@ const Profile = () => {
       if (!userId) return;
 
       try {
+        // Check if we already have profile data in global context
+        const existingProfile = user?.profile;
+        
         const [profile, userFriends] = await Promise.all([
-          getUserProfile(userId),
+          existingProfile || getUserProfile(userId), // Use cached data if available
           getFriends(userId)
         ]);
 
@@ -81,7 +84,7 @@ const Profile = () => {
     };
 
     loadProfile();
-  }, [userId]);
+  }, [userId, user?.profile]); // Add user?.profile as dependency
 
   const handlePhotoUpload = async () => {
     if (!userId) return;

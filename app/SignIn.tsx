@@ -138,6 +138,16 @@ const SignIn = () => {
       // Immediately navigate to home - the global state will catch up
       router.replace("/(root)/(tabs)/Home");
 
+      // Trigger global state refresh in the background (non-blocking)
+      setTimeout(async () => {
+        try {
+          await refetch();
+          authDebug.info("Global state refreshed after login");
+        } catch (error) {
+          authDebug.warn("Could not refresh global state (not critical)", error);
+        }
+      }, 100);
+
     } catch (err: any) {
       authDebug.error("Authentication failed", err);
       Alert.alert("Error", err?.message || "Authentication failed");

@@ -151,6 +151,54 @@ export async function getCurrentUser() {
   }
 }
 
+// ✅ Get current user with full profile data
+export async function getCurrentUserWithProfile() {
+  authDebug.debug("Checking current user authentication status with profile");
+
+  try {
+    // First get the basic Appwrite user
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return null;
+    }
+
+    // Then fetch the full profile from the database
+    try {
+      const { getUserProfile } = await import('../api/user');
+      const profile = await getUserProfile(currentUser.$id);
+      
+      return {
+        ...currentUser,
+        profile
+      };
+    } catch (profileError) {
+      authDebug.warn("Could not fetch user profile, returning basic user data", profileError);
+      return {
+        ...currentUser,
+        profile: null
+      };
+    }
+  } catch (error: any) {
+    // Use the same error handling as getCurrentUser
+    let errorMessage = typeof error === 'string' ? error :
+      error?.message ||
+      (error?.toString ? error.toString() : 'Unknown error');
+
+    // Handle expected "not authenticated" errors
+    if (
+      errorMessage.includes('missing scope (account)') ||
+      errorMessage.includes('User (role: guests)')
+    ) {
+      authDebug.info("User is not authenticated (expected error in getCurrentUserWithProfile)");
+      return null;
+    }
+
+    // Log unexpected errors
+    authDebug.error("Unexpected error getting current user with profile", error);
+    return null;
+  }
+}
+
 // Add session security enhancements
 const SESSION_DURATION = 7 * 24 * 60 * 60; // 7 days in seconds
 

@@ -1,13 +1,15 @@
 import { createContext, ReactNode, useContext, useEffect } from "react";
-import { account, getCurrentUser } from "./appwrite/appwrite";
+import { account, getCurrentUserWithProfile } from "./appwrite/appwrite";
 import { useAppwrite } from "./appwrite/useAppwrite";
 import { authDebug } from "./debug/authDebug";
+import { UserProfile } from "./types/Users";
 
 interface User {
     $id: string;
     name: string;
     email: string;
     avatar: string;
+    profile?: UserProfile | null; // Add the full profile data
 }
 interface GlobalContextType {
     isLoggedIn: boolean;
@@ -25,7 +27,7 @@ export const GlobalProvider = ({ children }: { children: ReactNode }) => {
         refetch,
         error
     } = useAppwrite({
-        fn: getCurrentUser as unknown as (params?: Record<string, string | number>) => Promise<User>,
+        fn: getCurrentUserWithProfile as unknown as (params?: Record<string, string | number>) => Promise<User>,
     });
 
     const isLoggedIn = !!user; // If you call ! on null then it is true. Turns nulls into booleans.
