@@ -203,3 +203,43 @@ export async function debugLoginCycle(email1: string, password1: string, email2:
     return { success: false, error };
   }
 }
+
+// Test event color functionality
+export async function debugEventColors() {
+  console.log('\n🎨 Testing event color system...');
+  
+  try {
+    // Import functions
+    const { CATEGORIES, getEventColor } = await import('./constants/categories');
+    
+    console.log('  Available categories and colors:');
+    CATEGORIES.forEach(category => {
+      console.log(`    ${category.emoji} ${category.label}: ${category.color}`);
+    });
+    
+    console.log('\n  Testing color selection logic:');
+    
+    // Test different tag combinations
+    const testCases = [
+      { tags: ['sports'], expected: 'Red' },
+      { tags: ['music', 'party'], expected: 'Purple (first tag wins)' },
+      { tags: ['family', 'food'], expected: 'Pink (first tag wins)' },
+      { tags: ['nature'], expected: 'Green' },
+      { tags: ['study', 'outdoors'], expected: 'Orange (first tag wins)' },
+      { tags: [], expected: 'Default blue' },
+    ];
+    
+    testCases.forEach(({ tags, expected }) => {
+      const color = getEventColor(tags);
+      console.log(`    Tags: [${tags.join(', ')}] -> Color: ${color} (${expected})`);
+    });
+    
+    console.log('\n✅ Color system test completed!');
+    
+    return { success: true, categories: CATEGORIES };
+    
+  } catch (error: any) {
+    console.error('❌ Color system test failed:', error.message);
+    return { success: false, error };
+  }
+}

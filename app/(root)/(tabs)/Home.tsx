@@ -8,7 +8,7 @@ import { authDebug } from '@/lib/debug/authDebug';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getEventColor } from '@/constants/categories';
 import { useLocalSearchParams } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
@@ -206,6 +206,7 @@ export default function Home() {
             start: startDate,
             end: endDate,
             location: e.location || 'No location',
+            color: getEventColor(e.tags || []), // Add color based on first tag
             rawEvent: {
               ...e,
               $id: e.$id,
@@ -235,12 +236,31 @@ export default function Home() {
     }
 
     const isMonthView = viewMode === 'month';
+    const eventColor = event.color || colors.primary;
+    
+    // Convert hex color to rgba for opacity in month view
+    const hexToRgba = (hex: string, alpha: number) => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+
+    const backgroundColor = isMonthView 
+      ? hexToRgba(eventColor, 0.4) // 40% opacity for month view
+      : eventColor; // Full opacity for week/day view
 
     return (
       <TouchableOpacity
         {...touchableOpacityProps}
-        className={`p-1 rounded-md ${isMonthView ? 'bg-primary-100' : 'bg-primary-300'
-          }`}
+        style={[
+          touchableOpacityProps.style, // Preserve original calendar positioning styles
+          {
+            backgroundColor,
+            padding: 4,
+            borderRadius: 6,
+          }
+        ]}
         onPress={() => handlePressEvent(event)}
         key={event.rawEvent.$id || `event-${Math.random()}`} // Ensure unique key
       >
@@ -268,6 +288,7 @@ export default function Home() {
   // Handler for pressing a calendar cell (to create a new event)
   const handleCellPress = (date: Date) => {
     setSelectedDateTime(date.toISOString());
+    setEditingEvent(null); // Clear any existing event to create a new one
     setFormVisible(true);
   };
 
@@ -336,15 +357,15 @@ export default function Home() {
       }
 
       try {
-        const lastRefresh = await AsyncStorage.getItem('lastEventRefresh');
+        // const lastRefresh = await AsyncStorage.getItem('lastEventRefresh');
         const now = Date.now();
         let shouldRefresh = true;
 
-        if (lastRefresh) {
-          const lastRefreshTime = parseInt(lastRefresh);
-          // Only refresh if more than 5 minutes since last refresh or if time is invalid
-          shouldRefresh = !lastRefreshTime || isNaN(lastRefreshTime) || (now - lastRefreshTime > 5 * 60 * 1000);
-        }
+        // if (lastRefresh) {
+        //   const lastRefreshTime = parseInt(lastRefresh);
+        //   // Only refresh if more than 5 minutes since last refresh or if time is invalid
+        //   shouldRefresh = !lastRefreshTime || isNaN(lastRefreshTime) || (now - lastRefreshTime > 5 * 60 * 1000);
+        // }
 
         // Only proceed if component is still mounted
         if (!isMounted) return;
@@ -360,7 +381,7 @@ export default function Home() {
             // Only proceed if component is still mounted
             if (!isMounted) return;
 
-            await AsyncStorage.setItem('lastEventRefresh', now.toString());
+            // await AsyncStorage.setItem('lastEventRefresh', now.toString());
             if (shouldLog) {
               authDebug.debug('Events refreshed and timestamp updated');
             }
@@ -376,8 +397,8 @@ export default function Home() {
         // Only proceed if component is still mounted
         if (!isMounted) return;
 
-        // If there's an error with AsyncStorage, try to refresh the data
-        authDebug.error('Error with AsyncStorage:', error);
+        // If there's an error, try to refresh the data
+        authDebug.error('Error:', error);
 
         try {
           await refetchEvents();

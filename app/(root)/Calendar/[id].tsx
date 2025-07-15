@@ -4,6 +4,7 @@ import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { account, config, databases } from '@/lib/appwrite/appwrite';
 import { Event as AppEvent } from '@/lib/types/Events';
+import { getEventColor } from '@/constants/categories';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Alert, Image, Platform, Text, TouchableOpacity, View } from 'react-native';
@@ -150,6 +151,7 @@ export default function FriendCalendar() {
         start: new Date(e.startTime),
         end: new Date(e.endTime),
         location: e.location,
+        color: getEventColor(e.tags || []), // Add color based on first tag
         rawEvent: e,
     }));
 
@@ -214,31 +216,10 @@ export default function FriendCalendar() {
                         date={date}
                         showAllDayEventCell={false}
                         events={calendarEvents}
-                        height={viewMode === 'month' ? undefined : (Platform.OS === 'ios' ? 640 : 620)}
+                        height={viewMode === 'month' ? 600 : (Platform.OS === 'ios' ? 640 : 620)}
                         mode={viewMode}
                         onPressEvent={handlePressEvent}
                         renderEvent={renderEvent}
-                        dayTextStyle={{ fontSize: 12 }}
-                        startHour={startHour}
-                        endHour={endHour}
-                        eventCellStyle={{
-                            backgroundColor: '#E3F2FD',
-                            borderColor: '#1E88E5',
-                            borderWidth: 1,
-                            borderRadius: 0,
-                        }}
-                        headerContainerStyle={{
-                            backgroundColor: 'white',
-                            borderBottomWidth: 1,
-                            borderBottomColor: '#E0E0E0',
-                        }}
-                        hourRowStyle={{
-                            borderColor: '#F5F5F5',
-                        }}
-                        bodyContainerStyle={{
-                            backgroundColor: 'white',
-                        }}
-                        nowIndicatorColor="red"
                     />
                 </View>
 
@@ -254,7 +235,7 @@ export default function FriendCalendar() {
                         onEdit={() => { }}
                         onAttend={() => handleAttend(selectedEvent)}
                         onNotAttend={() => handleNotAttend(selectedEvent)}
-                        currentUserId={currentUserId}
+                        currentUserId={currentUserId || ''}
                     />
                 )}
             </View>
