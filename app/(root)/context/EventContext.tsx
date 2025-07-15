@@ -1,8 +1,9 @@
 // context/EventContext.tsx
-import { fetchEvents } from '@/lib/api/event';
+import { fetchUserEvents } from '@/lib/api/event';
 import { config, databases, ID } from '@/lib/appwrite/appwrite';
 import { invalidateCache, useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { authDebug } from '@/lib/debug/authDebug';
+import { useGlobalContext } from '@/lib/global-provider';
 import { Event } from '@/lib/types/Events';
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
@@ -18,34 +19,78 @@ interface EventsContextType {
 export const EventsContext = createContext<EventsContextType | undefined>(undefined);
 
 export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
-  // Use our optimized hook with proper caching
+  // Get current user ID from global context
+  const { user } = useGlobalContext();
+  const userId = user?.$id;
+
+  // Debug user changes
+  React.useEffect(() => {
+    authDebug.info('EventContext: User changed', { 
+      hasUser: !!user, 
+      userId: userId,
+      userEmail: user?.email 
+    });
+  }, [userId, user?.email]);
+
+  // Create a wrapper function that matches the expected signature
+  const fetchEventsForUser = useCallback(
+    (params?: { userId: string }) => {
+      if (!params?.userId) {
+        return Promise.resolve([]);
+      }
+      return fetchUserEvents(params.userId);
+    },
+    []
+  );
+
+  // Use our optimized hook with user-specific caching
   const {
     data: fetchedEvents,
     loading,
     refetch
   } = useAppwrite({
-    fn: fetchEvents,
-    cacheKey: 'all-events',
+    fn: fetchEventsForUser,
+    params: { userId: userId! }, // Pass userId as parameter
+    cacheKey: userId ? `events-user-${userId}` : undefined, // User-specific cache key
     cacheTTL: 5 * 60 * 1000, // 5 minutes cache
-    dependencies: [] // Empty array ensures it only runs once on mount
+    dependencies: [userId], // Re-fetch when user changes
+    skip: !userId // Skip if no user ID
   });
 
   // Local state to track events with optimistic updates
   const [events, setEvents] = useState<Event[]>([]);
 
+  // Clear local state when user changes
+  React.useEffect(() => {
+    if (!userId) {
+      authDebug.info('EventContext: User logged out, clearing local events');
+      setEvents([]);
+    }
+  }, [userId]);
+
   // Update local state when fetched events change
   React.useEffect(() => {
+    authDebug.info('EventContext: fetchedEvents changed', { 
+      hasEvents: !!fetchedEvents, 
+      eventsCount: fetchedEvents?.length || 0,
+      userId 
+    });
     if (fetchedEvents) {
       setEvents(fetchedEvents);
+    } else if (!loading && userId) {
+      // If we have a user but no events and not loading, it means no events found
+      setEvents([]);
     }
-  }, [fetchedEvents]);
+  }, [fetchedEvents, userId, loading]);
 
   // Refetch events and invalidate cache
   const refetchEvents = useCallback(async () => {
-    authDebug.info('Refetching events and invalidating cache');
-    invalidateCache(/events/); // Invalidate any events-related cache
+    if (!userId) return;
+    
+    authDebug.info(`Refetching events for user: ${userId}`);
+    invalidateCache(new RegExp(`events-user-${userId}`)); // Invalidate user-specific cache
     await refetch();
-  }, [refetch]);
+  }, [refetch, userId]);
 
   // Add event with optimistic update
   const addEvent = async (eventData: Omit<Event, '$id'>) => {
@@ -76,8 +121,10 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
 
       authDebug.info('Event added successfully', { eventId: newEvent.$id });
 
-      // Invalidate cache to ensure data consistency
-      invalidateCache(/events/);
+      // Invalidate user-specific cache to ensure data consistency
+      if (userId) {
+        invalidateCache(new RegExp(`user-events-${userId}`));
+      }
 
       return newEvent;
     } catch (err) {
@@ -111,8 +158,10 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
 
       authDebug.info('Event updated successfully', { eventId: eventData.$id });
 
-      // Invalidate cache
-      invalidateCache(/events/);
+      // Invalidate user-specific event cache
+      if (user?.$id) {
+        invalidateCache(new RegExp(`events-user-${user.$id}`));
+      }
     } catch (err) {
       authDebug.error('Failed to update event:', err);
       // On error, refetch to ensure UI is consistent
@@ -135,8 +184,10 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
 
       authDebug.info('Event deleted successfully', { eventId });
 
-      // Invalidate cache
-      invalidateCache(/events/);
+      // Invalidate user-specific event cache
+      if (user?.$id) {
+        invalidateCache(new RegExp(`events-user-${user.$id}`));
+      }
     } catch (err) {
       authDebug.error('Failed to delete event:', err);
       // On error, refetch to ensure UI is consistent

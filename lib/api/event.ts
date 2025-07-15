@@ -226,7 +226,7 @@ export async function deleteEvent(id: string) {
  * This is more efficient than fetching all events and filtering client-side
  */
 export async function fetchUserEvents(userId: string): Promise<Event[]> {
-  const cacheKey = `user-events-${userId}`;
+  const cacheKey = `events-user-${userId}`;
   const cachedEvents = cacheManager.get<Event[]>(cacheKey);
 
   if (cachedEvents) {
@@ -236,19 +236,44 @@ export async function fetchUserEvents(userId: string): Promise<Event[]> {
 
   try {
     authDebug.info(`Fetching events for user: ${userId}`);
+    authDebug.debug(`Using cache key: ${cacheKey}`);
 
     // Query for events where user is creator OR attendee OR invitee
-    const res = await databases.listDocuments(
-      config.databaseID!,
-      config.eventsCollectionID!,
-      [
-        Query.equal('creatorId', userId),
-        Query.search('attendees', userId),
-        Query.search('inviteeIds', userId)
-      ]
+    // Since Appwrite might not support OR queries well, we'll fetch separately and merge
+    const [creatorEvents, attendeeEvents, inviteeEvents] = await Promise.all([
+      // Events where user is creator
+      databases.listDocuments(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        [Query.equal('creatorId', userId)]
+      ),
+      // Events where user is in attendees (if it's a simple array)
+      databases.listDocuments(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        [Query.search('attendees', userId)]
+      ).catch(() => ({ documents: [] })), // Fallback if search fails
+      // Events where user is in inviteeIds
+      databases.listDocuments(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        [Query.search('inviteeIds', userId)]
+      ).catch(() => ({ documents: [] })) // Fallback if search fails
+    ]);
+
+    // Merge and deduplicate events
+    const allDocuments = [
+      ...creatorEvents.documents,
+      ...attendeeEvents.documents,
+      ...inviteeEvents.documents
+    ];
+    
+    // Remove duplicates based on $id
+    const uniqueDocuments = allDocuments.filter((doc, index, self) => 
+      self.findIndex(d => d.$id === doc.$id) === index
     );
 
-    const events = res.documents.map((doc): Event => ({
+    const events = uniqueDocuments.map((doc: any): Event => ({
       $id: doc.$id,
       title: doc.title,
       location: doc.location,
@@ -263,8 +288,10 @@ export async function fetchUserEvents(userId: string): Promise<Event[]> {
     // Cache user events
     cacheManager.set<Event[]>(cacheKey, events, EVENT_CACHE_TTL);
 
+    authDebug.info(`Successfully fetched ${events.length} events for user: ${userId}`);
+
     // Also cache individual events
-    events.forEach(event => {
+    events.forEach((event: Event) => {
       cacheManager.set<Event>(`event-${event.$id}`, event, EVENT_CACHE_TTL);
     });
 

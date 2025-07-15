@@ -1,7 +1,7 @@
-import { Account, Avatars, Client, Databases, ID, InputFile, Query, Storage } from "react-native-appwrite";
+import { Account, Avatars, Client, Databases, ID, Query, Storage } from "react-native-appwrite";
 import { authDebug } from "../debug/authDebug";
 
-export { ID, InputFile, Query };
+export { ID, Query };
 
 export const config = {
   platform: "com.up2.Up2", // Fixed to match app.json iOS bundle identifier
@@ -83,7 +83,15 @@ export async function loginWithEmail(email: string, password: string) {
 // ✅ Logout
 export async function logout() {
   try {
+    // Import cache manager
+    const { cacheManager } = await import("../debug/cacheManager");
+    
+    // Clear all cached data to prevent cross-user contamination
+    cacheManager.clear();
+    
+    // Delete the current session
     await account.deleteSession("current");
+    
     return true;
   } catch (error) {
     console.error("Logout error:", error);

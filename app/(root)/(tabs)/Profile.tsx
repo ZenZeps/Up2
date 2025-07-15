@@ -167,6 +167,16 @@ const Profile = () => {
   const handleLogout = async () => {
     try {
       await logout();
+      
+      // Wait a moment for logout to complete, then force refetch to clear any cached user data
+      setTimeout(async () => {
+        try {
+          await refetch();
+        } catch (e) {
+          // Ignore errors during refetch after logout
+        }
+      }, 100);
+      
       router.replace('/SignIn');
     } catch (err) {
       console.error('Logout failed:', err);
