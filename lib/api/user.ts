@@ -26,7 +26,8 @@ export async function createUserProfile(profile: UserProfile) {
       profile.$id,
       {
         id: profile.$id,
-        name: profile.name,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
         email: profile.email,
         isPublic: profile.isPublic,
         preferences: profile.preferences,
@@ -110,7 +111,8 @@ export async function updateUserProfile(profile: UserProfile) {
       config.usersCollectionID!,
       profile.$id,
       {
-        name: profile.name,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
         email: profile.email,
         isPublic: profile.isPublic,
         preferences: profile.preferences,

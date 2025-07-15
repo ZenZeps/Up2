@@ -177,14 +177,15 @@ const SignUp = () => {
       // Step 6: Create user profile with all data
       await createUserProfile({
         $id: user.$id,
-        name: fullName,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
         email: trimmedEmail,
         isPublic: true,
         preferences: preferences,
         friends: [],
         photoId: photoId || undefined,
       });
-      authDebug.info("User profile created with preferences and photo");
+      authDebug.info("User profile created with first name, last name, preferences and photo");
 
       // Step 7: Refresh global state
       setTimeout(async () => {

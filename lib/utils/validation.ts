@@ -17,6 +17,14 @@ export const validateInput = {
         return name.length >= 2 && name.length <= 50 && /^[a-zA-Z\s-']+$/.test(name);
     },
 
+    firstName: (firstName: string): boolean => {
+        return firstName.length >= 1 && firstName.length <= 25 && /^[a-zA-Z\s-']+$/.test(firstName);
+    },
+
+    lastName: (lastName: string): boolean => {
+        return lastName.length >= 1 && lastName.length <= 25 && /^[a-zA-Z\s-']+$/.test(lastName);
+    },
+
     // File validation for future profile photo upload
     imageFile: (file: File): boolean => {
         const validTypes = ['image/jpeg', 'image/png', 'image/gif'];
@@ -27,7 +35,8 @@ export const validateInput = {
     // Profile validation
     profile: (profile: Partial<UserProfile>): boolean => {
         if (!profile) return false;
-        if (profile.name && !validateInput.name(profile.name)) return false;
+        if (profile.firstName && !validateInput.firstName(profile.firstName)) return false;
+        if (profile.lastName && !validateInput.lastName(profile.lastName)) return false;
         if (profile.email && !validateInput.email(profile.email)) return false;
         return true;
     },

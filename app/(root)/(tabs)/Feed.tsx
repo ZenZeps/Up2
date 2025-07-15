@@ -1,6 +1,7 @@
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { account, config, databases, Query } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import dayjs from 'dayjs';
@@ -57,7 +58,7 @@ export default function Feed() {
 
           const uniqueCreatorIds = [...new Set(friendEvents.documents.map(event => event.creatorId))];
           const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
-          const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, profile.name]));
+          const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, userDisplayUtils.getFullName(profile)]));
 
           const filteredAndMappedEvents = friendEvents.documents
             .filter(event => {
@@ -95,7 +96,7 @@ export default function Feed() {
 
           return {
             ...travel,
-            userName: userProfile?.name || 'Unknown User',
+            userName: userDisplayUtils.getFullName(userProfile, 'Unknown User'),
             userPhotoUrl,
           } as TravelAnnouncementWithUserInfo;
         })

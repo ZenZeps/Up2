@@ -2,6 +2,7 @@ import icons from '@/constants/icons';
 import images from '@/constants/images';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUsersByIds } from '@/lib/api/user';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import React, { useEffect, useState } from 'react';
@@ -101,7 +102,7 @@ const EventDetailsModal = ({
               source={attendeePhotoUrls[profile.$id] ? { uri: attendeePhotoUrls[profile.$id] } : images.avatar}
               style={styles.attendeeAvatar}
             />
-            {!limit && <Text style={styles.attendeeName}>{profile.name.split(' ')[0]}</Text>}
+            {!limit && <Text style={styles.attendeeName}>{userDisplayUtils.getFirstName(profile)}</Text>}
           </View>
         ))}
         {limit && profiles.length > limit && (

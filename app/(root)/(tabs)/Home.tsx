@@ -1,5 +1,6 @@
 import { getActiveTravelForUser } from '@/lib/api/travel';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { account } from '@/lib/appwrite/appwrite';
 import { useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
@@ -120,8 +121,8 @@ export default function Home() {
 
       // Update cache with newly fetched creator names
       profiles.forEach(profile => {
-        if (profile.$id && profile.name) {
-          creatorNameCache.set(profile.$id, profile.name);
+        if (profile.$id && userDisplayUtils.hasValidName(profile)) {
+          creatorNameCache.set(profile.$id, userDisplayUtils.getFullName(profile));
         }
       });
 

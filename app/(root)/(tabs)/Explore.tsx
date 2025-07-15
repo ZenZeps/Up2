@@ -2,6 +2,7 @@ import icons from '@/constants/icons';
 import images from '@/constants/images';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getAllUsers, getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import dayjs from 'dayjs';
@@ -104,7 +105,7 @@ const Explore = () => {
     const addCreatorNames = async () => {
       const uniqueCreatorIds = [...new Set(events.map(event => event.creatorId))];
       const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
-      const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, profile.name]));
+      const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, userDisplayUtils.getFullName(profile)]));
 
       const eventsWithNames = events.map(event => ({
         ...event,
@@ -220,7 +221,7 @@ const Explore = () => {
 
   const filteredUsers = useMemo(() => {
     return users.filter((u) =>
-      u.name?.toLowerCase().includes(query.toLowerCase())
+      userDisplayUtils.getSearchableText(u).includes(query.toLowerCase())
     );
   }, [query, users]);
 
@@ -276,7 +277,7 @@ const Explore = () => {
             />
             <View className="ml-3">
               <Text className="text-base font-rubik-medium" style={{ color: colors.textSecondary }}>Welcome back,</Text>
-              <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{profile?.name || 'User'}</Text>
+              <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{userDisplayUtils.getFullName(profile, 'User')}</Text>
             </View>
           </View>
           <TouchableOpacity onPress={() => router.push('/Invites')} className="relative">
@@ -368,7 +369,7 @@ const Explore = () => {
                         className="text-lg font-rubik-medium"
                         style={{ color: isFriend ? colors.primary : colors.text }}
                       >
-                        {user.name}
+                        {userDisplayUtils.getFullName(user)}
                       </Text>
                     </TouchableOpacity>
                     {isFriend ? (

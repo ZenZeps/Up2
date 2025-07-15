@@ -1,6 +1,7 @@
 export interface UserProfile {
     $id: string;
-    name: string;
+    firstName: string;
+    lastName: string;
     email: string;
     isPublic: boolean;
     preferences: string[];

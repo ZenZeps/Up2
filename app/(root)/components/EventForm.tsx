@@ -1,5 +1,6 @@
 import { createEvent } from '@/lib/api/event';
 import { getAllUsers } from '@/lib/api/user';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { config, databases, ID } from '@/lib/appwrite/appwrite';
 import { Event } from '@/lib/types/Events';
 import dayjs from 'dayjs';
@@ -349,7 +350,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   value={selectedInvitee}
                   placeholder={{ label: 'Select friend to invite', value: null }}
                   items={friendUsers.map((user) => ({
-                    label: user.name,
+                    label: userDisplayUtils.getFullName(user),
                     value: user.$id,
                   }))}
                   style={{
@@ -384,7 +385,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                 const user = (users ?? []).find((u) => u.$id === id);
                 return (
                   <View key={id} className="flex-row justify-between items-center bg-gray-100 p-3 rounded-lg mb-2">
-                    <Text className="text-base">{user?.name || id}</Text>
+                    <Text className="text-base">{userDisplayUtils.getFullName(user, id)}</Text>
                     {/* Only show remove button if creator and not self */}
                     {editable && id !== currentUserId && (
                       <TouchableOpacity

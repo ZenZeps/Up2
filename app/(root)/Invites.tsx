@@ -2,6 +2,7 @@ import icons from '@/constants/icons';
 import images from '@/constants/images';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, updateUserProfile } from '@/lib/api/user';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -42,7 +43,7 @@ export default function Invites() {
       const requestsWithSenderNames = await Promise.all(
         res.documents.map(async (req) => {
           const senderProfile = await getUserProfile(req.from);
-          return { ...req, senderName: senderProfile?.name || 'Unknown User' };
+          return { ...req, senderName: userDisplayUtils.getFullName(senderProfile || {}, 'Unknown User') };
         })
       );
       setFriendRequests(requestsWithSenderNames);
@@ -78,19 +79,23 @@ export default function Invites() {
 
       await updateUserProfile({
         $id: fromProfile.$id,
-        name: fromProfile.name,
+        firstName: fromProfile.firstName,
+        lastName: fromProfile.lastName,
         email: fromProfile.email,
         isPublic: fromProfile.isPublic,
         preferences: fromProfile.preferences,
         friends: fromFriends,
+        photoId: fromProfile.photoId,
       });
       await updateUserProfile({
         $id: toProfile.$id,
-        name: toProfile.name,
+        firstName: toProfile.firstName,
+        lastName: toProfile.lastName,
         email: toProfile.email,
         isPublic: toProfile.isPublic,
         preferences: toProfile.preferences,
         friends: toFriends,
+        photoId: toProfile.photoId,
       });
 
       await databases.updateDocument(
@@ -123,7 +128,7 @@ export default function Invites() {
       const updatedInvites = await Promise.all(
         invites.map(async (event) => {
           const creatorProfile = await getUserProfile(event.creatorId);
-          return { ...event, creatorName: creatorProfile?.name || 'Unknown User' };
+          return { ...event, creatorName: userDisplayUtils.getFullName(creatorProfile || {}, 'Unknown User') };
         })
       );
       setInvitesWithCreatorNames(updatedInvites);

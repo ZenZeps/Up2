@@ -1,6 +1,7 @@
 import icons from '@/constants/icons';
 import { getAllEvents } from '@/lib/api/event';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { account, config, databases } from '@/lib/appwrite/appwrite';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -45,7 +46,7 @@ export default function FriendCalendar() {
                     console.error('Friend profile not found');
                     return;
                 }
-                setFriendName(profile.name);
+                setFriendName(userDisplayUtils.getFullName(profile));
 
                 // Get all events
                 const allEvents = await getAllEvents();
@@ -59,7 +60,7 @@ export default function FriendCalendar() {
                 // Add creator names to events
                 const uniqueCreatorIds = [...new Set(friendEvents.map(event => event.creatorId))];
                 const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
-                const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, profile.name]));
+                const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, userDisplayUtils.getFullName(profile)]));
 
                 const eventsWithNames = friendEvents.map(event => ({
                     ...event,

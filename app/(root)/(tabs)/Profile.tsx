@@ -2,6 +2,7 @@ import icons from '@/constants/icons';
 import images from '@/constants/images';
 import { getProfilePhotoUrl, pickProfilePhoto, uploadProfilePhoto } from '@/lib/api/profilePhoto';
 import { getFriends, getUserProfile, updateUserProfile } from '@/lib/api/user';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { logout } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
@@ -34,7 +35,8 @@ const Profile = () => {
   const userId = user?.$id;
 
   const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState(user?.name || '');
+  const [firstName, setFirstName] = useState(user?.profile?.firstName || '');
+  const [lastName, setLastName] = useState(user?.profile?.lastName || '');
   const [isPrivate, setIsPrivate] = useState(false);
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
@@ -60,7 +62,8 @@ const Profile = () => {
         ]);
 
         if (profile) {
-          setName(profile.name);
+          setFirstName(profile.firstName || '');
+          setLastName(profile.lastName || '');
           setIsPrivate(!profile.isPublic);
           setSelectedEventTypes(profile.preferences || []);
           setFriends(userFriends || []);
@@ -124,17 +127,33 @@ const Profile = () => {
   const handleSave = async () => {
     if (!userId) return;
 
+    // Validate firstName and lastName
+    if (!firstName.trim() || !lastName.trim()) {
+      Alert.alert('Error', 'First name and last name are required');
+      return;
+    }
+
+    if (firstName.trim().length < 1 || lastName.trim().length < 1) {
+      Alert.alert('Error', 'Names must be at least 1 character long');
+      return;
+    }
+
     try {
       const latestProfile = await getUserProfile(userId);
       if (!latestProfile) return;
 
+      // Construct full name from first and last name
+      const fullName = `${firstName.trim()} ${lastName.trim()}`;
+
       await updateUserProfile({
         $id: userId,
-        name,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
         email: latestProfile.email,
         isPublic: !isPrivate,
         preferences: selectedEventTypes,
         friends: friends.map(f => f.$id),
+        photoId: latestProfile.photoId,
       });
 
       setIsEditing(false);
@@ -160,7 +179,9 @@ const Profile = () => {
       <ScrollView>
         {/* Header */}
         <View className="px-4 py-3 flex-row items-center justify-between border-b" style={{ borderBottomColor: colors.border }}>
-          <Text className="text-2xl font-rubik-semibold" style={{ color: colors.text }}>{name}</Text>
+          <Text className="text-2xl font-rubik-semibold" style={{ color: colors.text }}>
+            {userDisplayUtils.getFullName({ firstName, lastName })}
+          </Text>
           <TouchableOpacity onPress={() => setIsEditing(!isEditing)}>
             <Image
               source={isEditing ? icons.check : icons.edit}
@@ -184,7 +205,7 @@ const Profile = () => {
               ) : (
                 <View className="w-20 h-20 rounded-full bg-gray-200 items-center justify-center">
                   <Text className="text-4xl text-gray-400 font-rubik-medium">
-                    {name?.charAt(0)?.toUpperCase()}
+                    {userDisplayUtils.getInitials({ firstName, lastName })}
                   </Text>
                 </View>
               )}
@@ -210,20 +231,36 @@ const Profile = () => {
           {/* Bio Section */}
           <View className="mt-4">
             {isEditing ? (
-              <TextInput
-                value={name}
-                onChangeText={setName}
-                className="text-base font-rubik mb-2 border p-2 rounded"
-                style={{
-                  borderColor: colors.border,
-                  backgroundColor: colors.surface,
-                  color: colors.text
-                }}
-                placeholder="Your name"
-                placeholderTextColor={colors.textSecondary}
-              />
+              <View className="space-y-2">
+                <TextInput
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  className="text-base font-rubik mb-2 border p-2 rounded"
+                  style={{
+                    borderColor: colors.border,
+                    backgroundColor: colors.surface,
+                    color: colors.text
+                  }}
+                  placeholder="First name"
+                  placeholderTextColor={colors.textSecondary}
+                />
+                <TextInput
+                  value={lastName}
+                  onChangeText={setLastName}
+                  className="text-base font-rubik border p-2 rounded"
+                  style={{
+                    borderColor: colors.border,
+                    backgroundColor: colors.surface,
+                    color: colors.text
+                  }}
+                  placeholder="Last name"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
             ) : (
-              <Text className="text-base font-rubik mb-2" style={{ color: colors.text }}>{name}</Text>
+              <Text className="text-base font-rubik mb-2" style={{ color: colors.text }}>
+                {firstName} {lastName}
+              </Text>
             )}
           </View>
 
@@ -291,7 +328,7 @@ const Profile = () => {
                     source={item.photoId ? { uri: getProfilePhotoUrl(item.photoId) } : images.avatar}
                     className="w-16 h-16 rounded-full"
                   />
-                  <Text className="text-sm font-rubik mt-1" style={{ color: colors.text }}>{item.name}</Text>
+                  <Text className="text-sm font-rubik mt-1" style={{ color: colors.text }}>{userDisplayUtils.getFullName(item)}</Text>
                 </View>
               )}
               ListEmptyComponent={
