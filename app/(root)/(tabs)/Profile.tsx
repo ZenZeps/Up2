@@ -41,17 +41,45 @@ const Profile = () => {
     preferences: 0
   });
 
-  // Load profile data
+  // Load profile data with session-based caching for scalability
   useEffect(() => {
     const loadProfile = async () => {
       if (!userId) return;
 
       try {
-        // Check if we already have profile data in global context
+        // For 100k user scalability: Use session-level caching for profile data
+        // Check if we already have profile data in global context (session cache)
         const existingProfile = user?.profile;
 
+        if (existingProfile) {
+          // Use cached profile data from session
+          setFirstName(existingProfile.firstName || '');
+          setLastName(existingProfile.lastName || '');
+          setIsPrivate(!existingProfile.isPublic);
+          setSelectedEventTypes(existingProfile.preferences || []);
+
+          if (existingProfile.photoId) {
+            const photoUrl = await getProfilePhotoUrl(existingProfile.photoId);
+            setProfilePhotoUrl(photoUrl);
+          }
+
+          // Load friends separately (can be cached with shorter TTL)
+          const userFriends = await getFriends(userId);
+          setFriends(userFriends || []);
+
+          // Update stats
+          setStats({
+            events: 0, // Event count can be added here if needed
+            friends: userFriends?.length || 0,
+            preferences: existingProfile.preferences?.length || 0
+          });
+
+          return; // Exit early with cached data
+        }
+
+        // Only fetch from database if no cached profile exists (session start)
         const [profile, userFriends] = await Promise.all([
-          existingProfile || getUserProfile(userId), // Use cached data if available
+          getUserProfile(userId),
           getFriends(userId)
         ]);
 
@@ -81,7 +109,7 @@ const Profile = () => {
     };
 
     loadProfile();
-  }, [userId, user?.profile]); // Add user?.profile as dependency
+  }, [userId]); // Removed user?.profile dependency to prevent excessive re-renders
 
   const handlePhotoUpload = async () => {
     if (!userId) return;

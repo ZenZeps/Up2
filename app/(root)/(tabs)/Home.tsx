@@ -9,8 +9,8 @@ import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
-import { useLocalSearchParams } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -55,6 +55,30 @@ export default function Home() {
     }
   }, [eventsContext]);
 
+  // Create a smart refetch function that only fetches when necessary
+  const smartRefetchEvents = useCallback(async (reason: 'navigation' | 'viewModeChange' | 'manual' = 'manual') => {
+    const now = Date.now();
+    const timeSinceLastFetch = now - lastFetchTime.current;
+    const minFetchInterval = 30 * 1000; // Minimum 30 seconds between automatic fetches
+
+    // For manual triggers (like creating/editing events), always fetch
+    if (reason === 'manual') {
+      authDebug.debug('Manual refetch triggered');
+      lastFetchTime.current = now;
+      return await refetchEvents();
+    }
+
+    // For navigation and view mode changes, respect minimum interval unless it's the first load
+    if (!hasInitialLoad.current || timeSinceLastFetch > minFetchInterval) {
+      authDebug.debug(`Smart refetch triggered: ${reason}, time since last: ${timeSinceLastFetch}ms`);
+      lastFetchTime.current = now;
+      hasInitialLoad.current = true;
+      return await refetchEvents();
+    } else {
+      authDebug.debug(`Skipping refetch (${reason}): too soon since last fetch (${timeSinceLastFetch}ms)`);
+    }
+  }, [refetchEvents]);
+
   // State management
   const [formVisible, setFormVisible] = useState(false);
   const [selectedDateTime, setSelectedDateTime] = useState<string | null>(null);
@@ -67,6 +91,11 @@ export default function Home() {
   const [endHour, setEndHour] = useState(new Date().getHours() + 4);
   const [calendarHeight, setCalendarHeight] = useState(0);
   const [userTravelData, setUserTravelData] = useState<TravelAnnouncement[]>([]);
+
+  // Track when data was last fetched to prevent unnecessary refetches
+  const lastFetchTime = useRef<number>(0);
+  const previousViewMode = useRef<Mode>(viewMode);
+  const hasInitialLoad = useRef<boolean>(false);
 
   // Get route params (for user calendar view)
   const params = useLocalSearchParams();
@@ -339,87 +368,21 @@ export default function Home() {
     setFormVisible(true);
   };
 
-  // Load events and handle refresh logic when component mounts
-  React.useEffect(() => {
-    // Skip this effect if events context isn't ready
-    if (!eventsContext) {
-      return;
+  // React to screen focus (navigation) - only fetch when navigating to this screen
+  useFocusEffect(
+    useCallback(() => {
+      if (eventsContext?.events) {
+        smartRefetchEvents('navigation');
+      }
+    }, [smartRefetchEvents, eventsContext?.events])
+  );
+
+  // React to view mode changes only - fetch when user switches between day/week/month
+  useEffect(() => {
+    if (hasInitialLoad.current && eventsContext?.events) {
+      smartRefetchEvents('viewModeChange');
     }
-
-    // Define a flag to prevent setting state after unmount
-    let isMounted = true;
-    const shouldLog = false; // Set to true only when debugging is needed
-
-    // Create a function for checking and refreshing data
-    const refreshDataIfNeeded = async () => {
-      if (shouldLog) {
-        authDebug.debug('Home screen focused, checking if data refresh needed');
-      }
-
-      try {
-        // const lastRefresh = await AsyncStorage.getItem('lastEventRefresh');
-        const now = Date.now();
-        let shouldRefresh = true;
-
-        // if (lastRefresh) {
-        //   const lastRefreshTime = parseInt(lastRefresh);
-        //   // Only refresh if more than 5 minutes since last refresh or if time is invalid
-        //   shouldRefresh = !lastRefreshTime || isNaN(lastRefreshTime) || (now - lastRefreshTime > 5 * 60 * 1000);
-        // }
-
-        // Only proceed if component is still mounted
-        if (!isMounted) return;
-
-        if (shouldRefresh) {
-          if (shouldLog) {
-            authDebug.debug('Refreshing events data (> 5 minutes since last refresh)');
-          }
-
-          try {
-            await refetchEvents();
-
-            // Only proceed if component is still mounted
-            if (!isMounted) return;
-
-            // await AsyncStorage.setItem('lastEventRefresh', now.toString());
-            if (shouldLog) {
-              authDebug.debug('Events refreshed and timestamp updated');
-            }
-          } catch (refreshError) {
-            if (isMounted) {
-              authDebug.error('Failed to refresh events:', refreshError);
-            }
-          }
-        } else if (shouldLog) {
-          authDebug.debug('Using cached events data (< 5 minutes since last refresh)');
-        }
-      } catch (error) {
-        // Only proceed if component is still mounted
-        if (!isMounted) return;
-
-        // If there's an error, try to refresh the data
-        authDebug.error('Error:', error);
-
-        try {
-          await refetchEvents();
-        } catch (refreshError) {
-          if (isMounted) {
-            authDebug.error('Failed to refresh events:', refreshError);
-          }
-        }
-      }
-    };
-
-    // Execute the refresh function
-    refreshDataIfNeeded();
-
-    // Cleanup function to prevent state updates after unmount
-    return () => {
-      isMounted = false;
-    };
-
-    // Explicitly declare the dependency on refetchEvents to avoid issues
-  }, [eventsContext, refetchEvents]);
+  }, [viewMode, smartRefetchEvents, eventsContext?.events]);
 
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
@@ -504,7 +467,13 @@ export default function Home() {
       {formVisible && (
         <EventForm
           visible={formVisible}
-          onClose={() => setFormVisible(false)}
+          onClose={() => {
+            setFormVisible(false);
+            // After creating/editing an event, refresh data immediately
+            if (eventsContext) {
+              smartRefetchEvents('manual');
+            }
+          }}
           event={editingEvent || undefined}
           selectedDateTime={selectedDateTime || new Date().toISOString()}
           currentUserId={currentUser?.$id || ''}
@@ -523,14 +492,14 @@ export default function Home() {
             // Handle attend logic
             setDetailsModalVisible(false);
             if (eventsContext) {
-              refetchEvents();
+              smartRefetchEvents('manual');
             }
           }}
           onNotAttend={() => {
             // Handle not attend logic
             setDetailsModalVisible(false);
             if (eventsContext) {
-              refetchEvents();
+              smartRefetchEvents('manual');
             }
           }}
           currentUserId={currentUser?.$id || ''}

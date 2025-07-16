@@ -5,6 +5,7 @@ import { invalidateCache, useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { authDebug } from '@/lib/debug/authDebug';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Event } from '@/lib/types/Events';
+import { requestDeduplicator } from '@/lib/utils/dbOptimization';
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
 interface EventsContextType {
@@ -32,18 +33,23 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
     });
   }, [userId, user?.email]);
 
-  // Create a wrapper function that matches the expected signature
+  // Create a wrapper function that matches the expected signature with deduplication
   const fetchEventsForUser = useCallback(
     (params?: { userId: string }) => {
       if (!params?.userId) {
         return Promise.resolve([]);
       }
-      return fetchUserEvents(params.userId);
+
+      // Use request deduplication for scalability
+      return requestDeduplicator.deduplicate(
+        `fetchUserEvents-${params.userId}`,
+        () => fetchUserEvents(params.userId)
+      );
     },
     []
   );
 
-  // Use our optimized hook with user-specific caching
+  // Use our optimized hook with user-specific caching and smart TTL for scalability
   const {
     data: fetchedEvents,
     loading,
@@ -52,7 +58,7 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
     fn: fetchEventsForUser,
     params: { userId: userId! }, // Pass userId as parameter
     cacheKey: userId ? `events-user-${userId}` : undefined, // User-specific cache key
-    cacheTTL: 5 * 60 * 1000, // 5 minutes cache
+    cacheTTL: 1 * 60 * 1000, // 1 minute cache for events (frequent updates for 100k users)
     dependencies: [userId], // Re-fetch when user changes
     skip: !userId // Skip if no user ID
   });

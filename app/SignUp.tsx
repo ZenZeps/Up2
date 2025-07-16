@@ -198,7 +198,7 @@ const SignUp = () => {
     };
 
     const renderStep1 = () => (
-        <View className="px-10 mt-6 pb-8">
+        <View className="px-10 mt-6 pb-12">
             <Text className="text-3xl font-rubik-semibold text-black-300 text-center mb-6">
                 Create Your Account
             </Text>
@@ -251,7 +251,7 @@ const SignUp = () => {
 
             <TouchableOpacity
                 onPress={handleNext}
-                className="rounded-full py-4 bg-primary-300"
+                className="rounded-full py-4 bg-primary-300 mb-6"
             >
                 <Text className="text-white text-lg font-rubik-medium text-center">
                     Next
@@ -260,7 +260,7 @@ const SignUp = () => {
 
             <TouchableOpacity
                 onPress={() => router.replace('/SignIn')}
-                className="mt-4"
+                className="mb-8"
             >
                 <Text className="text-center text-black-200 font-rubik">
                     Already have an account? Sign In
@@ -270,7 +270,7 @@ const SignUp = () => {
     );
 
     const renderStep2 = () => (
-        <View className="px-10 mt-6 pb-8">
+        <View className="px-10 mt-6 pb-12">
             <Text className="text-3xl font-rubik-semibold text-black-300 text-center mb-6">
                 Add Profile Photo
             </Text>
@@ -305,7 +305,7 @@ const SignUp = () => {
                 </TouchableOpacity>
             </View>
 
-            <View className="flex-row justify-between">
+            <View className="flex-row justify-between mb-8">
                 <TouchableOpacity
                     onPress={handleBack}
                     className="rounded-full py-4 px-8 bg-gray-300 flex-1 mr-2"
@@ -336,12 +336,12 @@ const SignUp = () => {
                 Select what you're interested in (you can change this later)
             </Text>
 
-            <View className="flex-1">
+            <View className="flex-1 mb-4">
                 <FlatList
                     data={CATEGORIES}
                     numColumns={2}
                     keyExtractor={(item) => item.value}
-                    contentContainerStyle={{ paddingBottom: 100 }}
+                    contentContainerStyle={{ paddingBottom: 20 }}
                     showsVerticalScrollIndicator={false}
                     renderItem={({ item }) => {
                         const isSelected = signUpData.preferences.includes(item.value);
@@ -352,7 +352,7 @@ const SignUp = () => {
                                     }`}
                             >
                                 <Text className="text-3xl mb-2">{item.emoji}</Text>
-                                <Text className={`font-rubik-medium ${isSelected ? 'text-primary-300' : 'text-black-300'
+                                <Text className={`font-rubik-medium text-center ${isSelected ? 'text-primary-300' : 'text-black-300'
                                     }`}>
                                     {item.label}
                                 </Text>
@@ -362,7 +362,18 @@ const SignUp = () => {
                 />
             </View>
 
-            <View className="flex-row justify-between mt-4 pb-4">
+            {/* Selection counter */}
+            <View className="items-center mb-6">
+                <Text className="text-black-200 font-rubik text-center">
+                    {signUpData.preferences.length > 0
+                        ? `${signUpData.preferences.length} interest${signUpData.preferences.length !== 1 ? 's' : ''} selected`
+                        : 'No interests selected yet'
+                    }
+                </Text>
+            </View>
+
+            {/* Fixed bottom buttons */}
+            <View className="flex-row justify-between pb-4">
                 <TouchableOpacity
                     onPress={handleBack}
                     className="rounded-full py-4 px-8 bg-gray-300 flex-1 mr-2"
@@ -379,7 +390,7 @@ const SignUp = () => {
                         }`}
                 >
                     <Text className="text-white text-lg font-rubik-medium text-center">
-                        {loading ? "Creating Account..." : `Complete${signUpData.preferences.length > 0 ? ` (${signUpData.preferences.length} selected)` : ''}`}
+                        {loading ? "Creating Account..." : "Complete"}
                     </Text>
                 </TouchableOpacity>
             </View>
@@ -429,11 +440,16 @@ const SignUp = () => {
                         {renderStep3()}
                     </View>
                 ) : (
-                    // Steps 1 and 2 use ScrollView
-                    <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+                    // Steps 1 and 2 use ScrollView with proper spacing
+                    <ScrollView
+                        contentContainerStyle={{ paddingVertical: 20 }}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                        bounces={false}
+                    >
                         <Image
                             source={images.onboarding}
-                            className="w-full h-2/5"
+                            className="w-full h-64"
                             resizeMode="contain"
                         />
 

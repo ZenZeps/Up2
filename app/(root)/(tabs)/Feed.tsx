@@ -2,14 +2,15 @@ import { getCategoriesByValues } from '@/constants/categories';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
-import { account, config, databases, Query } from '@/lib/appwrite/appwrite';
+import { account, config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { batchProcess, createOptimizedQuery, dbConnectionPool } from '@/lib/utils/dbOptimization';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { FlatList, Image, Linking, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { FlatList, Image, Linking, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import icons from '@/constants/icons';
@@ -36,54 +37,85 @@ export default function Feed() {
   const [travelFormVisible, setTravelFormVisible] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [friends, setFriends] = useState<string[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const user = await account.get();
-        if (!user?.$id) return;
-        setCurrentUserId(user.$id);
-        const profile = await getUserProfile(user.$id);
-        const userFriends = profile?.friends ?? [];
-        setFriends(userFriends);
+  // Optimized fetch function for scalability
+  const fetchFeedData = useCallback(async () => {
+    try {
+      const user = await account.get();
+      if (!user?.$id) return;
 
-        if (userFriends.length > 0) {
-          // Fetch friend events
-          const friendEvents = await databases.listDocuments(
+      setCurrentUserId(user.$id);
+      const profile = await getUserProfile(user.$id);
+      const userFriends = profile?.friends ?? [];
+      setFriends(userFriends);
+
+      if (userFriends.length > 0) {
+        // Use optimized queries and connection pooling for scalability
+        const friendEvents = await dbConnectionPool.acquire(async () => {
+          return await databases.listDocuments(
             config.databaseID!,
             config.eventsCollectionID!,
-            [
-              Query.equal('creatorId', userFriends)
-            ]
+            createOptimizedQuery.events.friendEvents(userFriends, 50)
           );
+        });
 
-          const uniqueCreatorIds = [...new Set(friendEvents.documents.map(event => event.creatorId))];
-          const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
-          const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, userDisplayUtils.getFullName(profile)]));
+        // Batch process creator profiles for better performance
+        const uniqueCreatorIds = [...new Set(friendEvents.documents.map(event => event.creatorId))];
+        const creatorProfiles = await batchProcess(
+          uniqueCreatorIds,
+          async (batch) => await getUsersByIds(batch),
+          25 // Optimal batch size
+        );
 
-          const filteredAndMappedEvents = friendEvents.documents
-            .filter(event => {
-              const hasNotHappened = new Date(event.endTime).getTime() > Date.now();
-              return hasNotHappened;
-            })
-            .map(event => ({
-              ...(event as unknown as AppEvent),
-              creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
-              isAttending: event.attendees?.includes(user.$id ?? ''),
-            }));
-          setEventsWithCreatorNames(filteredAndMappedEvents as AppEvent[]);
+        const creatorMap = new Map(
+          creatorProfiles.flat().map(profile => [profile.$id, userDisplayUtils.getFullName(profile)])
+        );
 
-          // Fetch travel announcements
+        const filteredAndMappedEvents = friendEvents.documents
+          .map(event => ({
+            ...(event as unknown as AppEvent),
+            creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
+            isAttending: event.attendees?.includes(user.$id ?? ''),
+          }));
+        setEventsWithCreatorNames(filteredAndMappedEvents as AppEvent[]);
+
+        // Fetch travel announcements with connection pooling
+        await dbConnectionPool.acquire(async () => {
           await fetchTravelAnnouncements(userFriends);
-        }
-      } catch (err: any) {
-        if (err?.message?.includes('missing scope (account)')) return;
-        console.error('Error getting current user or friends:', err);
+        });
       }
-    };
-    init();
-    refetchEvents();
+    } catch (err: any) {
+      if (err?.message?.includes('missing scope (account)')) return;
+      console.error('Error fetching feed data:', err);
+    }
   }, []);
+
+  // Pull-to-refresh handler for Instagram-like functionality
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchFeedData();
+      await refetchEvents(); // Also refresh events context
+    } catch (error) {
+      console.error('Error refreshing feed:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchFeedData, refetchEvents]);
+
+  // Initial load - happens once per session for scalability
+  useEffect(() => {
+    if (!initialLoadComplete) {
+      const init = async () => {
+        await fetchFeedData();
+        await refetchEvents();
+        setInitialLoadComplete(true);
+      };
+      init();
+    }
+  }, [fetchFeedData, refetchEvents, initialLoadComplete]);
 
   const fetchTravelAnnouncements = async (friendIds: string[]) => {
     try {
@@ -341,13 +373,21 @@ export default function Feed() {
         </View>
       </View>
 
-      {/* Event Feed */}
+      {/* Event Feed with Pull-to-Refresh for scalability */}
       <FlatList
         data={feedItems}
         keyExtractor={(item) => `${item.type}-${item.$id}`}
         renderItem={renderFeedItem}
         contentContainerStyle={{ paddingVertical: 16, paddingBottom: 70 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       />
 
       {/* Event Form Modal */}

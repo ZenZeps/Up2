@@ -5,11 +5,13 @@ import { authDebug } from "../debug/authDebug";
 import { cacheManager } from "../debug/cacheManager";
 import { dbUsageMonitor } from "../debug/dbUsageMonitor";
 
-// Rate limit configuration (calls per minute)
-const RATE_LIMIT = 10;
+// Rate limit configuration (calls per minute) - Optimized for 100k users
+const RATE_LIMIT = 15; // Slightly increased for better UX
 const RATE_WINDOW = 60 * 1000; // 1 minute window
-const DEFAULT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const DEBOUNCE_DELAY = 300; // 300ms debounce
+const DEFAULT_CACHE_TTL = 3 * 60 * 1000; // Reduced to 3 minutes for fresher data
+const PROFILE_CACHE_TTL = 30 * 60 * 1000; // 30 minutes for profile data (session-level)
+const EVENT_CACHE_TTL = 1 * 60 * 1000; // 1 minute for events (frequent updates)
+const DEBOUNCE_DELAY = 200; // Reduced debounce for better responsiveness
 
 // Rate limiter tracking
 interface RateLimiter {
@@ -43,6 +45,20 @@ function useDebounce<T extends (...args: any[]) => Promise<any>>(
   };
 }
 
+// Smart cache TTL selection based on data type for 100k user scalability
+const getSmartCacheTTL = (cacheKey: string): number => {
+  if (cacheKey.includes('profile') || cacheKey.includes('user-profile')) {
+    return PROFILE_CACHE_TTL; // Long cache for profile data
+  }
+  if (cacheKey.includes('event') || cacheKey.includes('feed')) {
+    return EVENT_CACHE_TTL; // Short cache for dynamic content
+  }
+  if (cacheKey.includes('friend') || cacheKey.includes('travel')) {
+    return DEFAULT_CACHE_TTL; // Medium cache for semi-static data
+  }
+  return DEFAULT_CACHE_TTL; // Default cache
+};
+
 // Custom React Hook that helps us manage Appwrite API calls with state and error handling
 interface UseAppwriteOptions<T, P extends Record<string, any>> {
   fn: (params?: P) => Promise<T>;
@@ -68,7 +84,7 @@ export const useAppwrite = <T, P extends Record<string, any>>({
   params = {} as P,
   skip = false,
   cacheKey,
-  cacheTTL = DEFAULT_CACHE_TTL,
+  cacheTTL,
   dependencies = [],
   disableCache = false,
   debounce = 0,
@@ -83,6 +99,11 @@ export const useAppwrite = <T, P extends Record<string, any>>({
   const effectiveKey = useMemo(() => {
     return cacheKey || `${fn.name}-${JSON.stringify(params)}`;
   }, [cacheKey, fn.name, params]);
+
+  // Smart cache TTL selection for scalability
+  const effectiveTTL = useMemo(() => {
+    return cacheTTL || getSmartCacheTTL(effectiveKey);
+  }, [cacheTTL, effectiveKey]);
 
   // Rate limiting logic
   const checkRateLimit = useCallback(() => {
@@ -153,10 +174,10 @@ export const useAppwrite = <T, P extends Record<string, any>>({
             const result = await fn(paramsToUse);
             setData(result);
 
-            // Cache the result if caching is enabled
+            // Cache the result with smart TTL if caching is enabled
             if (!disableCache) {
-              cacheManager.set<T>(currentCacheKey, result, cacheTTL);
-              authDebug.debug(`Cached data for ${currentCacheKey}`);
+              cacheManager.set<T>(currentCacheKey, result, effectiveTTL);
+              authDebug.debug(`Cached data for ${currentCacheKey} with TTL: ${effectiveTTL}ms`);
             }
           } catch (err: unknown) {
             const errorMessage =
