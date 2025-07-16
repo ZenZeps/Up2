@@ -6,6 +6,8 @@ import {
 } from "@/lib/api/user";
 import {
     account,
+    config,
+    databases,
     loginWithEmail,
     signupWithEmail,
 } from "@/lib/appwrite/appwrite";
@@ -151,18 +153,7 @@ const SignUp = () => {
                 authDebug.warn("Could not send verification email (not critical)", verifyError);
             }
 
-            // Step 5: Upload profile photo if provided
-            let photoId = null;
-            if (profilePhotoUri) {
-                try {
-                    photoId = await uploadProfilePhoto(user.$id, profilePhotoUri);
-                    authDebug.info("Profile photo uploaded", { photoId });
-                } catch (photoError) {
-                    authDebug.warn("Could not upload profile photo (not critical)", photoError);
-                }
-            }
-
-            // Step 6: Create user profile with all data
+            // Step 5: Create user profile first (before photo upload)
             await createUserProfile({
                 $id: user.$id,
                 firstName: firstName.trim(),
@@ -171,21 +162,39 @@ const SignUp = () => {
                 isPublic: true,
                 preferences: preferences,
                 friends: [],
-                photoId: photoId || undefined,
+                photoId: undefined, // Will be updated after photo upload
             });
-            authDebug.info("User profile created with first name, last name, preferences and photo");
+            authDebug.info("User profile created initially");
 
-            // Step 7: Refresh global state
-            setTimeout(async () => {
+            // Step 6: Upload profile photo if provided (now that profile exists)
+            let photoId = null;
+            if (profilePhotoUri) {
                 try {
-                    await refetch();
-                    authDebug.info("Global state refreshed after signup");
-                } catch (error) {
-                    authDebug.warn("Could not refresh global state (not critical)", error);
-                }
-            }, 100);
+                    photoId = await uploadProfilePhoto(user.$id, profilePhotoUri);
+                    authDebug.info("Profile photo uploaded", { photoId });
 
-            // Step 8: Navigate to home
+                    // Update the profile with the photo ID
+                    await databases.updateDocument(
+                        config.databaseID!,
+                        config.usersCollectionID!,
+                        user.$id,
+                        { photoId: photoId }
+                    );
+                    authDebug.info("Profile updated with photo ID");
+                } catch (photoError) {
+                    authDebug.warn("Could not upload profile photo (not critical)", photoError);
+                }
+            }
+
+            // Step 7: Refresh global state and wait for it
+            try {
+                await refetch();
+                authDebug.info("Global state refreshed after signup");
+            } catch (error) {
+                authDebug.warn("Could not refresh global state (not critical)", error);
+            }
+
+            // Step 8: Navigate to home after state refresh
             authDebug.info("Signup completed successfully, navigating to home");
             router.replace("/(root)/(tabs)/Home");
 

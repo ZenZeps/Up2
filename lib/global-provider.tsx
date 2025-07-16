@@ -28,6 +28,7 @@ export const GlobalProvider = ({ children }: { children: ReactNode }) => {
         error
     } = useAppwrite({
         fn: getCurrentUserWithProfile as unknown as (params?: Record<string, string | number>) => Promise<User>,
+        cacheTTL: 5 * 60 * 1000, // 5 minutes cache for auth state
     });
 
     const isLoggedIn = !!user; // If you call ! on null then it is true. Turns nulls into booleans.

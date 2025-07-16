@@ -73,19 +73,19 @@ const SignIn = () => {
         return;
       }
 
-      // Navigate to home
+      // Navigate to home first
       authDebug.info("Authentication successful - navigating to home");
-      router.replace("/(root)/(tabs)/Home");
 
-      // Trigger global state refresh in the background (non-blocking)
-      setTimeout(async () => {
-        try {
-          await refetch();
-          authDebug.info("Global state refreshed after login");
-        } catch (error) {
-          authDebug.warn("Could not refresh global state (not critical)", error);
-        }
-      }, 100);
+      // Trigger global state refresh immediately and wait for it
+      try {
+        await refetch();
+        authDebug.info("Global state refreshed after login");
+      } catch (error) {
+        authDebug.warn("Could not refresh global state (not critical)", error);
+      }
+
+      // Navigate after state refresh
+      router.replace("/(root)/(tabs)/Home");
 
     } catch (err: any) {
       authDebug.error("Authentication failed", err);

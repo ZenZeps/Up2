@@ -26,10 +26,14 @@ export default function RootLayout() {
     }
   }, []);
 
-  // Handle authentication redirect
+  // Handle authentication redirect with a delay to prevent flickering
   React.useEffect(() => {
     if (!loading && !isLoggedIn) {
-      router.replace('/SignIn');
+      // Add a small delay to prevent race conditions
+      const timer = setTimeout(() => {
+        router.replace('/SignIn');
+      }, 100);
+      return () => clearTimeout(timer);
     }
   }, [loading, isLoggedIn, router]);
 
