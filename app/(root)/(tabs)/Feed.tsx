@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import icons from '@/constants/icons';
 import images from '@/constants/images';
 import { Alert } from 'react-native';
+import UserAvatar from '../components/UserAvatar';
 
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncementWithUserInfo } from '@/lib/types/Travel';
@@ -222,9 +223,11 @@ export default function Feed() {
     <View className="bg-white rounded-lg shadow-md mb-4 mx-4">
       {/* Event Header */}
       <View className="flex-row items-center p-3">
-        <Image
-          source={images.avatar} // TODO: Use profile photo
-          className="w-10 h-10 rounded-full mr-3"
+        <UserAvatar
+          photoUrl={null} // TODO: Get actual creator photo
+          name={item.creatorName}
+          size={40}
+          className="mr-3"
         />
         <View>
           <Text className="font-rubik-semibold text-base">{item.creatorName || 'Unknown Creator'}</Text>
@@ -299,9 +302,11 @@ export default function Feed() {
     <View className="bg-white rounded-lg shadow-md mb-4 mx-4">
       {/* Travel Header */}
       <View className="flex-row items-center p-3">
-        <Image
-          source={item.userPhotoUrl ? { uri: item.userPhotoUrl } : images.avatar}
-          className="w-10 h-10 rounded-full mr-3"
+        <UserAvatar
+          photoUrl={item.userPhotoUrl}
+          name={item.userName}
+          size={40}
+          className="mr-3"
         />
         <View>
           <Text className="font-rubik-semibold text-base">{item.userName}</Text>

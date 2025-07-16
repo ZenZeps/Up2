@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Image, Linking, Alert, SafeAreaView } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { databases, config, getCurrentUser } from '@/lib/appwrite/appwrite';
-import { getUserProfile, getUsersByIds } from '@/lib/api/user';
-import { useEvents } from '../context/EventContext';
-import dayjs from 'dayjs';
 import icons from '@/constants/icons';
 import images from '@/constants/images';
+import { getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
+import dayjs from 'dayjs';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Linking, SafeAreaView, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import UserAvatar from '../components/UserAvatar';
+import { useEvents } from '../context/EventContext';
 
 const EventDetail = () => {
   const { eventId } = useLocalSearchParams();
@@ -158,7 +159,12 @@ const EventDetail = () => {
 
         {/* Creator Info */}
         <View className="flex-row items-center p-4 bg-white border-b border-gray-200">
-          <Image source={images.avatar} className="w-10 h-10 rounded-full mr-3" />
+          <UserAvatar
+            photoUrl={null} // TODO: Get actual creator photo
+            name={creatorName}
+            size={40}
+            className="mr-3"
+          />
           <Text className="font-rubik-semibold text-base">{creatorName}</Text>
         </View>
 
@@ -221,7 +227,7 @@ const EventDetail = () => {
             </View>
           )}
 
-          
+
         </View>
       </ScrollView>
     </SafeAreaView>

@@ -1,5 +1,4 @@
 import icons from '@/constants/icons';
-import images from '@/constants/images';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getAllUsers, getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
@@ -21,6 +20,7 @@ import {
 } from 'react-native';
 import { ID, Query } from 'react-native-appwrite';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import UserAvatar from '../components/UserAvatar';
 import { useEvents } from '../context/EventContext';
 
 const Explore = () => {
@@ -271,9 +271,12 @@ const Explore = () => {
         {/* Header */}
         <View className="flex-row items-center justify-between mb-6">
           <View className="flex-row items-center">
-            <Image
-              source={currentUserPhotoUrl ? { uri: currentUserPhotoUrl } : images.avatar}
-              className="w-12 h-12 rounded-full"
+            <UserAvatar
+              photoUrl={currentUserPhotoUrl}
+              firstName={profile?.firstName}
+              lastName={profile?.lastName}
+              name={userDisplayUtils.getFullName(profile, 'User')}
+              size={48}
             />
             <View className="ml-3">
               <Text className="text-base font-rubik-medium" style={{ color: colors.textSecondary }}>Welcome back,</Text>
@@ -361,9 +364,13 @@ const Explore = () => {
                       className="flex-row items-center flex-1 mr-2"
                       onPress={() => isFriend ? router.push(`/Calendar/${user.$id}`) : null}
                     >
-                      <Image
-                        source={userPhotoUrls[user.$id] ? { uri: userPhotoUrls[user.$id] } : images.avatar}
-                        className="w-10 h-10 rounded-full mr-3"
+                      <UserAvatar
+                        photoUrl={userPhotoUrls[user.$id]}
+                        firstName={user.firstName}
+                        lastName={user.lastName}
+                        name={userDisplayUtils.getFullName(user)}
+                        size={40}
+                        className="mr-3"
                       />
                       <Text
                         className="text-lg font-rubik-medium"

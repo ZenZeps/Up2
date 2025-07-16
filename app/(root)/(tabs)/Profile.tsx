@@ -1,6 +1,5 @@
 import { CATEGORIES } from '@/constants/categories';
 import icons from '@/constants/icons';
-import images from '@/constants/images';
 import { getProfilePhotoUrl, pickProfilePhoto, uploadProfilePhoto } from '@/lib/api/profilePhoto';
 import { getFriends, getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { logout } from '@/lib/appwrite/appwrite';
@@ -21,6 +20,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import UserAvatar from '../components/UserAvatar';
 
 const Profile = () => {
   const router = useRouter();
@@ -356,9 +356,11 @@ const Profile = () => {
               keyExtractor={(item) => item.$id}
               renderItem={({ item }) => (
                 <View className="mr-4 items-center">
-                  <Image
-                    source={item.photoId ? { uri: getProfilePhotoUrl(item.photoId) } : images.avatar}
-                    className="w-16 h-16 rounded-full"
+                  <UserAvatar
+                    photoUrl={item.photoId ? getProfilePhotoUrl(item.photoId) : null}
+                    firstName={item.firstName}
+                    lastName={item.lastName}
+                    size={64}
                   />
                   <Text className="text-sm font-rubik mt-1" style={{ color: colors.text }}>{userDisplayUtils.getFullName(item)}</Text>
                 </View>

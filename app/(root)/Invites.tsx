@@ -1,5 +1,4 @@
 import icons from '@/constants/icons';
-import images from '@/constants/images';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
@@ -9,6 +8,7 @@ import React, { useEffect, useState } from 'react';
 import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Query } from 'react-native-appwrite';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import UserAvatar from './components/UserAvatar';
 import { useEvents } from './context/EventContext';
 
 
@@ -159,9 +159,11 @@ export default function Invites() {
             friendRequests.map((req) => (
               <View key={req.$id} className="flex-row items-center justify-between bg-white p-3 rounded-lg shadow-sm mb-3 border border-gray-100">
                 <View className="flex-row items-center">
-                  <Image
-                    source={senderPhotoUrls[req.from] ? { uri: senderPhotoUrls[req.from] } : images.avatar}
-                    className="w-10 h-10 rounded-full mr-3"
+                  <UserAvatar
+                    photoUrl={senderPhotoUrls[req.from]}
+                    name={req.senderName}
+                    size={40}
+                    className="mr-3"
                   />
                   <Text className="text-base font-rubik-medium text-gray-800">{req.senderName}</Text>
                 </View>

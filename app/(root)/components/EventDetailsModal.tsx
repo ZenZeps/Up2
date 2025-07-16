@@ -7,6 +7,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import React, { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import UserAvatar from './UserAvatar';
 
 import { Event } from '@/lib/types/Events';
 
@@ -98,9 +99,11 @@ const EventDetailsModal = ({
       <View style={styles.attendeesRow}>
         {(limit ? profiles.slice(0, limit) : profiles).map((profile: AttendeeProfile, index: number) => (
           <View key={profile.$id} style={[styles.attendeeItem, index > 0 && { marginLeft: -10 }]}>
-            <Image
-              source={attendeePhotoUrls[profile.$id] ? { uri: attendeePhotoUrls[profile.$id] } : images.avatar}
-              style={styles.attendeeAvatar}
+            <UserAvatar
+              photoUrl={attendeePhotoUrls[profile.$id]}
+              firstName={profile.firstName}
+              lastName={profile.lastName}
+              size={32}
             />
             {!limit && <Text style={styles.attendeeName}>{userDisplayUtils.getFirstName(profile)}</Text>}
           </View>
@@ -133,9 +136,10 @@ const EventDetailsModal = ({
           <ScrollView showsVerticalScrollIndicator={false}>
             {/* Creator Info */}
             <View style={styles.creatorInfo}>
-              <Image
-                source={creatorPhotoUrl ? { uri: creatorPhotoUrl } : images.avatar}
-                style={styles.avatar}
+              <UserAvatar
+                photoUrl={creatorPhotoUrl}
+                name={(event as any).creatorName || 'Unknown Creator'}
+                size={40}
               />
               <Text style={styles.creatorName}>
                 {/* TypeScript workaround for extended Event with creatorName */}
