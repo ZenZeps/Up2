@@ -3,11 +3,12 @@ import icons from '@/constants/icons';
 import { getAllEvents } from '@/lib/api/event';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { account, config, databases } from '@/lib/appwrite/appwrite';
+import { useTheme } from '@/lib/context/ThemeContext';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
@@ -17,6 +18,7 @@ import { useEvents } from '../context/EventContext';
 const viewModes: Mode[] = ['week', 'month'];
 
 export default function FriendCalendar() {
+    const { colors } = useTheme();
     const router = useRouter();
     const params = useLocalSearchParams();
     const friendId = params.id as string;
@@ -32,6 +34,7 @@ export default function FriendCalendar() {
     const [selectedEvent, setSelectedEvent] = useState<AppEvent | null>(null);
     const [detailsModalVisible, setDetailsModalVisible] = useState(false);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [calendarHeight, setCalendarHeight] = useState(0);
 
     // Fetch friend's profile and events
     useEffect(() => {
@@ -160,85 +163,137 @@ export default function FriendCalendar() {
         setDetailsModalVisible(true);
     };
 
-    const renderEvent = (event: any, { key, ...touchableOpacityProps }: any) => (
-        <TouchableOpacity key={key} {...touchableOpacityProps}>
-            <Text style={{ fontSize: 10, color: 'black' }} numberOfLines={1}>{event.title}</Text>
-        </TouchableOpacity>
-    );
+    const renderEvent = (event: any, touchableOpacityProps: any) => {
+        // Safety check to prevent rendering invalid events
+        if (!event || !event.rawEvent) {
+            return null;
+        }
+
+        const isMonthView = viewMode === 'month';
+        const eventColor = event.color || colors.primary;
+
+        // Convert hex color to rgba for opacity in month view
+        const hexToRgba = (hex: string, alpha: number) => {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        };
+
+        const backgroundColor = isMonthView
+            ? hexToRgba(eventColor, 0.4) // 40% opacity for month view
+            : eventColor; // Full opacity for week view
+
+        return (
+            <TouchableOpacity
+                {...touchableOpacityProps}
+                style={[
+                    touchableOpacityProps.style, // Preserve original calendar positioning styles
+                    {
+                        backgroundColor,
+                        padding: 4,
+                        borderRadius: 6,
+                    }
+                ]}
+                onPress={() => handlePressEvent(event)}
+                key={event.rawEvent.$id || `event-${Math.random()}`} // Ensure unique key
+            >
+                <Text
+                    className={`text-xs font-rubik-medium ${isMonthView ? 'text-black-300' : 'text-white'
+                        }`}
+                    numberOfLines={1}
+                >
+                    {event.title || 'Untitled'}
+                </Text>
+                {!isMonthView && (
+                    <>
+                        <Text className="text-white text-xs">
+                            {event.location || 'No location'}
+                        </Text>
+                        <Text className="text-white text-xs">
+                            {event.rawEvent?.creatorName || 'Unknown'}
+                        </Text>
+                    </>
+                )}
+            </TouchableOpacity>
+        );
+    };
 
     return (
-        <SafeAreaView className="flex-1 bg-white">
-            <View className="flex-1">
-                {/* Header */}
-                <View className="flex-row items-center justify-between px-5 mb-4">
-                    <TouchableOpacity onPress={() => router.back()} className="p-2">
-                        <Image source={icons.backArrow} className="w-6 h-6" resizeMode="contain" />
-                    </TouchableOpacity>
-                    <Text className="text-xl font-rubik-semibold">{friendName}'s Calendar</Text>
-                    <View style={{ width: 32 }} /> {/* Empty view for layout balance */}
-                </View>
-
-                {/* View Mode Toggle Buttons */}
-                <View className="flex-row justify-center mb-4 px-5">
+        <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
+            <View className="flex-row items-center justify-between p-4">
+                <TouchableOpacity onPress={() => router.back()} className="p-2">
+                    <Image source={icons.backArrow} className="w-6 h-6" resizeMode="contain" />
+                </TouchableOpacity>
+                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>
+                    {friendName}'s Calendar
+                </Text>
+                {/* View mode switcher moved to top right */}
+                <View className="flex-row">
                     {viewModes.map((mode) => (
                         <TouchableOpacity
                             key={mode}
                             onPress={() => setViewMode(mode)}
-                            className={`flex-1 items-center py-3 rounded-lg mx-1 ${viewMode === mode ? 'bg-primary-300' : 'bg-gray-200'
-                                }`}
+                            className={`px-3 py-1 rounded-full mx-1`}
                             style={{
-                                shadowColor: '#000',
-                                shadowOffset: { width: 0, height: 2 },
-                                shadowOpacity: viewMode === mode ? 0.2 : 0,
-                                shadowRadius: 4,
-                                elevation: viewMode === mode ? 4 : 0,
+                                backgroundColor: viewMode === mode ? colors.primary : colors.surface
                             }}
                         >
-                            <Text className={`${viewMode === mode ? 'text-white' : 'text-black'}`}>
+                            <Text
+                                className="font-rubik"
+                                style={{
+                                    color: viewMode === mode ? colors.background : colors.text
+                                }}
+                            >
                                 {mode.charAt(0).toUpperCase() + mode.slice(1)}
                             </Text>
                         </TouchableOpacity>
                     ))}
                 </View>
+            </View>
 
-                {/* Calendar Card */}
-                <View
-                    className="flex-1 bg-white rounded-2xl shadow-md mx-5"
-                    style={{
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: 0.08,
-                        shadowRadius: 12,
-                        elevation: 6,
-                    }}
-                >
+            {/* Calendar component */}
+            <View
+                className="flex-1"
+                onLayout={(event) => {
+                    const { height } = event.nativeEvent.layout;
+                    setCalendarHeight(height);
+                }}
+            >
+                {calendarHeight > 0 && (
                     <BigCalendar
-                        date={date}
-                        showAllDayEventCell={false}
-                        events={calendarEvents}
-                        height={viewMode === 'month' ? 600 : (Platform.OS === 'ios' ? 640 : 620)}
+                        events={calendarEvents as any[]}
+                        height={calendarHeight}
                         mode={viewMode}
+                        date={date}
                         onPressEvent={handlePressEvent}
                         renderEvent={renderEvent}
-                    />
-                </View>
-
-                {/* Event Details Modal */}
-                {selectedEvent && (
-                    <EventDetailsModal
-                        event={selectedEvent}
-                        isCreator={false}
-                        onClose={() => {
-                            setDetailsModalVisible(false);
-                            setSelectedEvent(null);
+                        swipeEnabled={true}
+                        overlapOffset={8}
+                        ampm={false}
+                        headerContainerStyle={{
+                            height: 50,
+                            backgroundColor: colors.surface,
                         }}
-                        onEdit={() => { }}
-                        onAttend={() => handleAttend(selectedEvent)}
-                        onNotAttend={() => handleNotAttend(selectedEvent)}
-                        currentUserId={currentUserId || ''}
                     />
                 )}
             </View>
+
+            {/* Event Details Modal */}
+            {detailsModalVisible && selectedEvent && (
+                <EventDetailsModal
+                    event={selectedEvent}
+                    isCreator={false}
+                    onClose={() => {
+                        setDetailsModalVisible(false);
+                        setSelectedEvent(null);
+                    }}
+                    onEdit={() => { }}
+                    onAttend={() => handleAttend(selectedEvent)}
+                    onNotAttend={() => handleNotAttend(selectedEvent)}
+                    currentUserId={currentUserId || ''}
+                />
+            )}
         </SafeAreaView>
     );
 } 
