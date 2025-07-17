@@ -218,6 +218,7 @@ export default function Home() {
       .map((e: AppEvent) => {
         try {
           // Parse dates safely with error handling
+          // Ensure dates are in local timezone to prevent offset issues
           const startDate = new Date(e.startTime);
           const endDate = new Date(e.endTime);
 
@@ -286,8 +287,10 @@ export default function Home() {
           touchableOpacityProps.style, // Preserve original calendar positioning styles
           {
             backgroundColor,
-            padding: 4,
-            borderRadius: 6,
+            padding: 1,
+            borderRadius: 4,
+            margin: 0, // Remove margin to align with grid
+            flex: 0, // Take full width of grid cell
           }
         ]}
         onPress={() => handlePressEvent(event)}
@@ -297,15 +300,16 @@ export default function Home() {
           className={`text-xs font-rubik-medium ${isMonthView ? 'text-black-300' : 'text-white'
             }`}
           numberOfLines={1}
+          style={{ textAlign: 'center' }}
         >
           {event.title || 'Untitled'}
         </Text>
         {!isMonthView && (
           <>
-            <Text className="text-white text-xs">
+            <Text className="text-white text-xs" style={{ textAlign: 'center' }}>
               {event.location || 'No location'}
             </Text>
-            <Text className="text-white text-xs">
+            <Text className="text-white text-xs" style={{ textAlign: 'center' }}>
               {event.rawEvent?.creatorName || 'Unknown'}
             </Text>
           </>
@@ -416,7 +420,7 @@ export default function Home() {
 
       {/* Calendar component */}
       <View
-        className="flex-1"
+        className="flex-1 mb-16"
         onLayout={(event) => {
           const { height } = event.nativeEvent.layout;
           setCalendarHeight(height);
@@ -433,11 +437,15 @@ export default function Home() {
             renderEvent={renderEvent}
             renderCustomDateForMonth={renderCustomDateForMonth}
             swipeEnabled={true}
-            overlapOffset={8}
+            overlapOffset={0}
             ampm={false}
+            scrollOffsetMinutes={0}
             headerContainerStyle={{
               height: 50,
               backgroundColor: colors.surface,
+            }}
+            bodyContainerStyle={{
+              paddingBottom: 0,
             }}
           />
         )}
