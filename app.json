@@ -4,33 +4,44 @@
     "slug": "Up2",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/Up2-Logo.png",
     "scheme": "up2",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.up2.Up2"
+      "bundleIdentifier": "com.up2.Up2",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "We need access to your photo library to allow you to select a profile photo.",
+        "NSCameraUsageDescription": "We need access to your camera to allow you to take profile photos.",
+        "NSMicrophoneUsageDescription": "We need access to your microphone for video recordings."
+      }
     },
     "android": {
       "package": "com.Up2.Up2",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/icon.png",
+        "foregroundImage": "./assets/images/Up2-Logo.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/Up2-Logo.png"
     },
     "plugins": [
       "expo-router",
+      "expo-image-picker",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/Up2-Logo.png",
           "resizeMode": "cover",
           "backgroundColor": "#ffffff",
           "enableFullScreenImage_legacy": true
