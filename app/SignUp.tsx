@@ -439,7 +439,7 @@ const SignUp = () => {
                     // Step 3 needs different layout for the FlatList
                     <View className="flex-1">
                         <Image
-                            source={images.onboarding}
+                            source={images.logo}
                             className="w-full h-1/4"
                             resizeMode="contain"
                         />
@@ -457,7 +457,7 @@ const SignUp = () => {
                         bounces={false}
                     >
                         <Image
-                            source={images.onboarding}
+                            source={images.logo}
                             className="w-full h-64"
                             resizeMode="contain"
                         />

@@ -122,7 +122,7 @@ const SignIn = () => {
       >
         <ScrollView contentContainerClassName="h-full justify-center">
           <Image
-            source={images.onboarding}
+            source={images.logo}
             className="w-full h-2/5"
             resizeMode="contain"
           />
