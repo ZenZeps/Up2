@@ -14,7 +14,8 @@
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "We need access to your photo library to allow you to select a profile photo.",
         "NSCameraUsageDescription": "We need access to your camera to allow you to take profile photos.",
-        "NSMicrophoneUsageDescription": "We need access to your microphone for video recordings."
+        "NSMicrophoneUsageDescription": "We need access to your microphone for video recordings.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -25,9 +26,10 @@
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -58,10 +60,17 @@
             "./assets/fonts/Rubik-SemiBold.ttf"
           ]
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "299bdfcc-f7b6-4bcf-8bb9-22297be80675"
+      }
     }
   }
 }
