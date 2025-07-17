@@ -277,7 +277,7 @@ export default function Home() {
     };
 
     const backgroundColor = isMonthView
-      ? hexToRgba(eventColor, 0.4) // 40% opacity for month view
+      ? hexToRgba(eventColor, 0.7) // Increased opacity for better visibility
       : eventColor; // Full opacity for week/day view
 
     return (
@@ -287,30 +287,48 @@ export default function Home() {
           touchableOpacityProps.style, // Preserve original calendar positioning styles
           {
             backgroundColor,
-            padding: 1,
-            borderRadius: 4,
-            margin: 0, // Remove margin to align with grid
-            flex: 0, // Take full width of grid cell
+            padding: isMonthView ? 0 : 1, // Reduced padding for week/day view
+            borderRadius: isMonthView ? 2 : 4,
+            margin: 0,
+            flex: 0,
+            // For month view, position events below the date number with more spacing
+            ...(isMonthView && {
+              position: 'absolute',
+              bottom: 1,
+              left: 1,
+              right: 1,
+              height: 14,
+              minHeight: 14,
+              maxHeight: 14,
+              top: 28, // Push events down below the date number area
+            }),
           }
         ]}
         onPress={() => handlePressEvent(event)}
         key={event.rawEvent.$id || `event-${Math.random()}`} // Ensure unique key
       >
         <Text
-          className={`text-xs font-rubik-medium ${isMonthView ? 'text-black-300' : 'text-white'
-            }`}
+          className={`font-rubik-medium`}
           numberOfLines={1}
-          style={{ textAlign: 'center' }}
+          style={{
+            textAlign: 'center',
+            fontSize: isMonthView ? 10 : 12,
+            color: isMonthView ? colors.background : colors.background, // Use background color (white in dark mode)
+            marginBottom: isMonthView ? 0 : -2, // Reduce space below title in week/day view
+          }}
         >
           {event.title || 'Untitled'}
         </Text>
         {!isMonthView && (
           <>
-            <Text className="text-white text-xs" style={{ textAlign: 'center' }}>
+            <Text
+              className="text-white text-xs"
+              style={{
+                textAlign: 'center',
+                marginTop: -2, // Reduce space above location text
+              }}
+            >
               {event.location || 'No location'}
-            </Text>
-            <Text className="text-white text-xs" style={{ textAlign: 'center' }}>
-              {event.rawEvent?.creatorName || 'Unknown'}
             </Text>
           </>
         )}
@@ -334,25 +352,34 @@ export default function Home() {
         style={{
           flex: 1,
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: 'flex-start',
           minHeight: 32,
-          // More subtle highlighting that looks like a header badge
-          backgroundColor: isTravelDate ? colors.primary + '15' : 'transparent',
-          borderWidth: isTravelDate ? 2 : 0,
-          borderColor: isTravelDate ? colors.primary : 'transparent',
-          borderRadius: isTravelDate ? 16 : 0,
-          margin: isTravelDate ? 1 : 0,
+          paddingTop: 2,
         }}
       >
-        <Text
+        <View
           style={{
-            fontSize: 16,
-            fontWeight: isTravelDate ? 'bold' : 'normal',
-            color: isTravelDate ? colors.primary : colors.text,
+            width: 24,
+            height: 24,
+            alignItems: 'center',
+            justifyContent: 'center',
+            // Subtle travel date indicator - small border only
+            borderWidth: isTravelDate ? 1 : 0,
+            borderColor: isTravelDate ? colors.primary : 'transparent',
+            borderRadius: 12,
+            backgroundColor: isTravelDate ? colors.primary + '10' : 'transparent',
           }}
         >
-          {date.getDate()}
-        </Text>
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: isTravelDate ? '600' : 'normal',
+              color: isTravelDate ? colors.primary : colors.text,
+            }}
+          >
+            {date.getDate()}
+          </Text>
+        </View>
       </View>
     );
   };
