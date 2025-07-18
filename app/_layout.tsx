@@ -1,11 +1,15 @@
 import { account } from "@/lib/appwrite/client";
 import { ThemeProvider } from "@/lib/context/ThemeContext";
+import { setupGlobalErrorHandler } from "@/lib/debug/globalErrorHandler";
 import GlobalProvider from "@/lib/global-provider";
 import { useFonts } from "expo-font";
 import { SplashScreen, Stack } from "expo-router";
 import { useEffect, useState } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./globals.css";
+
+// Set up global error handling
+setupGlobalErrorHandler();
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({

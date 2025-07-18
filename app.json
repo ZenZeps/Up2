@@ -8,11 +8,6 @@
     "scheme": "up2",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "linking": {
-      "prefixes": [
-        "up2://"
-      ]
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.up2.Up2",
