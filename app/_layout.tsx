@@ -2,12 +2,10 @@ import { account } from "@/lib/appwrite/client";
 import { ThemeProvider } from "@/lib/context/ThemeContext";
 import GlobalProvider from "@/lib/global-provider";
 import { useFonts } from "expo-font";
-import * as Linking from "expo-linking";
 import { SplashScreen, Stack } from "expo-router";
 import { useEffect, useState } from "react";
+import ErrorBoundary from "./components/ErrorBoundary";
 import "./globals.css";
-
-const prefix = Linking.createURL("/");
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -24,6 +22,14 @@ export default function RootLayout() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        // Check if Appwrite is properly configured
+        if (!process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID) {
+          console.error("Appwrite configuration missing");
+          setIsAuthenticated(false);
+          setIsAppReady(true);
+          return;
+        }
+
         await account.get(); // Will throw if not logged in
         setIsAuthenticated(true);
         console.log("User is authenticated");
@@ -55,16 +61,19 @@ export default function RootLayout() {
 
   if (!fontsLoaded || !isAppReady || isAuthenticated === null) return null;
 
-  // Wrap the Stack in ThemeProvider and GlobalProvider
+  // Wrap the Stack in ThemeProvider, GlobalProvider, and ErrorBoundary for crash protection
   return (
-    <ThemeProvider>
-      <GlobalProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(root)" />
-          <Stack.Screen name="SignIn" />
-          <Stack.Screen name="SignUp" />
-        </Stack>
-      </GlobalProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <GlobalProvider>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(root)" />
+            <Stack.Screen name="SignIn" />
+            <Stack.Screen name="SignUp" />
+          </Stack>
+        </GlobalProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

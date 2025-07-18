@@ -3,19 +3,46 @@ import { authDebug } from "../debug/authDebug";
 
 export { ID, Query };
 
-export const config = {
-  platform: "com.up2.Up2", // Fixed to match app.json iOS bundle identifier
-  endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT!,
-  projectID: process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID!,
-  databaseID: process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID!,
-  usersCollectionID: process.env.EXPO_PUBLIC_APPWRITE_USERS_COLLECTION_ID!,
-  eventsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_EVENTS_COLLECTION_ID!,
-  friendRequestsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_FRIENDREQUESTS_COLLECTION_ID!,
-  travelCollectionID: process.env.EXPO_PUBLIC_APPWRITE_TRAVEL_COLLECTION_ID!,
-  profilePhotosBucketID: process.env.EXPO_PUBLIC_APPWRITE_PROFILE_PHOTOS_BUCKET_ID!,
+// Validate environment variables and provide fallbacks
+const validateConfig = () => {
+  const requiredEnvVars = [
+    'EXPO_PUBLIC_APPWRITE_ENDPOINT',
+    'EXPO_PUBLIC_APPWRITE_PROJECT_ID',
+    'EXPO_PUBLIC_APPWRITE_DATABASE_ID',
+    'EXPO_PUBLIC_APPWRITE_USERS_COLLECTION_ID',
+    'EXPO_PUBLIC_APPWRITE_EVENTS_COLLECTION_ID',
+    'EXPO_PUBLIC_APPWRITE_FRIENDREQUESTS_COLLECTION_ID',
+    'EXPO_PUBLIC_APPWRITE_TRAVEL_COLLECTION_ID',
+    'EXPO_PUBLIC_APPWRITE_PROFILE_PHOTOS_BUCKET_ID'
+  ];
+
+  const missing = requiredEnvVars.filter(varName => !process.env[varName]);
+
+  if (missing.length > 0) {
+    console.warn('Missing environment variables:', missing);
+    console.warn('App may not function correctly without proper configuration');
+    // Don't throw error during development - just warn
+  }
 };
 
-const client = new Client()
+// Validate on load (non-blocking)
+try {
+  validateConfig();
+} catch (error) {
+  console.error('Configuration validation failed:', error);
+}
+
+export const config = {
+  platform: "com.up2.Up2", // Fixed to match app.json iOS bundle identifier
+  endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT || "https://syd.cloud.appwrite.io/v1",
+  projectID: process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID || "685944b1003ba9c421ea",
+  databaseID: process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID || "68594f14003e54ada2a4",
+  usersCollectionID: process.env.EXPO_PUBLIC_APPWRITE_USERS_COLLECTION_ID || "685bb460000e2c55b3a5",
+  eventsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_EVENTS_COLLECTION_ID || "68594f3e0030d3de2a3c",
+  friendRequestsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_FRIENDREQUESTS_COLLECTION_ID || "68594f490020c5c17b6c",
+  travelCollectionID: process.env.EXPO_PUBLIC_APPWRITE_TRAVEL_COLLECTION_ID || "68594f4d0034f9a3bb1b",
+  profilePhotosBucketID: process.env.EXPO_PUBLIC_APPWRITE_PROFILE_PHOTOS_BUCKET_ID || "68594f610012a2c5c4d7",
+}; const client = new Client()
   .setEndpoint(config.endpoint)
   .setProject(config.projectID)
   .setPlatform(config.platform);

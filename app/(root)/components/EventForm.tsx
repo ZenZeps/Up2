@@ -33,10 +33,16 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   // Safely parse date with validation and proper time information
   const safeParseDate = (dateString: string): Date => {
     try {
+      if (!dateString) {
+        console.warn('Empty date string provided, using current date');
+        return new Date();
+      }
+
       const date = new Date(dateString);
       // Check if date is valid
       if (isNaN(date.getTime())) {
-        throw new Error('Invalid date');
+        console.warn('Invalid date string:', dateString, 'using current date');
+        return new Date();
       }
       return date;
     } catch (error) {
@@ -51,15 +57,29 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
     return new Date(start.getTime() + durationMinutes * 60000);
   };
 
-  const [startDate, setStartDate] = useState<Date>(
-    event && event.startTime ? safeParseDate(event.startTime) : safeParseDate(selectedDateTime)
-  );
+  const [startDate, setStartDate] = useState<Date>(() => {
+    try {
+      if (event && event.startTime) {
+        return safeParseDate(event.startTime);
+      }
+      return safeParseDate(selectedDateTime);
+    } catch (error) {
+      console.warn('Error initializing start date:', error);
+      return new Date();
+    }
+  });
 
-  const [endDate, setEndDate] = useState<Date>(
-    event && event.endTime
-      ? safeParseDate(event.endTime)
-      : calculateEndTime(safeParseDate(selectedDateTime), duration)
-  );
+  const [endDate, setEndDate] = useState<Date>(() => {
+    try {
+      if (event && event.endTime) {
+        return safeParseDate(event.endTime);
+      }
+      return calculateEndTime(safeParseDate(selectedDateTime), duration);
+    } catch (error) {
+      console.warn('Error initializing end date:', error);
+      return new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+    }
+  });
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
@@ -149,47 +169,68 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
     );
   };
 
-  const eventId = event?.$id ?? ID.unique();
-  const newEvent: Event = {
-    $id: eventId,
-    id: eventId, // Set the 'id' field to match the $id field for Appwrite
-    title,
-    location,
-    startTime: startDate.toISOString(),
-    endTime: endDate.toISOString(),
-    creatorId: currentUserId,
-    inviteeIds,
-    attendees: event?.attendees || [],
-    description,
-    tags,
-  };
-
-
-
   const handleSave = async () => {
     try {
-      if (event && event.$id) { // Ensure event and event.$id exist for update
+      // Validate required fields
+      if (!title.trim()) {
+        alert("Event title is required");
+        return;
+      }
+
+      if (!startDate || !endDate) {
+        alert("Start and end dates are required");
+        return;
+      }
+
+      if (startDate >= endDate) {
+        alert("End date must be after start date");
+        return;
+      }
+
+      // Validate dates are valid
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        alert("Invalid date selected");
+        return;
+      }
+
+      // Create the event object with safe date conversion
+      const eventData: Event = {
+        $id: event?.$id || ID.unique(),
+        id: event?.$id || ID.unique(),
+        title: title.trim(),
+        location: location.trim(),
+        startTime: startDate.toISOString(),
+        endTime: endDate.toISOString(),
+        creatorId: currentUserId,
+        inviteeIds: inviteeIds.filter(id => id && id.trim()), // Filter out empty IDs
+        attendees: event?.attendees || [],
+        description: description.trim(),
+        tags: tags.filter(tag => tag && tag.trim()), // Filter out empty tags
+      };
+
+      console.log("Saving event with data:", eventData);
+
+      if (event && event.$id) {
+        // Update existing event
         await databases.updateDocument(
           config.databaseID!,
           config.eventsCollectionID!,
           event.$id,
-          newEvent
+          eventData
         );
-      } else if (!event) { // Only create if event is undefined (new event)
-        await createEvent(newEvent);
+        console.log("Event updated successfully");
       } else {
-        console.error("Error: Event or event.$id is missing for update operation.", event);
-        alert("Failed to save event: Missing event ID.");
-        return;
+        // Create new event
+        await createEvent(eventData);
+        console.log("Event created successfully");
       }
 
-
-      await refetchEvents(); // <-- refetch after save
-
-      onClose(); // Close modal after save
+      await refetchEvents();
+      onClose();
     } catch (err) {
       console.error("Error saving event:", err);
-      alert("Failed to save event.");
+      const errorMessage = err instanceof Error ? err.message : "Failed to save event";
+      alert(`Error: ${errorMessage}`);
     }
   };
 

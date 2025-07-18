@@ -142,33 +142,109 @@ export async function getEventById(id: string) {
 }
 
 /**
- * Create a new event
+ * Create a new event with comprehensive error handling
  */
 export async function createEvent(event: Event) {
   try {
-    authDebug.info('Creating new event', { title: event.title });
+    // Comprehensive input validation
+    if (!event) {
+      throw new Error('Event data is required');
+    }
 
-    const res = await databases.createDocument(
-      config.databaseID!,
-      config.eventsCollectionID!,
-      event.$id || ID.unique(),
-      event
+    if (!event.title || typeof event.title !== 'string' || !event.title.trim()) {
+      throw new Error('Event title is required and must be a non-empty string');
+    }
+
+    if (!event.startTime || !event.endTime) {
+      throw new Error('Start time and end time are required');
+    }
+
+    if (!event.creatorId || typeof event.creatorId !== 'string') {
+      throw new Error('Creator ID is required and must be a string');
+    }
+
+    // Validate dates
+    const startDate = new Date(event.startTime);
+    const endDate = new Date(event.endTime);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      throw new Error('Invalid date format provided');
+    }
+
+    if (startDate >= endDate) {
+      throw new Error('End time must be after start time');
+    }
+
+    // Validate arrays
+    if (event.inviteeIds && !Array.isArray(event.inviteeIds)) {
+      throw new Error('Invitee IDs must be an array');
+    }
+
+    if (event.attendees && !Array.isArray(event.attendees)) {
+      throw new Error('Attendees must be an array');
+    }
+
+    if (event.tags && !Array.isArray(event.tags)) {
+      throw new Error('Tags must be an array');
+    }
+
+    // Sanitize and prepare data
+    const sanitizedEvent = {
+      ...event,
+      title: event.title.trim(),
+      location: event.location?.trim() || '',
+      description: event.description?.trim() || '',
+      inviteeIds: event.inviteeIds?.filter(id => id && typeof id === 'string') || [],
+      attendees: event.attendees?.filter(id => id && typeof id === 'string') || [],
+      tags: event.tags?.filter(tag => tag && typeof tag === 'string') || [],
+    };
+
+    authDebug.debug('Creating event with data:', sanitizedEvent);
+
+    // Validate config before making API call
+    if (!config.databaseID || !config.eventsCollectionID) {
+      console.warn('Database configuration is missing, using fallbacks');
+    }
+
+    // Create the event
+    const createdEvent = await databases.createDocument(
+      config.databaseID,
+      config.eventsCollectionID,
+      sanitizedEvent.$id || ID.unique(),
+      sanitizedEvent
     );
 
-    // Invalidate cache
+    authDebug.info('Event created successfully:', createdEvent.$id);
+
+    // Cache the created event
+    cacheManager.set(`event-${createdEvent.$id}`, createdEvent, EVENT_CACHE_TTL);
+
+    // Clear the all-events cache to force refresh
     cacheManager.remove(EVENT_COLLECTION_CACHE_KEY);
 
-    // Cache the new event
-    cacheManager.set<Event>(`event-${res.$id}`, {
-      ...event,
-      $id: res.$id,
-    }, EVENT_CACHE_TTL);
+    return createdEvent;
 
-    authDebug.info("Created event successfully", { id: res.$id });
-    return res;
-  } catch (err) {
-    authDebug.error("Error creating event:", err);
-    throw new Error("Failed to create event");
+  } catch (error: any) {
+    // Enhanced error logging with context
+    const errorMessage = error?.message || 'Unknown error occurred';
+    const errorContext = {
+      function: 'createEvent',
+      eventId: event?.$id,
+      eventTitle: event?.title,
+      creatorId: event?.creatorId,
+      originalError: error,
+    };
+
+    authDebug.error('Failed to create event:', errorContext);
+
+    // Clear caches on error to prevent stale data
+    cacheManager.remove(EVENT_COLLECTION_CACHE_KEY);
+    if (event?.$id) {
+      cacheManager.remove(`event-${event.$id}`);
+    }
+
+    // Rethrow with more context
+    throw new Error(`Failed to create event: ${errorMessage}`);
   }
 }
 

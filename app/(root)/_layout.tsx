@@ -26,12 +26,20 @@ export default function RootLayout() {
     }
   }, []);
 
-  // Handle authentication redirect with a delay to prevent flickering
+  // Handle authentication redirect with error handling
   React.useEffect(() => {
     if (!loading && !isLoggedIn) {
       // Add a small delay to prevent race conditions
       const timer = setTimeout(() => {
-        router.replace('/SignIn');
+        try {
+          router.replace('/SignIn');
+        } catch (navError) {
+          console.error('Navigation error during auth redirect:', navError);
+          // Force a page reload as fallback
+          if (typeof window !== 'undefined') {
+            window.location.href = '/SignIn';
+          }
+        }
       }, 100);
       return () => clearTimeout(timer);
     }

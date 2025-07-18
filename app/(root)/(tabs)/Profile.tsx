@@ -199,7 +199,16 @@ const Profile = () => {
         }
       }, 100);
 
-      router.replace('/SignIn');
+      // Safe navigation with error handling
+      try {
+        router.replace('/SignIn');
+      } catch (navError) {
+        console.error('Navigation error during logout:', navError);
+        // Force a page reload as fallback
+        if (typeof window !== 'undefined') {
+          window.location.href = '/SignIn';
+        }
+      }
     } catch (err) {
       console.error('Logout failed:', err);
       Alert.alert('Error', 'Failed to log out');

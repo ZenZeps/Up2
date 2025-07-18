@@ -258,82 +258,128 @@ export default function Home() {
 
   }, [userEvents, getCreatorName]);
 
-  // Custom render function for events with type safety
+  // Custom render function for events with comprehensive error handling
   const renderEvent = (event: any, touchableOpacityProps: any) => {
-    // Safety check to prevent rendering invalid events
-    if (!event || !event.rawEvent) {
-      return null;
-    }
+    try {
+      // Safety checks to prevent rendering invalid events
+      if (!event) {
+        console.warn('renderEvent: event is null or undefined');
+        return null;
+      }
 
-    const isMonthView = viewMode === 'month';
-    const eventColor = event.color || colors.primary;
+      if (!event.rawEvent) {
+        console.warn('renderEvent: event.rawEvent is null or undefined');
+        return null;
+      }
 
-    // Convert hex color to rgba for opacity in month view
-    const hexToRgba = (hex: string, alpha: number) => {
-      const r = parseInt(hex.slice(1, 3), 16);
-      const g = parseInt(hex.slice(3, 5), 16);
-      const b = parseInt(hex.slice(5, 7), 16);
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    };
+      // Validate essential event properties
+      if (!event.rawEvent.title) {
+        console.warn('renderEvent: event.rawEvent.title is missing');
+        return null;
+      }
 
-    const backgroundColor = isMonthView
-      ? hexToRgba(eventColor, 0.7) // Increased opacity for better visibility
-      : eventColor; // Full opacity for week/day view
+      const isMonthView = viewMode === 'month';
+      const eventColor = event.color || colors.primary;
 
-    return (
-      <TouchableOpacity
-        {...touchableOpacityProps}
-        style={[
-          touchableOpacityProps.style, // Preserve original calendar positioning styles
-          {
-            backgroundColor,
-            padding: isMonthView ? 0 : 1, // Reduced padding for week/day view
-            borderRadius: isMonthView ? 2 : 4,
-            margin: 0,
-            flex: 0,
-            // For month view, position events below the date number with more spacing
-            ...(isMonthView && {
-              position: 'absolute',
-              bottom: 1,
-              left: 1,
-              right: 1,
-              height: 14,
-              minHeight: 14,
-              maxHeight: 14,
-              top: 28, // Push events down below the date number area
-            }),
-          }
-        ]}
-        onPress={() => handlePressEvent(event)}
-        key={event.rawEvent.$id || `event-${Math.random()}`} // Ensure unique key
-      >
-        <Text
-          className={`font-rubik-medium`}
-          numberOfLines={1}
-          style={{
-            textAlign: 'center',
-            fontSize: isMonthView ? 10 : 12,
-            color: isMonthView ? colors.background : colors.background, // Use background color (white in dark mode)
-            marginBottom: isMonthView ? 0 : -2, // Reduce space below title in week/day view
-          }}
+      // Convert hex color to rgba for opacity in month view
+      const hexToRgba = (hex: string, alpha: number) => {
+        try {
+          const r = parseInt(hex.slice(1, 3), 16);
+          const g = parseInt(hex.slice(3, 5), 16);
+          const b = parseInt(hex.slice(5, 7), 16);
+          return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        } catch (error) {
+          console.warn('Error converting hex to rgba:', error);
+          return hex; // Return original hex if conversion fails
+        }
+      };
+
+      const backgroundColor = isMonthView
+        ? hexToRgba(eventColor, 0.7) // Increased opacity for better visibility
+        : eventColor; // Full opacity for week/day view
+
+      return (
+        <TouchableOpacity
+          {...touchableOpacityProps}
+          style={[
+            touchableOpacityProps.style, // Preserve original calendar positioning styles
+            {
+              backgroundColor,
+              padding: isMonthView ? 0 : 1, // Reduced padding for week/day view
+              borderRadius: isMonthView ? 2 : 4,
+              margin: 0,
+              flex: 0,
+              // For month view, position events below the date number with more spacing
+              ...(isMonthView && {
+                position: 'absolute',
+                bottom: 1,
+                left: 1,
+                right: 1,
+                height: 14,
+                minHeight: 14,
+                maxHeight: 14,
+                top: 28, // Push events down below the date number area
+              }),
+            }
+          ]}
+          onPress={() => handlePressEvent(event)}
+          key={event.rawEvent.$id || `event-${Math.random()}`} // Ensure unique key
         >
-          {event.title || 'Untitled'}
-        </Text>
-        {!isMonthView && (
-          <>
-            <Text
-              className="text-white text-xs"
-              style={{
-                textAlign: 'center',
-                marginTop: -2, // Reduce space above location text
-              }}
-            >
-              {event.location || 'No location'}
-            </Text>
-          </>
-        )}
-      </TouchableOpacity>
-    );
+          <Text
+            className={`font-rubik-medium`}
+            numberOfLines={1}
+            style={{
+              textAlign: 'center',
+              fontSize: isMonthView ? 10 : 12,
+              color: isMonthView ? colors.background : colors.background, // Use background color (white in dark mode)
+              marginBottom: isMonthView ? 0 : -2, // Reduce space below title in week/day view
+            }}
+          >
+            {event.title || 'Untitled'}
+          </Text>
+          {!isMonthView && (
+            <>
+              <Text
+                className="text-white text-xs"
+                style={{
+                  textAlign: 'center',
+                  marginTop: -2, // Reduce space above location text
+                }}
+              >
+                {event.location || 'No location'}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      );
+    } catch (error) {
+      console.error('Error in renderEvent:', error);
+      // Return a fallback UI instead of crashing
+      return (
+        <TouchableOpacity
+          style={[
+            touchableOpacityProps.style,
+            {
+              backgroundColor: colors.error,
+              borderRadius: 4,
+              padding: 4,
+              marginVertical: 1,
+              minHeight: 24,
+            }
+          ]}
+        >
+          <Text
+            style={{
+              color: 'white',
+              fontSize: 10,
+              textAlign: 'center',
+            }}
+          >
+            Error loading event
+          </Text>
+        </TouchableOpacity>
+      );
+    }
   };
 
   // Handler for pressing a calendar cell (to create a new event)
@@ -385,10 +431,30 @@ export default function Home() {
   };
   // Custom header renderer for highlighting travel days
   // Handler for pressing an event (to view/edit)
+  // Handle press event with comprehensive error handling
   const handlePressEvent = (event: any) => {
-    if (event && event.rawEvent) {
+    try {
+      if (!event) {
+        console.warn('handlePressEvent: event is null or undefined');
+        return;
+      }
+
+      if (!event.rawEvent) {
+        console.warn('handlePressEvent: event.rawEvent is null or undefined');
+        return;
+      }
+
+      // Validate that the raw event has required properties
+      if (!event.rawEvent.$id) {
+        console.warn('handlePressEvent: event.rawEvent.$id is missing');
+        return;
+      }
+
       setSelectedEvent(event.rawEvent as AppEvent);
       setDetailsModalVisible(true);
+    } catch (error) {
+      console.error('Error in handlePressEvent:', error);
+      // Don't crash the app, just log the error
     }
   };
 

@@ -29,45 +29,50 @@ export const GlobalProvider = ({ children }: { children: ReactNode }) => {
     } = useAppwrite({
         fn: getCurrentUserWithProfile as unknown as (params?: Record<string, string | number>) => Promise<User>,
         cacheTTL: 5 * 60 * 1000, // 5 minutes cache for auth state
+        disableCache: false, // Enable caching for better performance
+        skip: false, // Don't skip the initial call
     });
 
     const isLoggedIn = !!user; // If you call ! on null then it is true. Turns nulls into booleans.
 
     // Log authentication status for debugging
     useEffect(() => {
-        authDebug.logAuthState(isLoggedIn, loading);
+        // Only log if we're not in a loading state
+        if (!loading) {
+            authDebug.logAuthState(isLoggedIn, loading);
 
-        if (isLoggedIn && user) {
-            authDebug.info(`User authenticated: ${user.$id}`);
-        } else if (!loading) {
-            if (error) {
-                authDebug.info(`Not authenticated: ${error}`);
+            if (isLoggedIn && user) {
+                authDebug.info(`User authenticated: ${user.$id}`);
             } else {
-                authDebug.info("Not authenticated (no error)");
-            }
+                if (error) {
+                    authDebug.info(`Not authenticated: ${error}`);
+                } else {
+                    authDebug.info("Not authenticated (no error)");
+                }
 
-            // For debugging only - check if we have active sessions
-            account.listSessions()
-                .then(sessions => {
-                    if (sessions.sessions.length > 0) {
-                        authDebug.warn(`Found ${sessions.sessions.length} active session(s) but user is not authenticated!`,
-                            sessions.sessions.map(s => ({
-                                id: s.$id,
-                                provider: s.provider,
-                                expire: new Date(Number(s.expire) * 1000).toLocaleString()
-                            }))
-                        );
-                    } else {
-                        authDebug.info("No active sessions found");
-                    }
-                })
-                .catch(err => {
-                    // This error is expected for non-authenticated users
-                    const errMsg = err?.message || String(err);
-                    if (!errMsg.includes('missing scope') && !errMsg.includes('User (role: guests)')) {
-                        authDebug.error("Error checking sessions", err);
-                    }
-                });
+                // For debugging only - check if we have active sessions (with error handling)
+                account.listSessions()
+                    .then(sessions => {
+                        if (sessions.sessions.length > 0) {
+                            authDebug.warn(`Found ${sessions.sessions.length} active session(s) but user is not authenticated!`,
+                                sessions.sessions.map(s => ({
+                                    id: s.$id,
+                                    provider: s.provider,
+                                    expire: new Date(Number(s.expire) * 1000).toLocaleString()
+                                }))
+                            );
+                        } else {
+                            authDebug.info("No active sessions found");
+                        }
+                    })
+                    .catch(err => {
+                        // This error is expected for non-authenticated users
+                        const errMsg = err?.message || String(err);
+                        if (!errMsg.includes('missing scope') && !errMsg.includes('User (role: guests)')) {
+                            authDebug.error("Error checking sessions", err);
+                        }
+                    });
+            }
         }
     }, [isLoggedIn, loading, user, error]);
 
