@@ -1,8 +1,6 @@
 import { CATEGORIES } from '@/constants/categories';
-import { getAllUsers } from '@/lib/api/user';
 import { config, databases } from '@/lib/appwrite/appwrite';
 import { Event } from '@/lib/types/Events';
-import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import dayjs from 'dayjs';
 import React, { useEffect, useState } from 'react';
 import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -10,11 +8,9 @@ import { useEvents } from '../context/EventContext';
 
 // Conditional imports for third-party libraries
 let DateTimePickerModal: any;
-let RNPickerSelect: any;
 
 try {
   DateTimePickerModal = require("react-native-modal-datetime-picker").default;
-  RNPickerSelect = require('react-native-picker-select').default;
 } catch (error) {
   console.error('Error importing third-party libraries:', error);
   // Fallback components will be used
@@ -23,7 +19,7 @@ try {
 // Fallback components for when third-party libraries fail
 const FallbackDateTimePicker = ({ isVisible, onConfirm, onCancel, date, mode }: any) => {
   if (!isVisible) return null;
-  
+
   return (
     <Modal visible={isVisible} transparent animationType="fade">
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
@@ -44,59 +40,6 @@ const FallbackDateTimePicker = ({ isVisible, onConfirm, onCancel, date, mode }: 
   );
 };
 
-const FallbackPickerSelect = ({ items, onValueChange, value, placeholder, style, disabled }: any) => {
-  const [modalVisible, setModalVisible] = useState(false);
-  
-  const selectedItem = items.find((item: any) => item.value === value);
-  
-  return (
-    <>
-      <TouchableOpacity 
-        onPress={() => !disabled && setModalVisible(true)}
-        style={[
-          { padding: 12, borderBottomWidth: 1, borderBottomColor: '#D1D5DB' },
-          style?.inputIOS || style?.inputAndroid
-        ]}
-        disabled={disabled}
-      >
-        <Text style={{ color: selectedItem ? 'black' : '#A0A0A0' }}>
-          {selectedItem ? selectedItem.label : placeholder?.label || 'Select...'}
-        </Text>
-      </TouchableOpacity>
-      
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <View style={{ backgroundColor: 'white', maxHeight: '60%', width: '80%', borderRadius: 10 }}>
-            <View style={{ padding: 15, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
-              <Text style={{ fontSize: 16, fontWeight: 'bold' }}>Select Option</Text>
-            </View>
-            <ScrollView style={{ maxHeight: 300 }}>
-              {items.map((item: any) => (
-                <TouchableOpacity 
-                  key={item.value} 
-                  onPress={() => {
-                    onValueChange(item.value);
-                    setModalVisible(false);
-                  }}
-                  style={{ padding: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' }}
-                >
-                  <Text>{item.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <TouchableOpacity 
-              onPress={() => setModalVisible(false)}
-              style={{ padding: 15, alignItems: 'center' }}
-            >
-              <Text style={{ color: '#007AFF', fontSize: 16 }}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    </>
-  );
-};
-
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -107,55 +50,19 @@ interface Props {
 }
 
 export default function EventForm({ visible, onClose, event, selectedDateTime, currentUserId, friends }: Props) {
-  console.log('=== EventForm: Starting render ===');
-  console.log('EventForm: Component rendering with props', { 
-    visible, 
-    hasEvent: !!event, 
-    selectedDateTime, 
-    currentUserId, 
-    friendsCount: friends?.length || 0 
-  });
-
-  // Add additional library availability checks
-  console.log('EventForm: Checking third-party library availability...');
-  console.log('DateTimePickerModal available:', !!DateTimePickerModal);
-  console.log('RNPickerSelect available:', !!RNPickerSelect);
-
-  try {
-    console.log('EventForm: Checking visibility...');
-    // Add safety checks for props
-    if (!visible) {
-      console.log('EventForm: Not visible, returning null');
-      return null;
-    }
-
-    console.log('EventForm: Checking currentUserId...');
-    if (!currentUserId) {
-      console.error('EventForm: currentUserId is required');
-      return null;
-    }
-
-    console.log('EventForm: Checking friends array...');
-    if (!friends || !Array.isArray(friends)) {
-      console.error('EventForm: friends array is required');
-      return null;
-    }
-
-    console.log('EventForm: All prop checks passed, continuing...');
-  } catch (error) {
-    console.error('EventForm: Error in prop validation:', error);
-    return null;
-  }
-
-  console.log('EventForm: Initializing state...');
+  // Basic state initialization
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
-  const [inviteeIds, setInviteeIds] = useState<string[]>([]);
-  const [selectedInvitee, setSelectedInvitee] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  console.log('EventForm: Basic state initialized');
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+  
+  // Friend invitation state - simplified approach
+  const [inviteeIds, setInviteeIds] = useState<string[]>([]);
+  const [showFriendPicker, setShowFriendPicker] = useState(false);
+
   // Safely parse date with validation and proper time information
   const safeParseDate = (dateString: string): Date => {
     try {
@@ -183,10 +90,9 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
     return new Date(start.getTime() + durationMinutes * 60000);
   };
 
-  console.log('EventForm: Initializing date state...');
+  // Date state initialization
   const [startDate, setStartDate] = useState<Date>(() => {
     try {
-      console.log('EventForm: Calculating start date...');
       if (event && event.startTime) {
         return safeParseDate(event.startTime);
       }
@@ -199,7 +105,6 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
   const [endDate, setEndDate] = useState<Date>(() => {
     try {
-      console.log('EventForm: Calculating end date...');
       if (event && event.endTime) {
         return safeParseDate(event.endTime);
       }
@@ -211,106 +116,41 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       return new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
     }
   });
-  console.log('EventForm: Date state initialized');
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
 
-  const [users, setUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  // EventContext access
+  const eventContext = useEvents();
+  const { refetchEvents, addEvent, updateEvent } = eventContext;
 
+  // Validation checks (only run when component first renders)
   useEffect(() => {
-    const fetchUsers = async () => {
-      setLoading(true);
-      try {
-        console.log('EventForm: Fetching users...');
-        const allUsers = await getAllUsers();
-        console.log('EventForm: Users fetched successfully', { count: allUsers.length });
-        setUsers(allUsers);
-      } catch (err) {
-        console.error('EventForm: Error fetching users:', err);
-        setUsers([]);
-      } finally {
-        setLoading(false);
-      }
-    };
+    console.log('EventForm: Component mounted with props', {
+      visible,
+      hasEvent: !!event,
+      selectedDateTime,
+      currentUserId,
+      friendsCount: friends?.length || 0
+    });
 
-    // Only fetch if the modal is visible and we don't have users yet
-    if (visible && users.length === 0) {
-      const timeoutId = setTimeout(() => {
-        fetchUsers();
-      }, 100);
-
-      return () => clearTimeout(timeoutId);
+    if (!visible) {
+      console.log('EventForm: Not visible');
+      return;
     }
-  }, [visible, users.length]);
 
-  const friendUsers = users.filter(
-    (u) =>
-      u.$id !== currentUserId &&
-      friends.includes(u.$id) &&
-      !inviteeIds.includes(u.$id)
-  );
-
-  const isCreator = event?.creatorId === currentUserId;
-
-  const editable = !event || isCreator;
-
-  console.log('EventForm: Accessing EventContext...');
-  // Safely access EventContext
-  const { refetchEvents, addEvent, updateEvent } = useEvents();
-  console.log('EventForm: EventContext accessed successfully');
-
-  // Test function to diagnose the issue (development only)
-  const runDiagnosticTest = async () => {
-    try {
-      console.log('=== Running Event Creation Diagnostic Test ===');
-      
-      // Simple database configuration check
-      console.log('Config test: Checking environment variables...');
-      const hasRequiredConfig = !!(
-        config.databaseID && 
-        config.eventsCollectionID && 
-        config.usersCollectionID
-      );
-      
-      if (!hasRequiredConfig) {
-        alert('Configuration Error: Missing required environment variables');
-        return;
-      }
-      
-      console.log('Config test: OK');
-      
-      // Test third-party library availability
-      console.log('Library test: Checking third-party libraries...');
-      console.log('DateTimePickerModal:', !!DateTimePickerModal ? 'Available' : 'Missing');
-      console.log('RNPickerSelect:', !!RNPickerSelect ? 'Available' : 'Missing');
-      
-      // Test context availability
-      console.log('Context test: Checking EventContext...');
-      const hasContext = typeof refetchEvents === 'function' && typeof addEvent === 'function' && typeof updateEvent === 'function';
-      console.log('EventContext functions:', hasContext ? 'Available' : 'Missing');
-      
-      // Test user data
-      console.log('User test: Checking user data...');
-      console.log('Users loaded:', users.length);
-      console.log('Friends available:', friendUsers.length);
-      
-      console.log('=== Diagnostic Test Complete ===');
-      alert(`Diagnostic test completed successfully!\n\nLibraries: ${DateTimePickerModal ? '✓' : '✗'} DatePicker, ${RNPickerSelect ? '✓' : '✗'} Picker\nContext: ${hasContext ? '✓' : '✗'} Available\nUsers: ${users.length} loaded\nFriends: ${friendUsers.length} available`);
-      
-    } catch (error) {
-      console.error('Diagnostic test crashed:', error);
-      alert(`Diagnostic test crashed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    if (!currentUserId) {
+      console.error('EventForm: currentUserId is required');
+      return;
     }
-  };
+
+    console.log('EventForm: Validation passed');
+  }, [visible, currentUserId, event, selectedDateTime, friends?.length]);
 
   useEffect(() => {
     if (event) {
       setTitle(event.title || '');
       setLocation(event.location || '');
       setDescription(event.description || '');
-      setInviteeIds(event.inviteeIds ?? []);
       setTags(event.tags || []);
+      setInviteeIds(event.inviteeIds || []);
 
       // Safely set dates with validation
       try {
@@ -331,8 +171,8 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setTitle('');
       setLocation('');
       setDescription('');
-      setInviteeIds([]);
       setTags([]);
+      setInviteeIds([]);
 
       // Safely set default dates
       try {
@@ -348,6 +188,58 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       }
     }
   }, [event, selectedDateTime]);
+
+  // Early return for visibility check
+  if (!visible) {
+    return null;
+  }
+
+  // Early return for missing currentUserId
+  if (!currentUserId) {
+    console.error('EventForm: currentUserId is required');
+    return null;
+  }
+
+  const isCreator = event?.creatorId === currentUserId;
+  const editable = !event || isCreator;
+
+  // Test function to diagnose the issue (development only)
+  const runDiagnosticTest = async () => {
+    try {
+      console.log('=== Running Event Creation Diagnostic Test ===');
+
+      // Simple database configuration check
+      console.log('Config test: Checking environment variables...');
+      const hasRequiredConfig = !!(
+        config.databaseID &&
+        config.eventsCollectionID &&
+        config.usersCollectionID
+      );
+
+      if (!hasRequiredConfig) {
+        alert('Configuration Error: Missing required environment variables');
+        return;
+      }
+
+      console.log('Config test: OK');
+
+      // Test third-party library availability
+      console.log('Library test: Checking third-party libraries...');
+      console.log('DateTimePickerModal:', !!DateTimePickerModal ? 'Available' : 'Missing');
+
+      // Test context availability
+      console.log('Context test: Checking EventContext...');
+      const hasContext = typeof refetchEvents === 'function' && typeof addEvent === 'function' && typeof updateEvent === 'function';
+      console.log('EventContext functions:', hasContext ? 'Available' : 'Missing');
+
+      console.log('=== Diagnostic Test Complete ===');
+      console.log(`Diagnostic test completed successfully!\n\nLibraries: ${DateTimePickerModal ? '✓' : '✗'} DatePicker\nContext: ${hasContext ? '✓' : '✗'} Available\nFriends: ${friends.length} total`);
+
+    } catch (error) {
+      console.error('Diagnostic test crashed:', error);
+      console.log(`Diagnostic test crashed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
 
 
   // Handle tag selection
@@ -369,7 +261,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       console.log('Already processing, skipping save');
       return;
     }
-    
+
     console.log('=== Starting Event Save Process ===');
     setIsProcessing(true);
 
@@ -441,7 +333,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
         } else {
           // Create new event using EventContext
           console.log("Creating new event");
-          await addEvent(eventData);
+          await addEvent(eventData as any); // Cast to any since addEvent creates the $id internally
           console.log("Event created successfully");
         }
 
@@ -514,338 +406,312 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
     }
   };
 
+  // STEP 29: Final pre-render check - REMOVED
+  console.log('EventForm: About to render modal');
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-        <View className="flex-1 bg-white">
-          {/* Header */}
-          <View className="flex-row items-center justify-between p-4 border-b border-gray-200">
-            <TouchableOpacity onPress={onClose} className="p-2">
-              <Text className="text-blue-500 text-lg">Cancel</Text>
+      <View className="flex-1 bg-white">
+        {/* Header */}
+        <View className="flex-row items-center justify-between p-4 border-b border-gray-200">
+          <TouchableOpacity onPress={onClose} className="p-2">
+            <Text className="text-blue-500 text-lg">Cancel</Text>
+          </TouchableOpacity>
+          <Text className="text-xl font-bold">{event ? 'Edit Event' : 'New Event'}</Text>
+          {editable && (
+            <TouchableOpacity onPress={handleSave} className="p-2" disabled={isProcessing}>
+              <Text className={`text-lg font-semibold ${isProcessing ? 'text-gray-400' : 'text-blue-500'}`}>
+                {isProcessing ? 'Saving...' : 'Done'}
+              </Text>
             </TouchableOpacity>
-            <Text className="text-xl font-bold">{event ? 'Edit Event' : 'New Event'}</Text>
-            {editable && (
-              <TouchableOpacity onPress={handleSave} className="p-2" disabled={isProcessing}>
-                <Text className={`text-lg font-semibold ${isProcessing ? 'text-gray-400' : 'text-blue-500'}`}>
-                  {isProcessing ? 'Saving...' : 'Done'}
-                </Text>
-              </TouchableOpacity>
+          )}
+        </View>
+
+        <ScrollView className="flex-1 p-4">
+          {/* Production error indicator */}
+          {!DateTimePickerModal && (
+            <View className="bg-yellow-100 border border-yellow-400 rounded-lg p-3 mb-4">
+              <Text className="text-yellow-800 text-sm">
+                ⚠️ Using fallback components for better compatibility
+              </Text>
+            </View>
+          )}
+          <TextInput
+            placeholder="Event name"
+            value={title}
+            onChangeText={setTitle}
+            className="border-b border-gray-300 p-3 mb-4 text-lg"
+            placeholderTextColor="#A0A0A0"
+            editable={editable}
+          />
+
+          <TextInput
+            placeholder="Location"
+            value={location}
+            onChangeText={setLocation}
+            className="border-b border-gray-300 p-3 mb-4 text-lg"
+            placeholderTextColor="#A0A0A0"
+            editable={editable}
+          />
+
+          {/* Diagnostic Test Button for Development */}
+          {__DEV__ && (
+            <TouchableOpacity
+              onPress={runDiagnosticTest}
+              className="bg-yellow-500 p-3 rounded-lg mb-4"
+            >
+              <Text className="text-white text-center font-semibold">
+                Run Diagnostic Test
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          <TextInput
+            placeholder="Description"
+            value={description}
+            onChangeText={setDescription}
+            className="border-b border-gray-300 p-3 mb-4 text-lg"
+            placeholderTextColor="#A0A0A0"
+            multiline
+            editable={editable}
+          />
+
+          {/* Tags Section */}
+          <View className="mb-4">
+            <Text className="text-gray-600 text-base mb-2">Event Tags</Text>
+            <View className="flex-row flex-wrap">
+              {CATEGORIES.map((category) => (
+                <TouchableOpacity
+                  key={category.value}
+                  onPress={() => editable && handleTagToggle(category.value)}
+                  className={`px-3 py-2 rounded-full border mr-2 mb-2 flex-row items-center`}
+                  style={{
+                    backgroundColor: tags.includes(category.value) ? '#007AFF' : '#F5F5F5',
+                    borderColor: tags.includes(category.value) ? '#007AFF' : '#E0E0E0',
+                  }}
+                  disabled={!editable}
+                >
+                  <Text className="mr-1">{category.emoji}</Text>
+                  <Text
+                    style={{
+                      color: tags.includes(category.value) ? 'white' : '#333',
+                      fontSize: 14,
+                    }}
+                  >
+                    {category.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View className="mb-4">
+            <Text className="text-gray-600 text-base mb-2">Start Time</Text>
+            <TouchableOpacity
+              onPress={() => {
+                try {
+                  if (editable) {
+                    setShowStartPicker(true);
+                  }
+                } catch (error) {
+                  console.error('Error opening start picker:', error);
+                }
+              }}
+              className="border border-gray-300 p-3 rounded-lg"
+              disabled={!editable}
+            >
+              <Text className="text-lg">{dayjs(startDate).format('MMM D, YYYY h:mm A')}</Text>
+            </TouchableOpacity>
+            {DateTimePickerModal ? (
+              <DateTimePickerModal
+                isVisible={showStartPicker}
+                mode="datetime"
+                date={startDate}
+                onConfirm={handleStartDateConfirm}
+                onCancel={() => {
+                  try {
+                    setShowStartPicker(false);
+                  } catch (error) {
+                    console.error('Error canceling start picker:', error);
+                  }
+                }}
+              />
+            ) : (
+              <FallbackDateTimePicker
+                isVisible={showStartPicker}
+                mode="datetime"
+                date={startDate}
+                onConfirm={handleStartDateConfirm}
+                onCancel={() => {
+                  try {
+                    setShowStartPicker(false);
+                  } catch (error) {
+                    console.error('Error canceling start picker:', error);
+                  }
+                }}
+              />
             )}
           </View>
 
-          <ScrollView className="flex-1 p-4">
-            {/* Production error indicator */}
-            {(!DateTimePickerModal || !RNPickerSelect) && (
-              <View className="bg-yellow-100 border border-yellow-400 rounded-lg p-3 mb-4">
-                <Text className="text-yellow-800 text-sm">
-                  ⚠️ Using fallback components for better compatibility
-                </Text>
-              </View>
-            )}
-            <TextInput
-              placeholder="Event name"
-              value={title}
-              onChangeText={setTitle}
-              className="border-b border-gray-300 p-3 mb-4 text-lg"
-              placeholderTextColor="#A0A0A0"
-              editable={editable}
-            />
-
-            <TextInput
-              placeholder="Location"
-              value={location}
-              onChangeText={setLocation}
-              className="border-b border-gray-300 p-3 mb-4 text-lg"
-              placeholderTextColor="#A0A0A0"
-              editable={editable}
-            />
-
-            {/* Diagnostic Test Button for Development */}
-            {__DEV__ && (
-              <TouchableOpacity
-                onPress={runDiagnosticTest}
-                className="bg-yellow-500 p-3 rounded-lg mb-4"
-              >
-                <Text className="text-white text-center font-semibold">
-                  Run Diagnostic Test
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            <TextInput
-              placeholder="Description"
-              value={description}
-              onChangeText={setDescription}
-              className="border-b border-gray-300 p-3 mb-4 text-lg"
-              placeholderTextColor="#A0A0A0"
-              multiline
-              editable={editable}
-            />
-
-            {/* Tags Section */}
-            <View className="mb-4">
-              <Text className="text-gray-600 text-base mb-2">Event Tags</Text>
-              <View className="flex-row flex-wrap">
-                {CATEGORIES.map((category) => (
-                  <TouchableOpacity
-                    key={category.value}
-                    onPress={() => editable && handleTagToggle(category.value)}
-                    className={`px-3 py-2 rounded-full border mr-2 mb-2 flex-row items-center`}
-                    style={{
-                      backgroundColor: tags.includes(category.value) ? '#007AFF' : '#F5F5F5',
-                      borderColor: tags.includes(category.value) ? '#007AFF' : '#E0E0E0',
-                    }}
-                    disabled={!editable}
-                  >
-                    <Text className="mr-1">{category.emoji}</Text>
-                    <Text
-                      style={{
-                        color: tags.includes(category.value) ? 'white' : '#333',
-                        fontSize: 14,
-                      }}
-                    >
-                      {category.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View className="mb-4">
-              <Text className="text-gray-600 text-base mb-2">Start Time</Text>
-              <TouchableOpacity
-                onPress={() => {
+          <View className="mb-4">
+            <Text className="text-gray-600 text-base mb-2">End Time</Text>
+            <TouchableOpacity
+              onPress={() => {
+                try {
+                  if (editable) {
+                    setShowEndPicker(true);
+                  }
+                } catch (error) {
+                  console.error('Error opening end picker:', error);
+                }
+              }}
+              className="border border-gray-300 p-3 rounded-lg"
+              disabled={!editable}
+            >
+              <Text className="text-lg">{dayjs(endDate).format('MMM D, YYYY h:mm A')}</Text>
+            </TouchableOpacity>
+            {DateTimePickerModal ? (
+              <DateTimePickerModal
+                isVisible={showEndPicker}
+                mode="datetime"
+                date={endDate}
+                minimumDate={startDate}
+                onConfirm={handleEndDateConfirm}
+                onCancel={() => {
                   try {
-                    if (editable) {
-                      setShowStartPicker(true);
-                    }
+                    setShowEndPicker(false);
                   } catch (error) {
-                    console.error('Error opening start picker:', error);
+                    console.error('Error canceling end picker:', error);
                   }
                 }}
-                className="border border-gray-300 p-3 rounded-lg"
-                disabled={!editable}
-              >
-                <Text className="text-lg">{dayjs(startDate).format('MMM D, YYYY h:mm A')}</Text>
-              </TouchableOpacity>
-              {DateTimePickerModal ? (
-                <DateTimePickerModal
-                  isVisible={showStartPicker}
-                  mode="datetime"
-                  date={startDate}
-                  onConfirm={handleStartDateConfirm}
-                  onCancel={() => {
-                    try {
-                      setShowStartPicker(false);
-                    } catch (error) {
-                      console.error('Error canceling start picker:', error);
-                    }
-                  }}
-                />
-              ) : (
-                <FallbackDateTimePicker
-                  isVisible={showStartPicker}
-                  mode="datetime"
-                  date={startDate}
-                  onConfirm={handleStartDateConfirm}
-                  onCancel={() => {
-                    try {
-                      setShowStartPicker(false);
-                    } catch (error) {
-                      console.error('Error canceling start picker:', error);
-                    }
-                  }}
-                />
-              )}
-            </View>
-
-            <View className="mb-4">
-              <Text className="text-gray-600 text-base mb-2">End Time</Text>
-              <TouchableOpacity
-                onPress={() => {
+              />
+            ) : (
+              <FallbackDateTimePicker
+                isVisible={showEndPicker}
+                mode="datetime"
+                date={endDate}
+                onConfirm={handleEndDateConfirm}
+                onCancel={() => {
                   try {
-                    if (editable) {
-                      setShowEndPicker(true);
-                    }
+                    setShowEndPicker(false);
                   } catch (error) {
-                    console.error('Error opening end picker:', error);
+                    console.error('Error canceling end picker:', error);
                   }
                 }}
-                className="border border-gray-300 p-3 rounded-lg"
-                disabled={!editable}
-              >
-                <Text className="text-lg">{dayjs(endDate).format('MMM D, YYYY h:mm A')}</Text>
-              </TouchableOpacity>
-              {DateTimePickerModal ? (
-                <DateTimePickerModal
-                  isVisible={showEndPicker}
-                  mode="datetime"
-                  date={endDate}
-                  minimumDate={startDate}
-                  onConfirm={handleEndDateConfirm}
-                  onCancel={() => {
-                    try {
-                      setShowEndPicker(false);
-                    } catch (error) {
-                      console.error('Error canceling end picker:', error);
-                    }
-                  }}
-                />
-              ) : (
-                <FallbackDateTimePicker
-                  isVisible={showEndPicker}
-                  mode="datetime"
-                  date={endDate}
-                  onConfirm={handleEndDateConfirm}
-                  onCancel={() => {
-                    try {
-                      setShowEndPicker(false);
-                    } catch (error) {
-                      console.error('Error canceling end picker:', error);
-                    }
-                  }}
-                />
-              )}
-            </View>
+              />
+            )}
+          </View>
 
-            {/* Invite Friends - only creator can invite */}
+          {/* Invite Friends Section - Simplified */}
+          <View className="mb-4">
+            <Text className="text-gray-600 text-base mb-2">Invite Friends</Text>
+            {friends.length === 0 ? (
+              <Text className="text-gray-400 p-3">You have no friends to invite.</Text>
+            ) : editable ? (
+              <TouchableOpacity
+                onPress={() => setShowFriendPicker(true)}
+                className="border border-gray-300 p-3 rounded-lg"
+              >
+                <Text className="text-lg">Select friends to invite...</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text className="text-gray-400 p-3">Only the creator can invite friends.</Text>
+            )}
+          </View>
+
+          {/* Show invited users */}
+          {inviteeIds.length > 0 && (
             <View className="mb-4">
-              <Text className="text-gray-600 text-base mb-2">Invite Friends</Text>
-              {loading ? (
-                <Text className="text-gray-400 p-3">Loading friends...</Text>
-              ) : friends.length === 0 ? (
-                <Text className="text-gray-400 p-3">You have no friends to invite.</Text>
-              ) : editable ? (
-                <View className="border border-gray-300 rounded-lg overflow-hidden">
-                  {RNPickerSelect ? (
-                    <RNPickerSelect
-                      onValueChange={(val: string | null) => {
-                        try {
-                          if (val && !inviteeIds.includes(val)) {
-                            setInviteeIds([...inviteeIds, val]);
-                          }
-                          setSelectedInvitee(null);
-                        } catch (error) {
-                          console.error('Error handling picker value change:', error);
-                        }
-                      }}
-                      value={selectedInvitee}
-                      placeholder={{ label: 'Select friend to invite', value: null }}
-                      items={friendUsers.map((user) => ({
-                        label: userDisplayUtils.getFullName(user),
-                        value: user.$id,
-                      }))}
-                      style={{
-                        inputIOS: {
-                          paddingVertical: 12,
-                          paddingHorizontal: 10,
-                          fontSize: 16,
-                          color: 'black',
-                        },
-                        inputAndroid: {
-                          paddingVertical: 12,
-                          paddingHorizontal: 10,
-                          fontSize: 16,
-                          color: 'black',
-                        },
-                        placeholder: {
-                          color: '#A0A0A0',
-                        },
-                      }}
-                    />
-                  ) : (
-                    <FallbackPickerSelect
-                      onValueChange={(val: string | null) => {
-                        try {
-                          if (val && !inviteeIds.includes(val)) {
-                            setInviteeIds([...inviteeIds, val]);
-                          }
-                          setSelectedInvitee(null);
-                        } catch (error) {
-                          console.error('Error handling fallback picker value change:', error);
-                        }
-                      }}
-                      value={selectedInvitee}
-                      placeholder={{ label: 'Select friend to invite', value: null }}
-                      items={friendUsers.map((user) => ({
-                        label: userDisplayUtils.getFullName(user),
-                        value: user.$id,
-                      }))}
-                      style={{
-                        inputIOS: {
-                          paddingVertical: 12,
-                          paddingHorizontal: 10,
-                          fontSize: 16,
-                          color: 'black',
-                        },
-                        inputAndroid: {
-                          paddingVertical: 12,
-                          paddingHorizontal: 10,
-                          fontSize: 16,
-                          color: 'black',
-                        },
-                      }}
-                      disabled={false}
-                    />
-                  )}
+              <Text className="text-gray-600 text-base mb-2">Invited:</Text>
+              {inviteeIds.map((id) => {
+                // Simple display using ID for now - will be resolved by database lookup
+                const displayName = `Friend (${id.slice(-4)})`;
+                return (
+                  <View key={id} className="flex-row justify-between items-center bg-gray-100 p-3 rounded-lg mb-2">
+                    <Text className="text-base">{displayName}</Text>
+                    {/* Only show remove button if creator and not self */}
+                    {editable && id !== currentUserId && (
+                      <TouchableOpacity
+                        onPress={() => setInviteeIds(inviteeIds.filter((uid) => uid !== id))}
+                        className="bg-red-500 px-3 py-1 rounded-md"
+                      >
+                        <Text className="text-white text-sm">Remove</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Simple Friend Picker Modal */}
+          <Modal visible={showFriendPicker} transparent animationType="slide">
+            <View className="flex-1 justify-center items-center bg-black bg-opacity-50">
+              <View className="bg-white w-4/5 max-h-96 rounded-lg">
+                <View className="p-4 border-b border-gray-200">
+                  <Text className="text-xl font-bold text-center">Select Friends</Text>
                 </View>
-              ) : (
-                <Text className="text-gray-400 p-3">Only the creator can invite friends.</Text>
-              )}
-            </View>
-
-            {/* Show invited users */}
-            {inviteeIds.length > 0 && (
-              <View className="mb-4">
-                <Text className="text-gray-600 text-base mb-2">Invited:</Text>
-                {inviteeIds.map((id) => {
-                  const user = (users ?? []).find((u) => u.$id === id);
-                  return (
-                    <View key={id} className="flex-row justify-between items-center bg-gray-100 p-3 rounded-lg mb-2">
-                      <Text className="text-base">{userDisplayUtils.getFullName(user, id)}</Text>
-                      {/* Only show remove button if creator and not self */}
-                      {editable && id !== currentUserId && (
-                        <TouchableOpacity
-                          onPress={() => setInviteeIds(inviteeIds.filter((uid) => uid !== id))}
-                          className="bg-red-500 px-3 py-1 rounded-md"
-                        >
-                          <Text className="text-white text-sm">Remove</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  );
-                })}
+                <ScrollView className="max-h-80 p-4">
+                  {friends
+                    .filter(friendId => !inviteeIds.includes(friendId) && friendId !== currentUserId)
+                    .map(friendId => (
+                      <TouchableOpacity
+                        key={friendId}
+                        onPress={() => {
+                          setInviteeIds([...inviteeIds, friendId]);
+                        }}
+                        className="p-3 border-b border-gray-100"
+                      >
+                        <Text className="text-lg">Friend ({friendId.slice(-4)})</Text>
+                      </TouchableOpacity>
+                    ))}
+                  {friends.filter(friendId => !inviteeIds.includes(friendId) && friendId !== currentUserId).length === 0 && (
+                    <Text className="text-gray-400 text-center p-4">All friends have been invited</Text>
+                  )}
+                </ScrollView>
+                <TouchableOpacity
+                  onPress={() => setShowFriendPicker(false)}
+                  className="p-4 border-t border-gray-200"
+                >
+                  <Text className="text-blue-500 text-center text-lg font-semibold">Done</Text>
+                </TouchableOpacity>
               </View>
-            )}
+            </View>
+          </Modal>
 
-            {/* Delete button only for creator */}
-            {event && isCreator && (
-              <TouchableOpacity
-                onPress={async () => {
-                  try {
-                    await databases.deleteDocument(
-                      config.databaseID!,
-                      config.eventsCollectionID!,
-                      event.$id
-                    );
-                    await refetchEvents();
-                    onClose();
-                  } catch (err) {
-                    console.error("Error deleting event:", err);
-                    alert("Failed to delete event.");
-                  }
-                }}
-                className="bg-red-500 p-3 rounded-lg items-center mb-4"
-              >
-                <Text className="text-white text-lg font-semibold">Delete Event</Text>
-              </TouchableOpacity>
-            )}
+          {/* Invite Friends section - REMOVED */}
+          {/* Friend invitation functionality has been removed */}
 
-            {/* If not creator, show join/leave button */}
-            {event && !isCreator && (
-              <View className="mb-4">
-                {inviteeIds.includes(currentUserId) ? (
-                  <TouchableOpacity
-                    onPress={async () => {
+          {/* Delete button only for creator */}
+          {event && isCreator && (
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  await databases.deleteDocument(
+                    config.databaseID!,
+                    config.eventsCollectionID!,
+                    event.$id
+                  );
+                  await refetchEvents();
+                  onClose();
+                } catch (err) {
+                  console.error("Error deleting event:", err);
+                  alert("Failed to delete event.");
+                }
+              }}
+              className="bg-red-500 p-3 rounded-lg items-center mb-4"
+            >
+              <Text className="text-white text-lg font-semibold">Delete Event</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Join/Leave event functionality */}
+          {event && !isCreator && (
+            <View className="mb-4">
+              {inviteeIds.includes(currentUserId) ? (
+                <TouchableOpacity
+                  onPress={async () => {
+                    try {
                       const updatedInvitees = inviteeIds.filter((id) => id !== currentUserId);
                       await databases.updateDocument(
                         config.databaseID!,
@@ -856,14 +722,19 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                       setInviteeIds(updatedInvitees);
                       await refetchEvents();
                       onClose();
-                    }}
-                    className="bg-orange-500 p-3 rounded-lg items-center"
-                  >
-                    <Text className="text-white text-lg font-semibold">Leave Event</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={async () => {
+                    } catch (err) {
+                      console.error("Error leaving event:", err);
+                      alert("Failed to leave event.");
+                    }
+                  }}
+                  className="bg-orange-500 p-3 rounded-lg items-center"
+                >
+                  <Text className="text-white text-lg font-semibold">Leave Event</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={async () => {
+                    try {
                       const updatedInvitees = [...inviteeIds, currentUserId];
                       await databases.updateDocument(
                         config.databaseID!,
@@ -874,16 +745,24 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                       setInviteeIds(updatedInvitees);
                       await refetchEvents();
                       onClose();
-                    }}
-                    className="bg-green-500 p-3 rounded-lg items-center"
-                  >
-                    <Text className="text-white text-lg font-semibold">Join Event</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-          </ScrollView>
-        </View>
+                    } catch (err) {
+                      console.error("Error joining event:", err);
+                      alert("Failed to join event.");
+                    }
+                  }}
+                  className="bg-green-500 p-3 rounded-lg items-center"
+                >
+                  <Text className="text-white text-lg font-semibold">Join Event</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* Join/Leave event functionality - REMOVED */}
+          {/* Event participation management has been removed */}
+        </ScrollView>
+      </View>
     </Modal>
   );
+
 }

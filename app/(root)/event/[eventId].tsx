@@ -2,6 +2,7 @@ import icons from '@/constants/icons';
 import images from '@/constants/images';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import dayjs from 'dayjs';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -32,23 +33,23 @@ const EventDetail = () => {
         setEvent(res);
 
         const user = await getCurrentUser();
-        setUserId(user?.$id);
+        setUserId(user?.$id || '');
         setAttending(res.attendees?.includes(user?.$id));
 
         // Fetch creator's profile
         const creatorProfile = await getUserProfile(res.creatorId);
-        setCreatorName(creatorProfile?.name || 'Unknown');
+        setCreatorName(userDisplayUtils.getFullName(creatorProfile || {}) || 'Unknown');
 
         // Fetch attendee names
         if (res.attendees && res.attendees.length > 0) {
           const attendees = await getUsersByIds(res.attendees);
-          setAttendeeNames(attendees.map(attendee => attendee.name));
+          setAttendeeNames(attendees.map(attendee => userDisplayUtils.getFullName(attendee)));
         }
 
         // Fetch invitee names
         if (res.inviteeIds && res.inviteeIds.length > 0) {
           const invitees = await getUsersByIds(res.inviteeIds);
-          setInviteeNames(invitees.map(invitee => invitee.name));
+          setInviteeNames(invitees.map(invitee => userDisplayUtils.getFullName(invitee)));
         }
 
       } catch (err) {

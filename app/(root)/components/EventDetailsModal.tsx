@@ -85,7 +85,9 @@ const EventDetailsModal = ({
 
   interface AttendeeProfile {
     $id: string;
-    name: string;
+    firstName?: string;
+    lastName?: string;
+    name?: string; // Fallback for backwards compatibility
   }
 
   interface AttendeesListProps {
@@ -103,6 +105,7 @@ const EventDetailsModal = ({
               photoUrl={attendeePhotoUrls[profile.$id]}
               firstName={profile.firstName}
               lastName={profile.lastName}
+              name={profile.name} // Fallback for backwards compatibility
               size={32}
             />
             {!limit && <Text style={styles.attendeeName}>{userDisplayUtils.getFirstName(profile)}</Text>}

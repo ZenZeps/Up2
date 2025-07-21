@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
-import { View, Text, ActivityIndicator, Alert } from "react-native";
-import { useSearchParams, useRouter } from "expo-router";
 import { account } from "@/lib/appwrite/appwrite";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Text, View } from "react-native";
 
 export default function Verify() {
-  const { userId, secret } = useSearchParams();
+  const { userId, secret } = useLocalSearchParams();
   const router = useRouter();
   const [verifying, setVerifying] = useState(true);
   const [verified, setVerified] = useState(false);
