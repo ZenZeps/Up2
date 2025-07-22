@@ -142,7 +142,7 @@ const EventDetail = () => {
     <SafeAreaView className="flex-1 bg-gray-100 pt-8">
       {/* Header */}
       <View className="flex-row items-center justify-between p-4 bg-white border-b border-gray-200">
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.push('/(root)/(tabs)/Explore')}>
           <Image source={icons.backArrow} className="w-6 h-6" resizeMode="contain" />
         </TouchableOpacity>
         <Text className="text-xl font-rubik-semibold">Event Details</Text>

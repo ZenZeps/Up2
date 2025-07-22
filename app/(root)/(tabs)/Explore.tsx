@@ -103,11 +103,28 @@ const Explore = () => {
 
   useEffect(() => {
     const addCreatorNames = async () => {
-      const uniqueCreatorIds = [...new Set(events.map(event => event.creatorId))];
+      // Filter events: only upcoming and accessible events
+      const now = new Date();
+      const filteredEvents = events.filter(event => {
+        // Filter out past events
+        if (new Date(event.endTime) <= now) return false;
+
+        // If event is private, only show if user has access
+        if (event.isPrivate) {
+          return event.creatorId === userId || // User is creator
+            (event.inviteeIds && event.inviteeIds.includes(userId)) || // User is invited
+            (event.attendees && event.attendees.includes(userId)); // User is attending
+        }
+
+        // Show all public events
+        return true;
+      });
+
+      const uniqueCreatorIds = [...new Set(filteredEvents.map(event => event.creatorId))];
       const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
       const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, userDisplayUtils.getFullName(profile)]));
 
-      const eventsWithNames = events.map(event => ({
+      const eventsWithNames = filteredEvents.map(event => ({
         ...event,
         creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
       }));
@@ -117,7 +134,7 @@ const Explore = () => {
     if (events.length > 0) {
       addCreatorNames();
     }
-  }, [events]);
+  }, [events, userId]);
 
   const openInMaps = (location: string) => {
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;

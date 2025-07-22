@@ -56,10 +56,22 @@ export default function FriendCalendar() {
                 const allEvents = await getAllEvents();
 
                 // Filter events for this friend (created by them or they're attending)
-                const friendEvents = allEvents.filter(event =>
-                    event.creatorId === friendId ||
-                    (event.attendees && event.attendees.includes(friendId))
-                );
+                // Also filter out private events unless current user is creator, invitee, or attendee
+                const friendEvents = allEvents.filter(event => {
+                    const isEventRelatedToFriend = event.creatorId === friendId ||
+                        (event.attendees && event.attendees.includes(friendId));
+
+                    if (!isEventRelatedToFriend) return false;
+
+                    // If event is private, only show if current user has access
+                    if (event.isPrivate) {
+                        return event.creatorId === user.$id || // User is creator
+                            (event.inviteeIds && event.inviteeIds.includes(user.$id)) || // User is invited
+                            (event.attendees && event.attendees.includes(user.$id)); // User is attending
+                    }
+
+                    return true; // Public event, show it
+                });
 
                 // Add creator names to events
                 const uniqueCreatorIds = [...new Set(friendEvents.map(event => event.creatorId))];
@@ -222,7 +234,7 @@ export default function FriendCalendar() {
     return (
         <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
             <View className="flex-row items-center justify-between p-4">
-                <TouchableOpacity onPress={() => router.back()} className="p-2">
+                <TouchableOpacity onPress={() => router.push('/(root)/(tabs)/Explore')} className="p-2">
                     <Image source={icons.backArrow} className="w-6 h-6" resizeMode="contain" />
                 </TouchableOpacity>
                 <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>

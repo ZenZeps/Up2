@@ -58,6 +58,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [isProcessing, setIsProcessing] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(false);
 
   // Friend invitation state - simplified approach
   const [inviteeIds, setInviteeIds] = useState<string[]>([]);
@@ -151,6 +152,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setDescription(event.description || '');
       setTags(event.tags || []);
       setInviteeIds(event.inviteeIds || []);
+      setIsPrivate(event.isPrivate || false);
 
       // Safely set dates with validation
       try {
@@ -173,6 +175,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setDescription('');
       setTags([]);
       setInviteeIds([]);
+      setIsPrivate(false);
 
       // Safely set default dates
       try {
@@ -316,6 +319,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
         attendees: event?.attendees || [],
         description: description.trim(),
         tags: tags.filter(tag => tag && tag.trim()), // Filter out empty tags
+        isPrivate: isPrivate,
       };
 
       console.log("Saving event with data:", eventData);
@@ -503,6 +507,29 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                 </TouchableOpacity>
               ))}
             </View>
+          </View>
+
+          {/* Privacy Section */}
+          <View className="mb-4">
+            <Text className="text-gray-600 text-base mb-2">Privacy</Text>
+            <TouchableOpacity
+              onPress={() => editable && setIsPrivate(!isPrivate)}
+              className="flex-row items-center"
+              disabled={!editable}
+            >
+              <View className={`w-6 h-6 rounded border-2 mr-3 items-center justify-center ${isPrivate ? 'bg-blue-500 border-blue-500' : 'border-gray-300'
+                }`}>
+                {isPrivate && (
+                  <Text className="text-white text-sm font-bold">✓</Text>
+                )}
+              </View>
+              <View>
+                <Text className="text-lg">Private Event</Text>
+                <Text className="text-gray-500 text-sm">
+                  Only invited users can see this event
+                </Text>
+              </View>
+            </TouchableOpacity>
           </View>
 
           <View className="mb-4">

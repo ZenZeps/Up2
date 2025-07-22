@@ -100,7 +100,7 @@ const EventDetailsModal = ({
     <View style={styles.attendeesContainer}>
       <View style={styles.attendeesRow}>
         {(limit ? profiles.slice(0, limit) : profiles).map((profile: AttendeeProfile, index: number) => (
-          <View key={profile.$id} style={[styles.attendeeItem, index > 0 && { marginLeft: -10 }]}>
+          <View key={profile.$id} style={[styles.attendeeItem, index > 0 && { marginLeft: 4 }]}>
             <UserAvatar
               photoUrl={attendeePhotoUrls[profile.$id]}
               firstName={profile.firstName}
@@ -112,7 +112,7 @@ const EventDetailsModal = ({
           </View>
         ))}
         {limit && profiles.length > limit && (
-          <View style={[styles.attendeeItem, { marginLeft: -10 }]}>
+          <View style={[styles.attendeeItem, { marginLeft: 4 }]}>
             <View style={styles.moreAttendeesCircle}>
               <Text style={styles.moreAttendeesText}>+{profiles.length - limit}</Text>
             </View>
@@ -275,12 +275,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 15,
+    paddingHorizontal: 5, // Add padding for better spacing
   },
   avatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    marginRight: 10,
+    marginRight: 16, // Increase margin further for better spacing
   },
   creatorName: {
     fontSize: 16,
@@ -337,6 +338,7 @@ const styles = StyleSheet.create({
   },
   attendeeItem: {
     alignItems: 'center',
+    marginRight: 2, // Reduce spacing between attendees for better balance
   },
   attendeeAvatar: {
     width: 40,

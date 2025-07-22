@@ -11,6 +11,7 @@ export interface Event {
   isAttending?: boolean;
   description?: string;
   tags: string[]; // Event categories/tags (sports, music, art, etc.)
+  isPrivate?: boolean; // Whether the event is private (only visible to invitees)
 }
 
 export interface EventWithDetails extends Event {

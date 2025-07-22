@@ -122,9 +122,13 @@ export default function Feed() {
     try {
       const travelData = await getFriendsTravelAnnouncements(friendIds);
 
+      // Filter for upcoming/current travel only (not past travel)
+      const now = new Date();
+      const upcomingTravelData = travelData.filter(travel => new Date(travel.endDate) > now);
+
       // Fetch user names and photos for each travel announcement
       const travelWithUserInfo = await Promise.all(
-        travelData.map(async (travel) => {
+        upcomingTravelData.map(async (travel) => {
           const userProfile = await getUserProfile(travel.userId);
           const userPhotoUrl = await getUserProfilePhotoUrl(travel.userId);
 
@@ -205,15 +209,16 @@ export default function Feed() {
     }
   };
 
-  const sortedEvents = [...eventsWithCreatorNames].sort((a, b) => {
-    return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
-  });
+  // Filter for upcoming events only and combine with travel announcements for the feed
+  const now = new Date();
+  const upcomingEvents = eventsWithCreatorNames.filter(event => new Date(event.endTime) > now);
 
-  // Combine and sort events and travel announcements for the feed
   const feedItems: FeedItem[] = [
-    ...eventsWithCreatorNames.map(event => ({ ...event, type: 'event' as const })),
+    ...upcomingEvents.map(event => ({ ...event, type: 'event' as const })),
     ...travelAnnouncements.map(travel => ({ ...travel, type: 'travel' as const }))
   ].sort((a, b) => {
+    // Sort by creation time (most recent first)
+    // For events, use startTime as proxy for creation time since $createdAt may not be available
     const aDate = a.type === 'event' ? new Date(a.startTime) : new Date(a.createdAt);
     const bDate = b.type === 'event' ? new Date(b.startTime) : new Date(b.createdAt);
     return bDate.getTime() - aDate.getTime();
