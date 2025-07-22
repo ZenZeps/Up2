@@ -11,9 +11,10 @@ export const getUserGroups = async (userId: string): Promise<Group[]> => {
             config.databaseID!,
             config.groupsCollectionID!,
             [
-                Query.search('users', userId), // Search for user in the users relationship
+                Query.contains('users', [userId]),
             ]
         );
+
         return response.documents as unknown as Group[];
     } catch (error) {
         console.error('Error fetching user groups:', error);

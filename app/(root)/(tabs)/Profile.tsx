@@ -1,13 +1,11 @@
-import { CATEGORIES } from '@/constants/categories';
-import icons from '@/constants/icons';
 import { getUserGroups } from '@/lib/api/group';
-import { getProfilePhotoUrl, pickProfilePhoto, uploadProfilePhoto } from '@/lib/api/profilePhoto';
-import { getFriends, getUserProfile, updateUserProfile } from '@/lib/api/user';
-import { logout } from '@/lib/appwrite/appwrite';
+import { getProfilePhotoUrl, uploadProfilePhoto } from '@/lib/api/profilePhoto';
+import { getFriends, updateUserProfile } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Group } from '@/lib/types/Groups';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -15,9 +13,7 @@ import {
   FlatList,
   Image,
   ScrollView,
-  Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -26,204 +22,98 @@ import UserAvatar from '../components/UserAvatar';
 
 const Profile = () => {
   const router = useRouter();
-  const { user, refetch } = useGlobalContext();
-  const { isDark, toggleTheme, colors } = useTheme();
+  const { user } = useGlobalContext();
+  const { colors } = useTheme();
   const userId = user?.$id;
 
-  const [isEditing, setIsEditing] = useState(false);
   const [firstName, setFirstName] = useState(user?.profile?.firstName || '');
   const [lastName, setLastName] = useState(user?.profile?.lastName || '');
-  const [isPrivate, setIsPrivate] = useState(false);
-  const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [stats, setStats] = useState({
-    events: 0,
     friends: 0,
     groups: 0,
-    preferences: 0
   });
 
-  // Load profile data with session-based caching for scalability
+  // Load user data
   useEffect(() => {
-    const loadProfile = async () => {
+    const loadUserData = async () => {
       if (!userId) return;
 
       try {
-        // For 100k user scalability: Use session-level caching for profile data
-        // Check if we already have profile data in global context (session cache)
-        const existingProfile = user?.profile;
-
-        if (existingProfile) {
-          // Use cached profile data from session
-          setFirstName(existingProfile.firstName || '');
-          setLastName(existingProfile.lastName || '');
-          setIsPrivate(!existingProfile.isPublic);
-          setSelectedEventTypes(existingProfile.preferences || []);
-
-          if (existingProfile.photoId) {
-            const photoUrl = await getProfilePhotoUrl(existingProfile.photoId);
-            setProfilePhotoUrl(photoUrl);
-          }
-
-          // Load friends separately (can be cached with shorter TTL)
-          const userFriends = await getFriends(userId);
-          setFriends(userFriends || []);
-
-          // Load user's groups
-          const userGroups = await getUserGroups(userId);
-          setGroups(userGroups || []);
-
-          // Update stats
-          setStats({
-            events: 0, // Event count can be added here if needed
-            friends: userFriends?.length || 0,
-            groups: userGroups?.length || 0,
-            preferences: existingProfile.preferences?.length || 0
-          });
-
-          return; // Exit early with cached data
-        }
-
-        // Only fetch from database if no cached profile exists (session start)
-        const [profile, userFriends, userGroups] = await Promise.all([
-          getUserProfile(userId),
+        // Load friends and groups
+        const [userFriends, userGroups] = await Promise.all([
           getFriends(userId),
           getUserGroups(userId)
         ]);
 
-        if (profile) {
-          setFirstName(profile.firstName || '');
-          setLastName(profile.lastName || '');
-          setIsPrivate(!profile.isPublic);
-          setSelectedEventTypes(profile.preferences || []);
-          setFriends(userFriends || []);
-          setGroups(userGroups || []);
+        setFriends(userFriends || []);
+        setGroups(userGroups || []);
+        setStats({
+          friends: userFriends?.length || 0,
+          groups: userGroups?.length || 0,
+        });
 
-          if (profile.photoId) {
-            const photoUrl = await getProfilePhotoUrl(profile.photoId);
-            setProfilePhotoUrl(photoUrl);
-          }
-
-          // Update stats
-          setStats({
-            events: 0, // You can add event count here
-            friends: userFriends?.length || 0,
-            groups: userGroups?.length || 0,
-            preferences: profile.preferences?.length || 0
-          });
+        // Load profile photo if available
+        if (user?.profile?.photoId) {
+          const photoUrl = await getProfilePhotoUrl(user.profile.photoId);
+          setProfilePhotoUrl(photoUrl);
         }
-      } catch (err) {
-        console.error('Error loading profile:', err);
-        Alert.alert('Error', 'Failed to load profile');
+      } catch (error) {
+        console.error('Error loading user data:', error);
       }
     };
 
-    loadProfile();
-  }, [userId]); // Removed user?.profile dependency to prevent excessive re-renders
+    loadUserData();
+  }, [userId, user?.profile?.photoId]);
 
-  const handlePhotoUpload = async () => {
-    if (!userId) return;
-
+  const handleUpdateProfilePhoto = async () => {
     try {
-      const image = await pickProfilePhoto();
-      if (!image?.uri) {
-        if (image === null) {
-          // This case is for when permissions are denied.
-          // The alert is already shown in pickProfilePhoto.
-          return;
-        }
-        // For other cases where URI might be missing.
-        throw new Error('Failed to get image URI.');
+      // Request permission
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (permissionResult.granted === false) {
+        Alert.alert('Permission Required', 'Please allow access to your photo library to update your profile picture.');
+        return;
       }
 
-      const photoId = await uploadProfilePhoto(userId, image.uri);
-      const photoUrl = await getProfilePhotoUrl(photoId);
-      setProfilePhotoUrl(photoUrl);
-      Alert.alert('Success', 'Profile photo updated');
-    } catch (err: any) {
-      if (err.message !== 'Image selection was cancelled') {
-        console.error('Photo upload error:', err);
-        Alert.alert('Error', err.message || 'Failed to upload photo');
-      }
-    }
-  };
-
-  const handleInterestToggle = (interest: string) => {
-    setSelectedEventTypes((prev) =>
-      prev.includes(interest)
-        ? prev.filter((item) => item !== interest)
-        : [...prev, interest]
-    );
-  };
-
-  const handleSave = async () => {
-    if (!userId) return;
-
-    // Validate firstName and lastName
-    if (!firstName.trim() || !lastName.trim()) {
-      Alert.alert('Error', 'First name and last name are required');
-      return;
-    }
-
-    if (firstName.trim().length < 1 || lastName.trim().length < 1) {
-      Alert.alert('Error', 'Names must be at least 1 character long');
-      return;
-    }
-
-    try {
-      const latestProfile = await getUserProfile(userId);
-      if (!latestProfile) return;
-
-      // Construct full name from first and last name
-      const fullName = `${firstName.trim()} ${lastName.trim()}`;
-
-      await updateUserProfile({
-        $id: userId,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: latestProfile.email,
-        isPublic: !isPrivate,
-        preferences: selectedEventTypes,
-        friends: friends.map(f => f.$id),
-        photoId: latestProfile.photoId,
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
       });
 
-      setIsEditing(false);
-      Alert.alert('Success', 'Profile updated');
-    } catch (err) {
-      console.error('Update failed:', err);
-      Alert.alert('Error', 'Failed to update profile');
-    }
-  };
+      if (!result.canceled && result.assets[0]) {
+        setIsUploadingPhoto(true);
 
-  const handleLogout = async () => {
-    try {
-      await logout();
+        const asset = result.assets[0];
+        const photoId = await uploadProfilePhoto(asset.uri, userId!);
 
-      // Wait a moment for logout to complete, then force refetch to clear any cached user data
-      setTimeout(async () => {
-        try {
-          await refetch();
-        } catch (e) {
-          // Ignore errors during refetch after logout
-        }
-      }, 100);
+        if (photoId && user?.profile) {
+          // Update user profile with new photo ID
+          const updatedProfile = {
+            ...user.profile,
+            photoId: photoId
+          };
 
-      // Safe navigation with error handling
-      try {
-        router.replace('/SignIn');
-      } catch (navError) {
-        console.error('Navigation error during logout:', navError);
-        // Force a page reload as fallback
-        if (typeof window !== 'undefined') {
-          window.location.href = '/SignIn';
+          await updateUserProfile(updatedProfile);
+
+          // Update local state
+          const photoUrl = await getProfilePhotoUrl(photoId);
+          setProfilePhotoUrl(photoUrl);
+
+          Alert.alert('Success', 'Profile photo updated successfully!');
         }
       }
-    } catch (err) {
-      console.error('Logout failed:', err);
-      Alert.alert('Error', 'Failed to log out');
+    } catch (error) {
+      console.error('Error updating profile photo:', error);
+      Alert.alert('Error', 'Failed to update profile photo. Please try again.');
+    } finally {
+      setIsUploadingPhoto(false);
     }
   };
 
@@ -235,13 +125,11 @@ const Profile = () => {
           <Text className="text-2xl font-rubik-semibold" style={{ color: colors.text }}>
             {userDisplayUtils.getFullName({ firstName, lastName })}
           </Text>
-          <TouchableOpacity onPress={() => setIsEditing(!isEditing)}>
-            <Image
-              source={isEditing ? icons.check : icons.edit}
-              className="w-6 h-6"
-              resizeMode="contain"
-              style={{ tintColor: colors.text }}
-            />
+          <TouchableOpacity onPress={() => router.push('/(root)/Settings')}>
+            <View className="w-6 h-6 rounded-full border-2 border-gray-400 items-center justify-center">
+              <View className="w-2 h-2 bg-gray-400 rounded-full" />
+              <View className="absolute w-4 h-4 border border-gray-400 rounded-full" />
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -249,27 +137,31 @@ const Profile = () => {
         <View className="px-4 py-4">
           <View className="flex-row items-center">
             {/* Profile Photo */}
-            <TouchableOpacity onPress={handlePhotoUpload} className="mr-6">
-              {profilePhotoUrl ? (
-                <Image
-                  source={{ uri: profilePhotoUrl }}
-                  className="w-20 h-20 rounded-full"
-                />
-              ) : (
-                <View className="w-20 h-20 rounded-full bg-gray-200 items-center justify-center">
-                  <Text className="text-4xl text-gray-400 font-rubik-medium">
-                    {userDisplayUtils.getInitials({ firstName, lastName })}
+            <View className="mr-6 relative">
+              <TouchableOpacity onPress={handleUpdateProfilePhoto} disabled={isUploadingPhoto}>
+                {profilePhotoUrl ? (
+                  <Image
+                    source={{ uri: profilePhotoUrl }}
+                    className="w-20 h-20 rounded-full"
+                  />
+                ) : (
+                  <View className="w-20 h-20 rounded-full bg-gray-200 items-center justify-center">
+                    <Text className="text-4xl text-gray-400 font-rubik-medium">
+                      {userDisplayUtils.getInitials({ firstName, lastName })}
+                    </Text>
+                  </View>
+                )}
+                {/* Edit indicator */}
+                <View className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-500 rounded-full items-center justify-center border-2 border-white">
+                  <Text className="text-white text-xs font-bold">
+                    {isUploadingPhoto ? '...' : '✎'}
                   </Text>
                 </View>
-              )}
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
 
             {/* Stats */}
             <View className="flex-row flex-1 justify-around">
-              <View className="items-center">
-                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.events}</Text>
-                <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Events</Text>
-              </View>
               <View className="items-center">
                 <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.friends}</Text>
                 <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Friends</Text>
@@ -278,96 +170,6 @@ const Profile = () => {
                 <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.groups}</Text>
                 <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Groups</Text>
               </View>
-              <View className="items-center">
-                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.preferences}</Text>
-                <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Interests</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Bio Section */}
-          <View className="mt-4">
-            {isEditing ? (
-              <View className="space-y-2">
-                <TextInput
-                  value={firstName}
-                  onChangeText={setFirstName}
-                  className="text-base font-rubik mb-2 border p-2 rounded"
-                  style={{
-                    borderColor: colors.border,
-                    backgroundColor: colors.surface,
-                    color: colors.text
-                  }}
-                  placeholder="First name"
-                  placeholderTextColor={colors.textSecondary}
-                />
-                <TextInput
-                  value={lastName}
-                  onChangeText={setLastName}
-                  className="text-base font-rubik border p-2 rounded"
-                  style={{
-                    borderColor: colors.border,
-                    backgroundColor: colors.surface,
-                    color: colors.text
-                  }}
-                  placeholder="Last name"
-                  placeholderTextColor={colors.textSecondary}
-                />
-              </View>
-            ) : (
-              <Text className="text-base font-rubik mb-2" style={{ color: colors.text }}>
-                {firstName} {lastName}
-              </Text>
-            )}
-          </View>
-
-          {/* Settings Section */}
-          <View className="mt-4 bg-gray-50 rounded-lg p-4" style={{ backgroundColor: colors.surface }}>
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className="font-rubik-medium" style={{ color: colors.text }}>Private Profile</Text>
-              <Switch value={isPrivate} onValueChange={setIsPrivate} />
-            </View>
-
-            <View className="flex-row items-center justify-between">
-              <Text className="font-rubik-medium" style={{ color: colors.text }}>Dark Mode</Text>
-              <Switch
-                value={isDark}
-                onValueChange={toggleTheme}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor={isDark ? colors.background : colors.surface}
-              />
-            </View>
-          </View>
-
-          {/* Interests Section */}
-          <View className="mt-6">
-            <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>Interests</Text>
-            <View className="flex-row flex-wrap">
-              {CATEGORIES.map((option) => (
-                <TouchableOpacity
-                  key={option.value}
-                  onPress={() => isEditing && handleInterestToggle(option.value)}
-                  className={`px-4 py-2 rounded-full border mr-2 mb-2`}
-                  style={{
-                    backgroundColor: selectedEventTypes.includes(option.value)
-                      ? colors.primary
-                      : colors.surface,
-                    borderColor: selectedEventTypes.includes(option.value)
-                      ? colors.primary
-                      : colors.border,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: selectedEventTypes.includes(option.value)
-                        ? colors.background
-                        : colors.text
-                    }}
-                  >
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
             </View>
           </View>
 
@@ -458,16 +260,6 @@ const Profile = () => {
               }
             />
           </View>
-
-          {/* Logout Button */}
-          <TouchableOpacity
-            onPress={handleLogout}
-            className="mt-8 bg-red-500 py-3 rounded-lg"
-          >
-            <Text className="text-white text-center font-rubik-medium">
-              Log Out
-            </Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>

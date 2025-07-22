@@ -10,12 +10,11 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, Image, Linking, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, Image, Linking, RefreshControl, Text, TouchableOpacity, View , Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import icons from '@/constants/icons';
 import images from '@/constants/images';
-import { Alert } from 'react-native';
 import UserAvatar from '../components/UserAvatar';
 
 import { Event as AppEvent } from '@/lib/types/Events';

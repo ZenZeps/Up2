@@ -35,10 +35,10 @@ export default function RootLayout() {
           router.replace('/SignIn');
         } catch (navError) {
           console.error('Navigation error during auth redirect:', navError);
-          // Force a page reload as fallback
-          if (typeof window !== 'undefined') {
-            window.location.href = '/SignIn';
-          }
+          // In React Native, just try router again instead of window.location
+          setTimeout(() => {
+            router.replace('/SignIn');
+          }, 500);
         }
       }, 100);
       return () => clearTimeout(timer);

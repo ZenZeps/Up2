@@ -1,4 +1,4 @@
-import { account, ID, storage } from '@/lib/appwrite/appwrite';
+import { config, ID, storage } from '@/lib/appwrite/appwrite';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
 import { getUserProfile, updateUserProfile } from './user';
@@ -6,7 +6,7 @@ import { getUserProfile, updateUserProfile } from './user';
 // Get the URL of a profile photo
 export const getProfilePhotoUrl = (fileId: string) => {
   try {
-    return storage.getFileView(process.env.EXPO_PUBLIC_APPWRITE_PROFILE_PHOTOS_BUCKET_ID!, fileId).href;
+    return storage.getFileView(config.profilePhotosBucketID!, fileId).href;
   } catch (error) {
     console.error('Error getting profile photo URL:', error);
     return null;
@@ -37,43 +37,66 @@ export const pickProfilePhoto = async () => {
 // Upload a profile photo and return the file ID
 export const uploadProfilePhoto = async (userId: string, uri: string) => {
   try {
-    // Get file size
-    const response = await fetch(uri);
-    const blob = await response.blob();
+    console.log('=== Photo Upload Debug Info ===');
+    console.log('User ID:', userId);
+    console.log('Image URI:', uri);
+    console.log('Bucket ID:', config.profilePhotosBucketID);
 
-    // For React Native, create file object with required properties
+    // For React Native, we need to get file info first
+    let fileSize = 0;
+    try {
+      console.log('Attempting to fetch file info...');
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      fileSize = blob.size;
+      console.log('File size determined:', fileSize);
+    } catch (fetchError) {
+      console.warn('Could not determine file size, using default:', fetchError);
+      fileSize = 1000000; // Default to 1MB if we can't determine size
+    }
+
+    // For React Native, create the file object with required properties
     const file = {
-      name: 'profile_photo.jpg',
+      name: `profile_${userId}_${Date.now()}.jpg`,
       type: 'image/jpeg',
-      size: blob.size,
+      size: fileSize,
       uri: uri,
     };
 
+    console.log('File object created:', file);
+    console.log('Attempting to upload to Appwrite...');
+
     const uploadedFile = await storage.createFile(
-      process.env.EXPO_PUBLIC_APPWRITE_PROFILE_PHOTOS_BUCKET_ID!,
+      config.profilePhotosBucketID!,
       ID.unique(),
       file
     );
 
+    console.log('File uploaded successfully:', uploadedFile.$id);
+
     // Get current user profile
+    console.log('Fetching current user profile...');
     const currentProfile = await getUserProfile(userId);
 
     if (!currentProfile) {
       throw new Error('User profile not found');
     }
 
+    console.log('Updating user profile with photo ID...');
     // Update user profile with the new photo ID in the database
     await updateUserProfile({
       ...currentProfile,
       photoId: uploadedFile.$id,
     });
 
-    // Also update user preferences as a backup
-    await account.updatePrefs({ ...await account.getPrefs(), photoId: uploadedFile.$id });
+    console.log('Profile updated successfully with photo ID:', uploadedFile.$id);
 
     return uploadedFile.$id;
-  } catch (err) {
-    console.error('Error uploading profile photo:', err);
+  } catch (err: any) {
+    console.error('=== Photo Upload Error ===');
+    console.error('Error type:', err.constructor.name);
+    console.error('Error message:', err.message);
+    console.error('Full error:', err);
     throw err;
   }
 };

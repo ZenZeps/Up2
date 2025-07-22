@@ -244,6 +244,7 @@ export async function getUsersByIds(ids: string[]): Promise<UserProfile[]> {
 export const getFriends = async (userId: string): Promise<UserProfile[]> => {
   try {
     const userProfile = await getUserProfile(userId);
+
     if (!userProfile || !userProfile.friends || userProfile.friends.length === 0) {
       return [];
     }
