@@ -444,8 +444,8 @@ const Profile = () => {
                       {item.title.charAt(0).toUpperCase()}
                     </Text>
                   </View>
-                  <Text 
-                    className="text-sm font-rubik text-center" 
+                  <Text
+                    className="text-sm font-rubik text-center"
                     style={{ color: colors.text }}
                     numberOfLines={1}
                   >
