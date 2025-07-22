@@ -58,7 +58,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [isProcessing, setIsProcessing] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
-  
+
   // Friend invitation state - simplified approach
   const [inviteeIds, setInviteeIds] = useState<string[]>([]);
   const [showFriendPicker, setShowFriendPicker] = useState(false);
