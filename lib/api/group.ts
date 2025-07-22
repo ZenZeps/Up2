@@ -11,7 +11,7 @@ export const getUserGroups = async (userId: string): Promise<Group[]> => {
             config.databaseID!,
             config.groupsCollectionID!,
             [
-                Query.contains('users', [userId]),
+                Query.equal('users', userId),
             ]
         );
 
@@ -42,24 +42,27 @@ export const getGroupById = async (groupId: string): Promise<Group | null> => {
 /**
  * Create a new group
  */
-export const createGroup = async (title: string, creatorId: string): Promise<Group | null> => {
+export const createGroup = async (title: string, creatorId: string, members?: string[]): Promise<Group | null> => {
     try {
         const groupId = ID.unique();
+        // Include creator and any additional members, remove duplicates
+        const allMembers = Array.from(new Set([creatorId, ...(members || [])]));
+
         const response = await databases.createDocument(
             config.databaseID!,
             config.groupsCollectionID!,
             groupId,
             {
-                id: groupId,
                 title,
                 creatorId,
-                users: [creatorId], // Creator is automatically a member
+                users: allMembers,
             }
         );
         return response as unknown as Group;
     } catch (error) {
         console.error('Error creating group:', error);
-        return null;
+        // Re-throw the error so the calling component can handle it properly
+        throw error;
     }
 };
 

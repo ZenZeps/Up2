@@ -176,26 +176,29 @@ const Profile = () => {
           {/* Friends Section */}
           <View className="mt-6">
             <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>Friends</Text>
-            <FlatList
-              data={friends}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(item) => item.$id}
-              renderItem={({ item }) => (
-                <View className="mr-4 items-center">
-                  <UserAvatar
-                    photoUrl={item.photoId ? getProfilePhotoUrl(item.photoId) : null}
-                    firstName={item.firstName}
-                    lastName={item.lastName}
-                    size={64}
-                  />
-                  <Text className="text-sm font-rubik mt-1" style={{ color: colors.text }}>{userDisplayUtils.getFullName(item)}</Text>
-                </View>
-              )}
-              ListEmptyComponent={
-                <Text className="text-gray-500 font-rubik" style={{ color: colors.textSecondary }}>No friends yet</Text>
-              }
-            />
+            <View style={{ height: 100 }}>
+              <FlatList
+                data={friends}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item.$id}
+                nestedScrollEnabled={true}
+                renderItem={({ item }) => (
+                  <View className="mr-4 items-center">
+                    <UserAvatar
+                      photoUrl={item.photoId ? getProfilePhotoUrl(item.photoId) : null}
+                      firstName={item.firstName}
+                      lastName={item.lastName}
+                      size={64}
+                    />
+                    <Text className="text-sm font-rubik mt-1" style={{ color: colors.text }}>{userDisplayUtils.getFullName(item)}</Text>
+                  </View>
+                )}
+                ListEmptyComponent={
+                  <Text className="text-gray-500 font-rubik" style={{ color: colors.textSecondary }}>No friends yet</Text>
+                }
+              />
+            </View>
           </View>
 
           {/* Groups Section */}
@@ -203,62 +206,43 @@ const Profile = () => {
             <View className="flex-row items-center justify-between mb-3">
               <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>Groups</Text>
               <TouchableOpacity
-                onPress={() => {
-                  // Simple prompt for group creation
-                  Alert.prompt(
-                    'Create Group',
-                    'Enter a name for your new group:',
-                    async (groupName) => {
-                      if (groupName && groupName.trim() && userId) {
-                        try {
-                          const { createGroup } = await import('@/lib/api/group');
-                          await createGroup(groupName.trim(), userId);
-                          // Refresh groups
-                          const { getUserGroups } = await import('@/lib/api/group');
-                          const userGroups = await getUserGroups(userId);
-                          setGroups(userGroups || []);
-                          setStats(prev => ({ ...prev, groups: userGroups?.length || 0 }));
-                        } catch (error) {
-                          console.error('Error creating group:', error);
-                          Alert.alert('Error', 'Failed to create group');
-                        }
-                      }
-                    }
-                  );
-                }}
+                onPress={() => router.push('/(root)/CreateGroup')}
                 className="bg-blue-500 px-3 py-1 rounded-lg"
               >
                 <Text className="text-white font-rubik-medium text-sm">+ New</Text>
               </TouchableOpacity>
             </View>
-            <FlatList
-              data={groups}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(item) => item.$id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  className="mr-4 items-center"
-                  onPress={() => router.push(`/Group/${item.$id}`)}
-                >
-                  <View className="w-16 h-16 rounded-full bg-blue-500 items-center justify-center mb-2">
-                    <Text className="text-white text-xl font-rubik-semibold">
-                      {item.title.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                  <Text
-                    className="text-sm font-rubik text-center"
-                    style={{ color: colors.text }}
-                    numberOfLines={1}
+            <View style={{ height: 100 }}>
+              <FlatList
+                data={groups}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item.$id}
+                nestedScrollEnabled={true}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    className="mr-4 items-center"
+                    onPress={() => router.push(`/Group/${item.$id}`)}
                   >
-                    {item.title}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <Text className="text-gray-500 font-rubik" style={{ color: colors.textSecondary }}>No groups yet</Text>
-              }
-            />
+                    <View className="w-16 h-16 rounded-full bg-blue-500 items-center justify-center mb-2">
+                      <Text className="text-white text-xl font-rubik-semibold">
+                        {item.title.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text
+                      className="text-sm font-rubik text-center"
+                      style={{ color: colors.text }}
+                      numberOfLines={1}
+                    >
+                      {item.title}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <Text className="text-gray-500 font-rubik" style={{ color: colors.textSecondary }}>No groups yet</Text>
+                }
+              />
+            </View>
           </View>
         </View>
       </ScrollView>
