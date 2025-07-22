@@ -47,9 +47,10 @@ interface Props {
   selectedDateTime: string;
   currentUserId: string;
   friends: string[];
+  groupId?: string;
 }
 
-export default function EventForm({ visible, onClose, event, selectedDateTime, currentUserId, friends }: Props) {
+export default function EventForm({ visible, onClose, event, selectedDateTime, currentUserId, friends, groupId }: Props) {
   // Basic state initialization
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
@@ -320,6 +321,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
         description: description.trim(),
         tags: tags.filter(tag => tag && tag.trim()), // Filter out empty tags
         isPrivate: isPrivate,
+        ...(groupId && { groupId }), // Add groupId if provided
       };
 
       console.log("Saving event with data:", eventData);

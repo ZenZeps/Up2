@@ -1,10 +1,12 @@
 import { CATEGORIES } from '@/constants/categories';
 import icons from '@/constants/icons';
+import { getUserGroups } from '@/lib/api/group';
 import { getProfilePhotoUrl, pickProfilePhoto, uploadProfilePhoto } from '@/lib/api/profilePhoto';
 import { getFriends, getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { logout } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
+import { Group } from '@/lib/types/Groups';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -34,10 +36,12 @@ const Profile = () => {
   const [isPrivate, setIsPrivate] = useState(false);
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   const [stats, setStats] = useState({
     events: 0,
     friends: 0,
+    groups: 0,
     preferences: 0
   });
 
@@ -67,10 +71,15 @@ const Profile = () => {
           const userFriends = await getFriends(userId);
           setFriends(userFriends || []);
 
+          // Load user's groups
+          const userGroups = await getUserGroups(userId);
+          setGroups(userGroups || []);
+
           // Update stats
           setStats({
             events: 0, // Event count can be added here if needed
             friends: userFriends?.length || 0,
+            groups: userGroups?.length || 0,
             preferences: existingProfile.preferences?.length || 0
           });
 
@@ -78,9 +87,10 @@ const Profile = () => {
         }
 
         // Only fetch from database if no cached profile exists (session start)
-        const [profile, userFriends] = await Promise.all([
+        const [profile, userFriends, userGroups] = await Promise.all([
           getUserProfile(userId),
-          getFriends(userId)
+          getFriends(userId),
+          getUserGroups(userId)
         ]);
 
         if (profile) {
@@ -89,6 +99,7 @@ const Profile = () => {
           setIsPrivate(!profile.isPublic);
           setSelectedEventTypes(profile.preferences || []);
           setFriends(userFriends || []);
+          setGroups(userGroups || []);
 
           if (profile.photoId) {
             const photoUrl = await getProfilePhotoUrl(profile.photoId);
@@ -99,6 +110,7 @@ const Profile = () => {
           setStats({
             events: 0, // You can add event count here
             friends: userFriends?.length || 0,
+            groups: userGroups?.length || 0,
             preferences: profile.preferences?.length || 0
           });
         }
@@ -263,6 +275,10 @@ const Profile = () => {
                 <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Friends</Text>
               </View>
               <View className="items-center">
+                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.groups}</Text>
+                <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Groups</Text>
+              </View>
+              <View className="items-center">
                 <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.preferences}</Text>
                 <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Interests</Text>
               </View>
@@ -376,6 +392,69 @@ const Profile = () => {
               )}
               ListEmptyComponent={
                 <Text className="text-gray-500 font-rubik" style={{ color: colors.textSecondary }}>No friends yet</Text>
+              }
+            />
+          </View>
+
+          {/* Groups Section */}
+          <View className="mt-6">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>Groups</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  // Simple prompt for group creation
+                  Alert.prompt(
+                    'Create Group',
+                    'Enter a name for your new group:',
+                    async (groupName) => {
+                      if (groupName && groupName.trim() && userId) {
+                        try {
+                          const { createGroup } = await import('@/lib/api/group');
+                          await createGroup(groupName.trim(), userId);
+                          // Refresh groups
+                          const { getUserGroups } = await import('@/lib/api/group');
+                          const userGroups = await getUserGroups(userId);
+                          setGroups(userGroups || []);
+                          setStats(prev => ({ ...prev, groups: userGroups?.length || 0 }));
+                        } catch (error) {
+                          console.error('Error creating group:', error);
+                          Alert.alert('Error', 'Failed to create group');
+                        }
+                      }
+                    }
+                  );
+                }}
+                className="bg-blue-500 px-3 py-1 rounded-lg"
+              >
+                <Text className="text-white font-rubik-medium text-sm">+ New</Text>
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={groups}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.$id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  className="mr-4 items-center"
+                  onPress={() => router.push(`/Group/${item.$id}`)}
+                >
+                  <View className="w-16 h-16 rounded-full bg-blue-500 items-center justify-center mb-2">
+                    <Text className="text-white text-xl font-rubik-semibold">
+                      {item.title.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <Text 
+                    className="text-sm font-rubik text-center" 
+                    style={{ color: colors.text }}
+                    numberOfLines={1}
+                  >
+                    {item.title}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text className="text-gray-500 font-rubik" style={{ color: colors.textSecondary }}>No groups yet</Text>
               }
             />
           </View>
