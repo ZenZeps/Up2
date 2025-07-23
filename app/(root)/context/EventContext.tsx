@@ -11,7 +11,7 @@ import React, { createContext, useCallback, useContext, useMemo, useState } from
 interface EventsContextType {
   events: Event[];
   loading: boolean;
-  addEvent: (event: Omit<Event, '$id'>) => Promise<Event>;
+  addEvent: (event: Omit<Event, '$id'>) => Promise<any>; // Changed to any to match Models.Document return
   updateEvent: (event: Event) => void;
   deleteEvent: (id: string) => void;
   refetchEvents: () => Promise<void>;

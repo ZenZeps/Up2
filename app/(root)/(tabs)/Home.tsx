@@ -261,6 +261,33 @@ export default function Home() {
 
   }, [userEvents, getCreatorName]);
 
+  // Memoize event handlers (declare before renderEvent to avoid dependency issues)
+  const handlePressEvent = useCallback((event: any) => {
+    try {
+      if (!event) {
+        console.warn('handlePressEvent: event is null or undefined');
+        return;
+      }
+
+      if (!event.rawEvent) {
+        console.warn('handlePressEvent: event.rawEvent is null or undefined');
+        return;
+      }
+
+      // Validate that the raw event has required properties
+      if (!event.rawEvent.$id) {
+        console.warn('handlePressEvent: event.rawEvent.$id is missing');
+        return;
+      }
+
+      setSelectedEvent(event.rawEvent as AppEvent);
+      setDetailsModalVisible(true);
+    } catch (error) {
+      console.error('Error in handlePressEvent:', error);
+      // Don't crash the app, just log the error
+    }
+  }, []);
+
   // Custom render function for events with comprehensive error handling
   const renderEvent = useCallback((event: any, touchableOpacityProps: any) => {
     try {
@@ -398,33 +425,6 @@ export default function Home() {
       setDate(dates[0]);
     } else {
       setDate(dates);
-    }
-  }, []);
-
-  // Memoize event handlers
-  const handlePressEvent = useCallback((event: any) => {
-    try {
-      if (!event) {
-        console.warn('handlePressEvent: event is null or undefined');
-        return;
-      }
-
-      if (!event.rawEvent) {
-        console.warn('handlePressEvent: event.rawEvent is null or undefined');
-        return;
-      }
-
-      // Validate that the raw event has required properties
-      if (!event.rawEvent.$id) {
-        console.warn('handlePressEvent: event.rawEvent.$id is missing');
-        return;
-      }
-
-      setSelectedEvent(event.rawEvent as AppEvent);
-      setDetailsModalVisible(true);
-    } catch (error) {
-      console.error('Error in handlePressEvent:', error);
-      // Don't crash the app, just log the error
     }
   }, []);
 
