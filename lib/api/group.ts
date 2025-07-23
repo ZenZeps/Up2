@@ -7,15 +7,62 @@ import { ID, Query } from 'react-native-appwrite';
  */
 export const getUserGroups = async (userId: string): Promise<Group[]> => {
     try {
+        // For virtual relationship attributes, we can't query them directly
+        // Instead, get all groups and filter client-side
         const response = await databases.listDocuments(
             config.databaseID!,
-            config.groupsCollectionID!,
-            [
-                Query.equal('users', userId),
-            ]
+            config.groupsCollectionID!
         );
 
-        return response.documents as unknown as Group[];
+        console.log('All groups fetched:', response.documents.length);
+        console.log('Looking for user:', userId);
+
+        // Debug: Log the structure of groups
+        response.documents.forEach((group: any, index) => {
+            console.log(`Group ${index}:`, {
+                id: group.$id,
+                title: group.title,
+                creatorId: group.creatorId,
+                users: group.users,
+                usersType: typeof group.users,
+                usersIsArray: Array.isArray(group.users)
+            });
+        });
+
+        // Filter groups where the user is a member
+        const userGroups = response.documents.filter((group: any) => {
+            if (!group.users) {
+                console.log(`Group ${group.title} has no users`);
+                return false;
+            }
+
+            // Check if user is the creator
+            if (group.creatorId === userId) {
+                console.log(`User is creator of group ${group.title}`);
+                return true;
+            }
+
+            // Handle different possible formats of the users relationship
+            if (Array.isArray(group.users)) {
+                // If users is an array of IDs or objects
+                const isIncluded = group.users.some((user: any) => {
+                    if (typeof user === 'string') {
+                        return user === userId;
+                    } else if (user && user.$id) {
+                        return user.$id === userId;
+                    }
+                    return false;
+                });
+                console.log(`Group ${group.title} - user included:`, isIncluded);
+                return isIncluded;
+            }
+
+            console.log(`Group ${group.title} - users not an array`);
+            return false;
+        });
+
+        console.log('Filtered user groups:', userGroups.length);
+        return userGroups as unknown as Group[];
     } catch (error) {
         console.error('Error fetching user groups:', error);
         return [];
@@ -55,6 +102,7 @@ export const createGroup = async (title: string, creatorId: string, members?: st
             {
                 title,
                 creatorId,
+                // For relationship attributes, pass array of user IDs
                 users: allMembers,
             }
         );
@@ -130,12 +178,26 @@ export const getGroupEvents = async (groupId: string) => {
             config.databaseID!,
             config.eventsCollectionID!,
             [
-                Query.equal('groupId', groupId), // Assuming you have a groupId field in events
+                // Use the correct attribute name - might be 'group' instead of 'groupId'
+                Query.equal('group', groupId),
             ]
         );
         return response.documents;
     } catch (error) {
         console.error('Error fetching group events:', error);
-        return [];
+        // Fallback: if group relationship doesn't work, try without filter for now
+        try {
+            const allEvents = await databases.listDocuments(
+                config.databaseID!,
+                config.eventsCollectionID!
+            );
+            // Filter client-side if needed
+            return allEvents.documents.filter((event: any) =>
+                event.group === groupId || event.groupId === groupId
+            );
+        } catch (fallbackError) {
+            console.error('Fallback events query failed:', fallbackError);
+            return [];
+        }
     }
 };

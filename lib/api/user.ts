@@ -210,14 +210,18 @@ export async function getUsersByIds(ids: string[]): Promise<UserProfile[]> {
   try {
     authDebug.info('Fetching users batch from database', { count: uncachedIds.length });
 
-    // Using $id in array queries
-    const response = await databases.listDocuments(
-      config.databaseID!,
-      config.usersCollectionID!,
-      [Query.equal('$id', uncachedIds)]
+    // For $id queries with multiple values, we need to make separate requests
+    // or use Query.equal for each ID individually
+    const fetchPromises = uncachedIds.map(id =>
+      databases.getDocument(config.databaseID!, config.usersCollectionID!, id)
+        .catch(error => {
+          console.error(`Failed to fetch user ${id}:`, error);
+          return null;
+        })
     );
 
-    const fetchedUsers = response.documents as unknown as UserProfile[];
+    const fetchedResults = await Promise.all(fetchPromises);
+    const fetchedUsers = fetchedResults.filter(user => user !== null) as unknown as UserProfile[];
 
     // Cache individual users
     fetchedUsers.forEach(user => {
