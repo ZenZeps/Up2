@@ -578,18 +578,22 @@ export default function Home() {
         {activeTab === 'calendar' ? (
           <View className="flex-1">
             {/* Calendar Controls */}
-            <View className="flex-row justify-between items-center px-4 py-2" style={{ backgroundColor: colors.card }}>
+            <View className="flex-row justify-between items-center px-4 py-2" style={{ backgroundColor: colors.surface }}>
               <View className="flex-row">
                 {viewModes.map((mode) => (
                   <TouchableOpacity
                     key={mode}
                     onPress={() => setViewMode(mode)}
                     className={`px-3 py-1 mr-2 rounded ${viewMode === mode ? 'bg-blue-500' : ''}`}
-                    style={{ backgroundColor: viewMode === mode ? colors.primary : 'transparent' }}
+                    style={{
+                      backgroundColor: viewMode === mode ? colors.primary : colors.background,
+                      borderWidth: viewMode === mode ? 0 : 1,
+                      borderColor: colors.border,
+                    }}
                   >
                     <Text
                       className="font-rubik-medium capitalize"
-                      style={{ color: viewMode === mode ? 'white' : colors.text }}
+                      style={{ color: viewMode === mode ? colors.background : colors.text }}
                     >
                       {mode}
                     </Text>
@@ -646,7 +650,18 @@ export default function Home() {
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <TouchableOpacity onPress={() => handlePressEvent(item)} className="mb-3">
-                <View className="p-4 rounded-lg border" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+                <View
+                  className="p-4 rounded-lg border"
+                  style={{
+                    backgroundColor: colors.surface, // Use surface color for better contrast in light mode
+                    borderColor: colors.border,
+                    shadowColor: colors.shadow,
+                    shadowOffset: { width: 0, height: 1 },
+                    shadowOpacity: 0.2,
+                    shadowRadius: 2,
+                    elevation: 2,
+                  }}
+                >
                   <View className="flex-row items-center justify-between mb-2">
                     <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>
                       {item.title}
@@ -680,9 +695,10 @@ export default function Home() {
                 </Text>
                 <TouchableOpacity
                   onPress={handleCreateEventPress}
-                  className="bg-blue-500 px-6 py-3 rounded-lg"
+                  className="px-6 py-3 rounded-lg"
+                  style={{ backgroundColor: colors.primary }}
                 >
-                  <Text className="text-white font-rubik-medium">Create First Event</Text>
+                  <Text className="font-rubik-medium" style={{ color: colors.background }}>Create First Event</Text>
                 </TouchableOpacity>
               </View>
             }

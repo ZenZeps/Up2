@@ -79,7 +79,7 @@ const Settings = () => {
 
                     // Get current profile to preserve friends list
                     const currentProfile = await getUserProfile(userId);
-                    
+
                     // Update profile with new photo, preserving existing friends
                     await updateUserProfile({
                         $id: userId,
