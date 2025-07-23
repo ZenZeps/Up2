@@ -11,7 +11,7 @@ import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View, FlatList } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
@@ -20,6 +20,8 @@ import { EventsContext } from '../context/EventContext';
 
 // Define available calendar view modes
 const viewModes: Mode[] = ['day', 'week', 'month'];
+
+type TabType = 'calendar' | 'agenda';
 
 // Cache for creator names
 const creatorNameCache = new Map<string, string>();
@@ -91,6 +93,7 @@ export default function Home() {
   const [endHour, setEndHour] = useState(new Date().getHours() + 4);
   const [calendarHeight, setCalendarHeight] = useState(0);
   const [userTravelData, setUserTravelData] = useState<TravelAnnouncement[]>([]);
+  const [activeTab, setActiveTab] = useState<TabType>('calendar');
 
   // Track when data was last fetched to prevent unnecessary refetches
   const lastFetchTime = useRef<number>(0);
@@ -483,63 +486,164 @@ export default function Home() {
 
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
-      <View className="flex-row justify-between items-center p-4">
-        <Text className="text-2xl font-rubik-semibold" style={{ color: colors.text }}>
+      {/* Header */}
+      <View className="px-0 py-0 border-b" style={{ borderBottomColor: colors.border }}>
+        <Text className="text-2xl font-rubik-semibold text-center" style={{ color: colors.text }}>
           Calendar
         </Text>
-        <View className="flex-row">
-          {/* View mode switcher */}
-          {viewModes.map((mode) => (
-            <TouchableOpacity
-              key={mode}
-              onPress={() => setViewMode(mode)}
-              className={`px-3 py-1 rounded-full mx-1`}
-              style={{
-                backgroundColor: viewMode === mode ? colors.primary : colors.surface
-              }}
-            >
-              <Text
-                className="font-rubik"
-                style={{
-                  color: viewMode === mode ? colors.background : colors.text
-                }}
-              >
-                {mode.charAt(0).toUpperCase() + mode.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
       </View>
 
-      {/* Calendar component */}
-      <View
-        className="flex-1 mb-16"
-        onLayout={(event) => {
-          const { height } = event.nativeEvent.layout;
-          setCalendarHeight(height);
-        }}
-      >
-        {calendarHeight > 0 && (
-          <BigCalendar
-            events={calendarEvents as any[]}
-            height={calendarHeight}
-            mode={viewMode}
-            date={date}
-            onPressCell={handleCellPress}
-            onPressEvent={handlePressEvent}
-            renderEvent={renderEvent}
-            renderCustomDateForMonth={renderCustomDateForMonth}
-            swipeEnabled={true}
-            overlapOffset={0}
-            ampm={false}
-            scrollOffsetMinutes={0}
-            headerContainerStyle={{
-              height: 50,
-              backgroundColor: colors.surface,
+      {/* Tab Navigation */}
+      <View className="flex-row px-4 py-2 border-b" style={{ borderBottomColor: colors.border }}>
+        <TouchableOpacity
+          onPress={() => setActiveTab('calendar')}
+          className={`flex-1 py-2 ${activeTab === 'calendar' ? 'border-b-2' : ''}`}
+          style={{ borderBottomColor: activeTab === 'calendar' ? colors.primary : 'transparent' }}
+        >
+          <Text
+            className="text-center font-rubik-medium"
+            style={{
+              color: activeTab === 'calendar' ? colors.primary : colors.textSecondary
             }}
-            bodyContainerStyle={{
-              paddingBottom: 0,
+          >
+            Calendar
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setActiveTab('agenda')}
+          className={`flex-1 py-2 ${activeTab === 'agenda' ? 'border-b-2' : ''}`}
+          style={{ borderBottomColor: activeTab === 'agenda' ? colors.primary : 'transparent' }}
+        >
+          <Text
+            className="text-center font-rubik-medium"
+            style={{
+              color: activeTab === 'agenda' ? colors.primary : colors.textSecondary
             }}
+          >
+            Agenda
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Content */}
+      <View className="flex-1">
+        {activeTab === 'calendar' ? (
+          <View className="flex-1">
+            {/* Calendar Controls */}
+            <View className="flex-row justify-between items-center px-4 py-2" style={{ backgroundColor: colors.card }}>
+              <View className="flex-row">
+                {viewModes.map((mode) => (
+                  <TouchableOpacity
+                    key={mode}
+                    onPress={() => setViewMode(mode)}
+                    className={`px-3 py-1 mr-2 rounded ${viewMode === mode ? 'bg-blue-500' : ''}`}
+                    style={{ backgroundColor: viewMode === mode ? colors.primary : 'transparent' }}
+                  >
+                    <Text
+                      className="font-rubik-medium capitalize"
+                      style={{ color: viewMode === mode ? 'white' : colors.text }}
+                    >
+                      {mode}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity onPress={() => setDate(new Date())}>
+                <Text className="font-rubik-medium" style={{ color: colors.primary }}>Today</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Calendar component */}
+            <View
+              className="flex-1 mb-16"
+              onLayout={(event) => {
+                const { height } = event.nativeEvent.layout;
+                setCalendarHeight(height);
+              }}
+            >
+              {calendarHeight > 0 && (
+                <BigCalendar
+                  events={calendarEvents as any[]}
+                  height={calendarHeight}
+                  mode={viewMode}
+                  date={date}
+                  onChangeDate={(dates) => {
+                    if (Array.isArray(dates)) {
+                      setDate(dates[0]);
+                    } else {
+                      setDate(dates);
+                    }
+                  }}
+                  onPressCell={handleCellPress}
+                  onPressEvent={handlePressEvent}
+                  renderEvent={renderEvent}
+                  renderCustomDateForMonth={renderCustomDateForMonth}
+                  swipeEnabled={true}
+                  overlapOffset={0}
+                  ampm={false}
+                  scrollOffsetMinutes={0}
+                  headerContainerStyle={{
+                    height: 50,
+                    backgroundColor: colors.surface,
+                  }}
+                  bodyContainerStyle={{
+                    paddingBottom: 0,
+                  }}
+                />
+              )}
+            </View>
+          </View>
+        ) : (
+          /* Agenda View */
+          <FlatList
+            className="flex-1 px-4 pt-4"
+            data={calendarEvents.filter(item => item !== null).sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <TouchableOpacity onPress={() => handlePressEvent(item)} className="mb-3">
+                <View className="p-4 rounded-lg border" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>
+                      {item.title}
+                    </Text>
+                    <View
+                      className="w-4 h-4 rounded-full"
+                      style={{ backgroundColor: item.color || colors.primary }}
+                    />
+                  </View>
+                  <Text className="font-rubik" style={{ color: colors.textSecondary }}>
+                    {new Date(item.start).toLocaleDateString()} at {new Date(item.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                  <Text className="font-rubik mt-1" style={{ color: colors.textSecondary }}>
+                    {item.rawEvent?.attendees?.length || 0} attending
+                  </Text>
+                  {item.location && item.location !== 'No location' && (
+                    <Text className="font-rubik mt-1" style={{ color: colors.textSecondary }}>
+                      📍 {item.location}
+                    </Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={
+              <View className="flex-1 justify-center items-center py-12">
+                <Text className="text-lg font-rubik-semibold mb-2" style={{ color: colors.text }}>
+                  No Events Yet
+                </Text>
+                <Text className="text-center font-rubik mb-6" style={{ color: colors.textSecondary }}>
+                  Create your first event to get started!
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setFormVisible(true)}
+                  className="bg-blue-500 px-6 py-3 rounded-lg"
+                >
+                  <Text className="text-white font-rubik-medium">Create First Event</Text>
+                </TouchableOpacity>
+              </View>
+            }
+            showsVerticalScrollIndicator={false}
           />
         )}
       </View>
@@ -549,7 +653,7 @@ export default function Home() {
         className="absolute bottom-8 right-8 w-16 h-16 rounded-full items-center justify-center"
         style={{
           backgroundColor: colors.primary,
-          shadowColor: colors.shadow,
+          shadowColor: colors.text,
           shadowOffset: { width: 0, height: 2 },
           shadowOpacity: 0.25,
           shadowRadius: 4,

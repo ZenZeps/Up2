@@ -10,7 +10,7 @@ import { Group } from '@/lib/types/Groups';
 import { UserProfile } from '@/lib/types/Users';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -59,18 +59,21 @@ const GroupPage = () => {
         return members.map(m => m.$id);
     }, [members]);
 
-    // Memoize default datetime to prevent re-renders
+    // Memoize default datetime to prevent re-renders - only calculate once
     const defaultDateTime = useMemo(() => new Date().toISOString(), []);
 
-    // Calendar state
+    // Calendar state - use stable initial values to prevent re-renders
     const [viewMode, setViewMode] = useState<Mode>('week');
-    const [date, setDate] = useState(new Date());
-    const [startHour, setStartHour] = useState(new Date().getHours() - 4);
-    const [endHour, setEndHour] = useState(new Date().getHours() + 4);
+    const [date, setDate] = useState(() => new Date()); // Use function to initialize once
+    const [startHour] = useState(() => new Date().getHours() - 4); // Use function to initialize once
+    const [endHour] = useState(() => new Date().getHours() + 4);   // Use function to initialize once
 
     useEffect(() => {
         const loadGroupData = async () => {
             if (!groupId || typeof groupId !== 'string') return;
+
+            // Get current user ID inside the function to avoid dependency issues
+            const currentUserId = user?.$id;
 
             try {
                 setLoading(true);
@@ -93,7 +96,7 @@ const GroupPage = () => {
                         end: new Date(event.endTime),
                         title: event.title,
                         color: getEventColor(event.tags || []), // Use tags instead of category
-                        isAttending: event.attendees?.includes(userId || '') || false,
+                        isAttending: event.attendees?.includes(currentUserId || '') || false,
                     }));
                     setEvents(formattedEvents);
 
@@ -131,37 +134,20 @@ const GroupPage = () => {
         };
 
         loadGroupData();
-    }, [groupId, userId]); // Use stable groupId instead of id
+    }, [groupId]); // Remove userId dependency to prevent infinite loops
 
-    const refreshEvents = async () => {
-        if (!groupId || typeof groupId !== 'string') return;
-        try {
-            const groupEvents = await getGroupEvents(groupId);
-            const formattedEvents = (groupEvents || []).map(event => ({
-                ...event,
-                start: new Date(event.startTime),
-                end: new Date(event.endTime),
-                title: event.title,
-                color: getEventColor(event.tags || []), // Use tags instead of category
-                isAttending: event.attendees?.includes(userId || '') || false,
-            }));
-            setEvents(formattedEvents);
-        } catch (error) {
-            console.error('Error reloading events:', error);
-        }
-    };
-
-    const handleEventPress = (event: AppEvent) => {
+    // Memoize event handlers to prevent re-renders
+    const handleEventPress = useCallback((event: AppEvent) => {
         setSelectedEvent(event);
         setDetailsModalVisible(true);
-    };
+    }, []);
 
-    const handleCreateEvent = () => {
+    const handleCreateEvent = useCallback(() => {
         setEditingEvent(null);
         setFormVisible(true);
-    };
+    }, []);
 
-    const handleAttendEvent = async (event: AppEvent) => {
+    const handleAttendEvent = useCallback(async (event: AppEvent) => {
         if (!user?.$id) return;
 
         if (event.attendees?.includes(user.$id)) {
@@ -192,9 +178,9 @@ const GroupPage = () => {
             console.error('Attend event error:', err);
             Alert.alert('Error', 'Failed to attend event');
         }
-    };
+    }, [user?.$id]);
 
-    const handleNotAttend = async (event: AppEvent) => {
+    const handleNotAttend = useCallback(async (event: AppEvent) => {
         if (!user?.$id) return;
 
         try {
@@ -220,7 +206,55 @@ const GroupPage = () => {
             console.error('Not attend event error:', err);
             Alert.alert('Error', 'Failed to update attendance');
         }
-    };
+    }, [user?.$id]);
+
+    // Memoize calendar change handler to prevent re-renders
+    const handleDateChange = useCallback((dates: any) => {
+        if (Array.isArray(dates)) {
+            setDate(dates[0]);
+        } else {
+            setDate(dates);
+        }
+    }, []);
+
+    const refreshEvents = useCallback(async () => {
+        if (!groupId || typeof groupId !== 'string') return;
+
+        // Get current user ID inside the function
+        const currentUserId = user?.$id;
+
+        try {
+            const groupEvents = await getGroupEvents(groupId);
+            const formattedEvents = (groupEvents || []).map(event => ({
+                ...event,
+                start: new Date(event.startTime),
+                end: new Date(event.endTime),
+                title: event.title,
+                color: getEventColor(event.tags || []), // Use tags instead of category
+                isAttending: event.attendees?.includes(currentUserId || '') || false,
+            }));
+            setEvents(formattedEvents);
+        } catch (error) {
+            console.error('Error reloading events:', error);
+        }
+    }, [groupId, user?.$id]);
+
+    // Memoize modal callbacks to prevent re-renders
+    const handleModalClose = useCallback(() => {
+        setDetailsModalVisible(false);
+        setSelectedEvent(null);
+    }, []);
+
+    const handleEventEdit = useCallback((event: any) => {
+        console.log('Editing event:', event.title);
+        setDetailsModalVisible(false);
+        setSelectedEvent(null);
+    }, []);
+
+    const handleFormClose = useCallback(() => {
+        setFormVisible(false);
+        refreshEvents();
+    }, [refreshEvents]);
 
     if (loading) {
         return (
@@ -371,14 +405,8 @@ const GroupPage = () => {
                                 height={600}
                                 mode={viewMode}
                                 date={date}
-                                onChangeDate={(dates: any) => {
-                                    if (Array.isArray(dates)) {
-                                        setDate(dates[0]);
-                                    } else {
-                                        setDate(dates);
-                                    }
-                                }}
-                                onPressEvent={(event: any) => handleEventPress(event)}
+                                onChangeDate={handleDateChange}
+                                onPressEvent={handleEventPress}
                                 eventCellStyle={(event: any) => ({
                                     backgroundColor: event.color || colors.primary,
                                 })}
@@ -507,16 +535,8 @@ const GroupPage = () => {
                 <EventDetailsModal
                     event={selectedEvent}
                     isCreator={selectedEvent.creator === user?.$id}
-                    onClose={() => {
-                        setDetailsModalVisible(false);
-                        setSelectedEvent(null);
-                    }}
-                    onEdit={(event) => {
-                        // Handle edit logic here
-                        console.log('Editing event:', event.title);
-                        setDetailsModalVisible(false);
-                        setSelectedEvent(null);
-                    }}
+                    onClose={handleModalClose}
+                    onEdit={handleEventEdit}
                     onAttend={() => handleAttendEvent(selectedEvent)}
                     onNotAttend={() => handleNotAttend(selectedEvent)}
                     currentUserId={user?.$id || ''}
@@ -527,10 +547,7 @@ const GroupPage = () => {
             {formVisible && (
                 <EventForm
                     visible={formVisible}
-                    onClose={() => {
-                        setFormVisible(false);
-                        refreshEvents();
-                    }}
+                    onClose={handleFormClose}
                     event={editingEvent || undefined}
                     selectedDateTime={defaultDateTime}
                     currentUserId={user?.$id || ''}
