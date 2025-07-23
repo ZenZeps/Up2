@@ -11,7 +11,7 @@ import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Text, TouchableOpacity, View, FlatList } from 'react-native';
+import { FlatList, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
@@ -86,11 +86,11 @@ export default function Home() {
   const [selectedDateTime, setSelectedDateTime] = useState<string | null>(null);
   const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
   const [viewMode, setViewMode] = useState<Mode>('week');
-  const [date, setDate] = useState(new Date());
+  const [date, setDate] = useState(() => new Date()); // Use function to initialize once
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<AppEvent | null>(null);
-  const [startHour, setStartHour] = useState(new Date().getHours() - 4);
-  const [endHour, setEndHour] = useState(new Date().getHours() + 4);
+  const [startHour] = useState(() => new Date().getHours() - 4); // Initialize once, no setter
+  const [endHour] = useState(() => new Date().getHours() + 4); // Initialize once, no setter
   const [calendarHeight, setCalendarHeight] = useState(0);
   const [userTravelData, setUserTravelData] = useState<TravelAnnouncement[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('calendar');
@@ -262,7 +262,7 @@ export default function Home() {
   }, [userEvents, getCreatorName]);
 
   // Custom render function for events with comprehensive error handling
-  const renderEvent = (event: any, touchableOpacityProps: any) => {
+  const renderEvent = useCallback((event: any, touchableOpacityProps: any) => {
     try {
       // Safety checks to prevent rendering invalid events
       if (!event) {
@@ -383,17 +383,60 @@ export default function Home() {
         </TouchableOpacity>
       );
     }
-  };
+  }, [viewMode, colors.primary, colors.background, colors.error, handlePressEvent]);
 
   // Handler for pressing a calendar cell (to create a new event)
-  const handleCellPress = (date: Date) => {
+  const handleCellPress = useCallback((date: Date) => {
     setSelectedDateTime(date.toISOString());
     setEditingEvent(null); // Clear any existing event to create a new one
     setFormVisible(true);
-  };
+  }, []);
+
+  // Memoize date change handler to prevent re-renders
+  const handleDateChange = useCallback((dates: any) => {
+    if (Array.isArray(dates)) {
+      setDate(dates[0]);
+    } else {
+      setDate(dates);
+    }
+  }, []);
+
+  // Memoize event handlers
+  const handlePressEvent = useCallback((event: any) => {
+    try {
+      if (!event) {
+        console.warn('handlePressEvent: event is null or undefined');
+        return;
+      }
+
+      if (!event.rawEvent) {
+        console.warn('handlePressEvent: event.rawEvent is null or undefined');
+        return;
+      }
+
+      // Validate that the raw event has required properties
+      if (!event.rawEvent.$id) {
+        console.warn('handlePressEvent: event.rawEvent.$id is missing');
+        return;
+      }
+
+      setSelectedEvent(event.rawEvent as AppEvent);
+      setDetailsModalVisible(true);
+    } catch (error) {
+      console.error('Error in handlePressEvent:', error);
+      // Don't crash the app, just log the error
+    }
+  }, []);
+
+  // Handler for editing event
+  const handleEditEvent = useCallback((event: AppEvent) => {
+    setEditingEvent(event);
+    setDetailsModalVisible(false);
+    setFormVisible(true);
+  }, []);
 
   // Custom date renderer for month view to highlight travel dates
-  const renderCustomDateForMonth = (date: Date) => {
+  const renderCustomDateForMonth = useCallback((date: Date) => {
     const isTravelDate = travelData && isDateInTravelPeriod(date, travelData);
 
     return (
@@ -431,42 +474,46 @@ export default function Home() {
         </View>
       </View>
     );
-  };
-  // Custom header renderer for highlighting travel days
-  // Handler for pressing an event (to view/edit)
-  // Handle press event with comprehensive error handling
-  const handlePressEvent = (event: any) => {
-    try {
-      if (!event) {
-        console.warn('handlePressEvent: event is null or undefined');
-        return;
-      }
+  }, []);
 
-      if (!event.rawEvent) {
-        console.warn('handlePressEvent: event.rawEvent is null or undefined');
-        return;
-      }
+  // Memoize button handlers
+  const handleTodayPress = useCallback(() => {
+    setDate(new Date());
+  }, []);
 
-      // Validate that the raw event has required properties
-      if (!event.rawEvent.$id) {
-        console.warn('handlePressEvent: event.rawEvent.$id is missing');
-        return;
-      }
-
-      setSelectedEvent(event.rawEvent as AppEvent);
-      setDetailsModalVisible(true);
-    } catch (error) {
-      console.error('Error in handlePressEvent:', error);
-      // Don't crash the app, just log the error
-    }
-  };
-
-  // Handler for editing event
-  const handleEditEvent = (event: AppEvent) => {
-    setEditingEvent(event);
-    setDetailsModalVisible(false);
+  const handleCreateEventPress = useCallback(() => {
+    setSelectedDateTime(new Date().toISOString());
+    setEditingEvent(null);
     setFormVisible(true);
-  };
+  }, []);
+
+  const handleFormClose = useCallback(() => {
+    setFormVisible(false);
+    // After creating/editing an event, refresh data immediately
+    if (eventsContext) {
+      smartRefetchEvents('manual');
+    }
+  }, [eventsContext, smartRefetchEvents]);
+
+  const handleDetailsModalClose = useCallback(() => {
+    setDetailsModalVisible(false);
+  }, []);
+
+  const handleEventAttend = useCallback(() => {
+    // Handle attend logic
+    setDetailsModalVisible(false);
+    if (eventsContext) {
+      smartRefetchEvents('manual');
+    }
+  }, [eventsContext, smartRefetchEvents]);
+
+  const handleEventNotAttend = useCallback(() => {
+    // Handle not attend logic
+    setDetailsModalVisible(false);
+    if (eventsContext) {
+      smartRefetchEvents('manual');
+    }
+  }, [eventsContext, smartRefetchEvents]);
 
   // React to screen focus (navigation) - only fetch when navigating to this screen
   useFocusEffect(
@@ -489,7 +536,7 @@ export default function Home() {
       {/* Header */}
       <View className="px-0 py-0 border-b" style={{ borderBottomColor: colors.border }}>
         <Text className="text-2xl font-rubik-semibold text-center" style={{ color: colors.text }}>
-          Calendar
+          UP2
         </Text>
       </View>
 
@@ -550,7 +597,7 @@ export default function Home() {
                 ))}
               </View>
 
-              <TouchableOpacity onPress={() => setDate(new Date())}>
+              <TouchableOpacity onPress={handleTodayPress}>
                 <Text className="font-rubik-medium" style={{ color: colors.primary }}>Today</Text>
               </TouchableOpacity>
             </View>
@@ -569,13 +616,7 @@ export default function Home() {
                   height={calendarHeight}
                   mode={viewMode}
                   date={date}
-                  onChangeDate={(dates) => {
-                    if (Array.isArray(dates)) {
-                      setDate(dates[0]);
-                    } else {
-                      setDate(dates);
-                    }
-                  }}
+                  onChangeDate={handleDateChange}
                   onPressCell={handleCellPress}
                   onPressEvent={handlePressEvent}
                   renderEvent={renderEvent}
@@ -585,7 +626,7 @@ export default function Home() {
                   ampm={false}
                   scrollOffsetMinutes={0}
                   headerContainerStyle={{
-                    height: 50,
+                    height: 53,
                     backgroundColor: colors.surface,
                   }}
                   bodyContainerStyle={{
@@ -636,7 +677,7 @@ export default function Home() {
                   Create your first event to get started!
                 </Text>
                 <TouchableOpacity
-                  onPress={() => setFormVisible(true)}
+                  onPress={handleCreateEventPress}
                   className="bg-blue-500 px-6 py-3 rounded-lg"
                 >
                   <Text className="text-white font-rubik-medium">Create First Event</Text>
@@ -659,11 +700,7 @@ export default function Home() {
           shadowRadius: 4,
           elevation: 5,
         }}
-        onPress={() => {
-          setSelectedDateTime(new Date().toISOString());
-          setEditingEvent(null);
-          setFormVisible(true);
-        }}
+        onPress={handleCreateEventPress}
       >
         <Text className="text-2xl" style={{ color: colors.background }}>+</Text>
       </TouchableOpacity>
@@ -672,13 +709,7 @@ export default function Home() {
       {formVisible && (
         <EventForm
           visible={formVisible}
-          onClose={() => {
-            setFormVisible(false);
-            // After creating/editing an event, refresh data immediately
-            if (eventsContext) {
-              smartRefetchEvents('manual');
-            }
-          }}
+          onClose={handleFormClose}
           event={editingEvent || undefined}
           selectedDateTime={selectedDateTime || new Date().toISOString()}
           currentUserId={currentUser?.$id || ''}
@@ -691,22 +722,10 @@ export default function Home() {
         <EventDetailsModal
           event={selectedEvent}
           isCreator={selectedEvent.creatorId === currentUser?.$id}
-          onClose={() => setDetailsModalVisible(false)}
+          onClose={handleDetailsModalClose}
           onEdit={() => handleEditEvent(selectedEvent)}
-          onAttend={() => {
-            // Handle attend logic
-            setDetailsModalVisible(false);
-            if (eventsContext) {
-              smartRefetchEvents('manual');
-            }
-          }}
-          onNotAttend={() => {
-            // Handle not attend logic
-            setDetailsModalVisible(false);
-            if (eventsContext) {
-              smartRefetchEvents('manual');
-            }
-          }}
+          onAttend={handleEventAttend}
+          onNotAttend={handleEventNotAttend}
           currentUserId={currentUser?.$id || ''}
         />
       )}
