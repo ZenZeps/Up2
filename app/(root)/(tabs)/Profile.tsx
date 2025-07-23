@@ -184,7 +184,10 @@ const Profile = () => {
                 keyExtractor={(item) => item.$id}
                 nestedScrollEnabled={true}
                 renderItem={({ item }) => (
-                  <View className="mr-4 items-center">
+                  <TouchableOpacity
+                    className="mr-4 items-center"
+                    onPress={() => router.push(`/(root)/UserProfile/${item.$id}` as any)}
+                  >
                     <UserAvatar
                       photoUrl={item.photoId ? getProfilePhotoUrl(item.photoId) : null}
                       firstName={item.firstName}
@@ -192,7 +195,7 @@ const Profile = () => {
                       size={64}
                     />
                     <Text className="text-sm font-rubik mt-1" style={{ color: colors.text }}>{userDisplayUtils.getFullName(item)}</Text>
-                  </View>
+                  </TouchableOpacity>
                 )}
                 ListEmptyComponent={
                   <Text className="text-gray-500 font-rubik" style={{ color: colors.textSecondary }}>No friends yet</Text>

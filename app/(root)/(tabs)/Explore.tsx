@@ -379,7 +379,7 @@ const Explore = () => {
                   >
                     <TouchableOpacity
                       className="flex-row items-center flex-1 mr-2"
-                      onPress={() => isFriend ? router.push(`/Calendar/${user.$id}`) : null}
+                      onPress={() => router.push(`/(root)/UserProfile/${user.$id}` as any)}
                     >
                       <UserAvatar
                         photoUrl={userPhotoUrls[user.$id]}
