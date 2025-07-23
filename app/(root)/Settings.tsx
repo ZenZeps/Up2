@@ -77,7 +77,10 @@ const Settings = () => {
                     console.log('Photo URL generated:', photoUrl);
                     setProfilePhotoUrl(photoUrl);
 
-                    // Update profile with new photo
+                    // Get current profile to preserve friends list
+                    const currentProfile = await getUserProfile(userId);
+                    
+                    // Update profile with new photo, preserving existing friends
                     await updateUserProfile({
                         $id: userId,
                         firstName,
@@ -85,7 +88,7 @@ const Settings = () => {
                         email,
                         isPublic: !isPrivate,
                         preferences: selectedEventTypes,
-                        friends: [], // Keep existing friends
+                        friends: currentProfile?.friends || [], // Preserve existing friends
                         photoId,
                     });
 
@@ -105,6 +108,9 @@ const Settings = () => {
         try {
             setIsLoading(true);
 
+            // Get current profile to preserve friends list
+            const currentProfile = await getUserProfile(userId);
+
             await updateUserProfile({
                 $id: userId,
                 firstName,
@@ -112,7 +118,7 @@ const Settings = () => {
                 email,
                 isPublic: !isPrivate,
                 preferences: selectedEventTypes,
-                friends: [], // Keep existing friends
+                friends: currentProfile?.friends || [], // Preserve existing friends
                 photoId: user?.profile?.photoId,
             });
 
