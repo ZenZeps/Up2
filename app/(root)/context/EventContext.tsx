@@ -11,7 +11,7 @@ import React, { createContext, useCallback, useContext, useMemo, useState } from
 interface EventsContextType {
   events: Event[];
   loading: boolean;
-  addEvent: (event: Event) => void;
+  addEvent: (event: Omit<Event, '$id'>) => Promise<Event>;
   updateEvent: (event: Event) => void;
   deleteEvent: (id: string) => void;
   refetchEvents: () => Promise<void>;

@@ -10,7 +10,7 @@ import { Group } from '@/lib/types/Groups';
 import { UserProfile } from '@/lib/types/Users';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -33,9 +33,14 @@ type TabType = 'calendar' | 'agenda';
 
 const GroupPage = () => {
     const router = useRouter();
-    const { id } = useLocalSearchParams();
+    const params = useLocalSearchParams();
     const { user } = useGlobalContext();
     const { colors } = useTheme();
+
+
+    // Extract stable values to prevent infinite loops
+    const groupId = Array.isArray(params.id) ? params.id[0] : params.id;
+    const userId = user?.$id;
 
     const [group, setGroup] = useState<Group | null>(null);
     const [events, setEvents] = useState<any[]>([]);
@@ -48,6 +53,15 @@ const GroupPage = () => {
     const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
     const [detailsModalVisible, setDetailsModalVisible] = useState(false);
 
+    // Memoize friends array to prevent infinite re-renders
+    const friendIds = useMemo(() => {
+        if (!members || !Array.isArray(members)) return [];
+        return members.map(m => m.$id);
+    }, [members]);
+
+    // Memoize default datetime to prevent re-renders
+    const defaultDateTime = useMemo(() => new Date().toISOString(), []);
+
     // Calendar state
     const [viewMode, setViewMode] = useState<Mode>('week');
     const [date, setDate] = useState(new Date());
@@ -56,35 +70,56 @@ const GroupPage = () => {
 
     useEffect(() => {
         const loadGroupData = async () => {
-            if (!id || typeof id !== 'string') return;
+            if (!groupId || typeof groupId !== 'string') return;
 
             try {
                 setLoading(true);
 
                 // Load group details and events
                 const [groupData, groupEvents] = await Promise.all([
-                    getGroupById(id),
-                    getGroupEvents(id)
+                    getGroupById(groupId),
+                    getGroupEvents(groupId)
                 ]);
 
                 if (groupData) {
                     setGroup(groupData);
+                    console.log('Group data loaded:', groupData);
+                    console.log('Group users array:', groupData.users);
 
                     // Format events for big calendar
                     const formattedEvents = (groupEvents || []).map(event => ({
                         ...event,
-                        start: new Date(event.dateTime),
-                        end: new Date(new Date(event.dateTime).getTime() + 60 * 60 * 1000), // 1 hour duration
+                        start: new Date(event.startTime),
+                        end: new Date(event.endTime),
                         title: event.title,
-                        color: getEventColor(event.category),
-                        isAttending: event.attendees?.includes(user?.$id || '') || false,
+                        color: getEventColor(event.tags || []), // Use tags instead of category
+                        isAttending: event.attendees?.includes(userId || '') || false,
                     }));
                     setEvents(formattedEvents);
 
                     // Load member details
                     if (groupData.users && groupData.users.length > 0) {
-                        const memberProfiles = await getUsersByIds(groupData.users);
-                        setMembers(memberProfiles);
+                        console.log('Raw group users array:', JSON.stringify(groupData.users, null, 2));
+
+                        // Extract user IDs - handle both string IDs and user objects
+                        const userIds = groupData.users.map((user: any) => {
+                            if (typeof user === 'string') {
+                                return user;
+                            } else if (user && typeof user === 'object' && user.$id) {
+                                return user.$id;
+                            } else if (user && typeof user === 'object' && user.id) {
+                                return user.id;
+                            }
+                            console.warn('Invalid user in group.users:', user);
+                            return null;
+                        }).filter((id: any) => id && typeof id === 'string' && id.length <= 36);
+
+                        console.log('Extracted user IDs:', userIds);
+
+                        if (userIds.length > 0) {
+                            const memberProfiles = await getUsersByIds(userIds);
+                            setMembers(memberProfiles);
+                        }
                     }
                 }
             } catch (error) {
@@ -96,19 +131,19 @@ const GroupPage = () => {
         };
 
         loadGroupData();
-    }, [id, user?.$id]);
+    }, [groupId, userId]); // Use stable groupId instead of id
 
     const refreshEvents = async () => {
-        if (!id || typeof id !== 'string') return;
+        if (!groupId || typeof groupId !== 'string') return;
         try {
-            const groupEvents = await getGroupEvents(id);
+            const groupEvents = await getGroupEvents(groupId);
             const formattedEvents = (groupEvents || []).map(event => ({
                 ...event,
-                start: new Date(event.dateTime),
-                end: new Date(new Date(event.dateTime).getTime() + 60 * 60 * 1000),
+                start: new Date(event.startTime),
+                end: new Date(event.endTime),
                 title: event.title,
-                color: getEventColor(event.category),
-                isAttending: event.attendees?.includes(user?.$id || '') || false,
+                color: getEventColor(event.tags || []), // Use tags instead of category
+                isAttending: event.attendees?.includes(userId || '') || false,
             }));
             setEvents(formattedEvents);
         } catch (error) {
@@ -251,7 +286,7 @@ const GroupPage = () => {
                         style={{ backgroundColor: colors.card }}
                     >
                         <Text className="text-center font-rubik-medium" style={{ color: colors.text }}>
-                            Members ({members.length})
+                            Members ({members?.length || 0})
                         </Text>
                     </TouchableOpacity>
 
@@ -438,7 +473,7 @@ const GroupPage = () => {
 
                     <FlatList
                         className="flex-1 px-4"
-                        data={members}
+                        data={members || []}
                         keyExtractor={(item) => item.$id}
                         renderItem={({ item }) => (
                             <View className="flex-row items-center py-3 border-b" style={{ borderBottomColor: colors.border }}>
@@ -497,9 +532,9 @@ const GroupPage = () => {
                         refreshEvents();
                     }}
                     event={editingEvent || undefined}
-                    selectedDateTime={new Date().toISOString()}
+                    selectedDateTime={defaultDateTime}
                     currentUserId={user?.$id || ''}
-                    friends={members.map(m => m.$id)} // Use group member IDs as friends
+                    friends={friendIds} // Use memoized friends array
                     groupId={group?.$id} // Pass the group ID so events are assigned to this group
                 />
             )}

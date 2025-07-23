@@ -1,17 +1,37 @@
+import { useRouter } from 'expo-router';
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 /**
  * Debug page for testing our database optimizations
  * Moved outside of (root) directory to avoid authentication context issues
  */
 export default function DebugPage() {
+    const router = useRouter();
+
     return (
         <ScrollView style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.title}>Debug & Testing Page</Text>
                 <Text style={styles.subtitle}>Database Optimization Test Suite</Text>
             </View>
+
+            <TouchableOpacity
+                onPress={() => router.push('/debug/group-event-test')}
+                style={{
+                    backgroundColor: '#007AFF',
+                    padding: 15,
+                    borderRadius: 8,
+                    marginVertical: 10,
+                }}
+            >
+                <Text style={{ color: 'white', textAlign: 'center', fontSize: 16, fontWeight: 'bold' }}>
+                    🧪 Group-Event Association Test
+                </Text>
+                <Text style={{ color: 'white', textAlign: 'center', fontSize: 12, marginTop: 5 }}>
+                    Test database relationship between groups and events
+                </Text>
+            </TouchableOpacity>
 
             <View style={{ padding: 20, backgroundColor: '#ffe0e0', borderRadius: 8, marginVertical: 10 }}>
                 <Text style={{ fontWeight: 'bold' }}>OptimizationTester Temporarily Disabled</Text>

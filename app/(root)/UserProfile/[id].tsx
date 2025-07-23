@@ -49,9 +49,7 @@ const UserProfile = () => {
                 if (!profile) {
                     router.back();
                     return;
-                }
-
-                setUserProfile(profile);
+                } setUserProfile(profile);
 
                 // Load friends and groups
                 const [userFriends, userGroups] = await Promise.all([
@@ -87,11 +85,14 @@ const UserProfile = () => {
     };
 
     const handleViewCalendar = () => {
-        // Navigate to user's calendar page
-        router.push(`/(root)/UserCalendar/${userId}` as any);
-    };
-
-    if (loading) {
+        try {
+            console.log('Navigating to calendar for user:', userId);
+            // Navigate to user's calendar page
+            router.push(`/(root)/UserCalendar/${userId}` as any);
+        } catch (error) {
+            console.error('Error navigating to calendar:', error);
+        }
+    }; if (loading) {
         return (
             <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
                 <View className="flex-1 items-center justify-center">

@@ -1,4 +1,5 @@
 import { CATEGORIES } from '@/constants/categories';
+import { addEventToGroup } from '@/lib/api/group';
 import { config, databases } from '@/lib/appwrite/appwrite';
 import { Event } from '@/lib/types/Events';
 import dayjs from 'dayjs';
@@ -144,7 +145,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
     }
 
     console.log('EventForm: Validation passed');
-  }, [visible, currentUserId, event, selectedDateTime, friends?.length]);
+  }, [visible, currentUserId, !!event, selectedDateTime]); // Remove friends?.length dependency
 
   useEffect(() => {
     if (event) {
@@ -321,13 +322,14 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
         description: description.trim(),
         tags: tags.filter(tag => tag && tag.trim()), // Filter out empty tags
         isPrivate: isPrivate,
-        ...(groupId && { groupId }), // Add groupId if provided
       };
 
       console.log("Saving event with data:", eventData);
 
       // Use a try-catch specifically for the event operations
       try {
+        let savedEvent: Event;
+
         if (event && event.$id) {
           // Update existing event using EventContext
           console.log("Updating existing event:", event.$id);
@@ -336,11 +338,23 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
             $id: event.$id,
           } as Event);
           console.log("Event updated successfully");
+          savedEvent = { ...eventData, $id: event.$id } as Event;
         } else {
           // Create new event using EventContext
           console.log("Creating new event");
-          await addEvent(eventData as any); // Cast to any since addEvent creates the $id internally
-          console.log("Event created successfully");
+          savedEvent = await addEvent(eventData as any); // Cast to any since addEvent creates the $id internally
+          console.log("Event created successfully with ID:", savedEvent.$id);
+        }
+
+        // If this event is being created for a group, associate it with the group
+        if (groupId && savedEvent.$id) {
+          console.log("Associating event with group:", groupId);
+          const success = await addEventToGroup(groupId, savedEvent.$id);
+          if (!success) {
+            console.warn("Failed to associate event with group, but event was created");
+          } else {
+            console.log("Event successfully associated with group");
+          }
         }
 
         // Close the modal only after successful save
@@ -411,9 +425,6 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setShowEndPicker(false);
     }
   };
-
-  // STEP 29: Final pre-render check - REMOVED
-  console.log('EventForm: About to render modal');
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
