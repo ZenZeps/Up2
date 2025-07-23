@@ -640,7 +640,9 @@ export default function Home() {
           /* Agenda View */
           <FlatList
             className="flex-1 px-4 pt-4"
-            data={calendarEvents.filter(item => item !== null).sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())}
+            data={calendarEvents
+              .filter((item): item is NonNullable<typeof item> => item !== null && new Date(item.start) > new Date()) // Only show upcoming events
+              .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <TouchableOpacity onPress={() => handlePressEvent(item)} className="mb-3">
