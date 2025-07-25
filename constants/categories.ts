@@ -56,3 +56,15 @@ export const getEventColor = (tags: string[]): string => {
     const category = getCategoryByValue(firstTag);
     return category?.color || DEFAULT_EVENT_COLOR;
 };
+
+// Helper function to get event emoji based on first tag
+export const getEventEmoji = (tags: string[]): string => {
+    if (!tags || tags.length === 0) {
+        return '📅'; // Default calendar emoji
+    }
+
+    // Use the first tag to determine emoji
+    const firstTag = tags[0];
+    const category = getCategoryByValue(firstTag);
+    return category?.emoji || '📅';
+};

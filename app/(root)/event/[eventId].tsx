@@ -1,5 +1,5 @@
+import { getEventEmoji } from '@/constants/categories';
 import icons from '@/constants/icons';
-import images from '@/constants/images';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
@@ -152,11 +152,10 @@ const EventDetail = () => {
       </View>
 
       <ScrollView className="flex-1">
-        {/* Event Image */}
-        <Image
-          source={images.onboarding} // Placeholder for event image
-          className="w-full h-64 object-cover"
-        />
+        {/* Event Emoji Container */}
+        <View className="w-full h-64 bg-gray-100 justify-center items-center">
+          <Text className="text-8xl">{getEventEmoji(event?.tags)}</Text>
+        </View>
 
         {/* Creator Info */}
         <View className="flex-row items-center p-4 bg-white border-b border-gray-200">

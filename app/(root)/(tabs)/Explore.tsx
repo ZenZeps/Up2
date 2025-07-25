@@ -419,10 +419,10 @@ const Explore = () => {
                     {isFriend ? (
                       <TouchableOpacity
                         onPress={() => handleDeleteFriend(user.$id)}
-                        className="px-4 py-2 rounded-full shadow-sm"
-                        style={{ backgroundColor: colors.error }}
+                        className="px-4 py-2 rounded-full shadow-sm min-w-[80px]"
+                        style={{ backgroundColor: colors.textSecondary }}
                       >
-                        <Text className="font-rubik-medium text-sm" style={{ color: colors.background }}>Remove</Text>
+                        <Text className="font-rubik-medium text-sm text-center" style={{ color: colors.background }}>Remove</Text>
                       </TouchableOpacity>
                     ) : (
                       <TouchableOpacity
@@ -433,18 +433,18 @@ const Explore = () => {
                             handleSendFriendRequest(user.$id);
                           }
                         }}
-                        className="px-4 py-2 rounded-full shadow-sm"
+                        className="px-4 py-2 rounded-full shadow-sm min-w-[80px]"
                         style={{
-                          backgroundColor: requestedUsers.includes(user.$id) ? colors.secondary : colors.primary
+                          backgroundColor: requestedUsers.includes(user.$id) ? colors.surface : colors.primary
                         }}
                       >
                         <Text
-                          className="font-rubik-medium text-sm"
+                          className="font-rubik-medium text-sm text-center"
                           style={{
                             color: requestedUsers.includes(user.$id) ? colors.text : colors.background
                           }}
                         >
-                          {requestedUsers.includes(user.$id) ? 'Requested' : 'Add'}
+                          {requestedUsers.includes(user.$id) ? 'Pending' : 'Add'}
                         </Text>
                       </TouchableOpacity>
                     )}

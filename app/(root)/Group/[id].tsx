@@ -1,5 +1,5 @@
 import { getEventColor } from '@/constants/categories';
-import { getGroupById, getGroupEvents } from '@/lib/api/group';
+import { getGroupById, getGroupEvents, leaveGroup } from '@/lib/api/group';
 import { getProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUsersByIds } from '@/lib/api/user';
 import { config, databases } from '@/lib/appwrite/appwrite';
@@ -208,6 +208,43 @@ const GroupPage = () => {
         }
     }, [user?.$id]);
 
+    const handleLeaveGroup = useCallback(async () => {
+        if (!user?.$id || !groupId || !group) return;
+
+        // Don't allow creator to leave their own group
+        if (group.creatorId === user.$id) {
+            Alert.alert('Cannot Leave', 'As the group creator, you cannot leave the group. You can delete the group instead.');
+            return;
+        }
+
+        Alert.alert(
+            'Leave Group',
+            `Are you sure you want to leave "${group.title}"?`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Leave',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const success = await leaveGroup(groupId, user.$id);
+                            if (success) {
+                                Alert.alert('Success', 'You have left the group.', [
+                                    { text: 'OK', onPress: () => router.back() }
+                                ]);
+                            } else {
+                                Alert.alert('Error', 'Failed to leave the group.');
+                            }
+                        } catch (error) {
+                            console.error('Leave group error:', error);
+                            Alert.alert('Error', 'Failed to leave the group.');
+                        }
+                    }
+                }
+            ]
+        );
+    }, [user?.$id, groupId, group, router]);
+
     // Memoize calendar change handler to prevent re-renders
     const handleDateChange = useCallback((dates: any) => {
         if (Array.isArray(dates)) {
@@ -304,12 +341,24 @@ const GroupPage = () => {
                         </Text>
                     </View>
 
-                    <TouchableOpacity
-                        onPress={handleCreateEvent}
-                        className="bg-blue-500 px-3 py-1 rounded-lg"
-                    >
-                        <Text className="text-white font-rubik-medium text-sm">+ Event</Text>
-                    </TouchableOpacity>
+                    <View className="flex-row space-x-2">
+                        <TouchableOpacity
+                            onPress={handleCreateEvent}
+                            className="bg-blue-500 px-3 py-1 rounded-lg"
+                        >
+                            <Text className="text-white font-rubik-medium text-sm">+ Event</Text>
+                        </TouchableOpacity>
+
+                        {/* Only show Leave Group button if user is not the creator */}
+                        {group.creatorId !== user?.$id && (
+                            <TouchableOpacity
+                                onPress={handleLeaveGroup}
+                                className="bg-red-500 px-3 py-1 rounded-lg"
+                            >
+                                <Text className="text-white font-rubik-medium text-sm">Leave</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 </View>
 
                 {/* Action Buttons */}

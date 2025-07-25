@@ -1,5 +1,5 @@
+import { getEventEmoji } from '@/constants/categories';
 import icons from '@/constants/icons';
-import images from '@/constants/images';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUsersByIds } from '@/lib/api/user';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
@@ -150,8 +150,10 @@ const EventDetailsModal = ({
               </Text>
             </View>
 
-            {/* Event Image (Placeholder) */}
-            <Image source={images.onboarding} style={styles.eventImage} />
+            {/* Event Emoji */}
+            <View style={styles.eventEmojiContainer}>
+              <Text style={styles.eventEmoji}>{getEventEmoji(event.tags || [])}</Text>
+            </View>
 
             {/* Event Title */}
             <Text style={styles.eventTitle}>{event.title}</Text>
@@ -288,11 +290,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
-  eventImage: {
+  eventEmojiContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
     width: '100%',
-    height: 150,
+    height: 120,
+    backgroundColor: '#f8f9fa',
     borderRadius: 10,
     marginBottom: 15,
+  },
+  eventEmoji: {
+    fontSize: 48,
   },
   eventTitle: {
     fontSize: 24,

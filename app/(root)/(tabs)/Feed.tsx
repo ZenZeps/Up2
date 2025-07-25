@@ -1,4 +1,4 @@
-import { getCategoriesByValues } from '@/constants/categories';
+import { getCategoriesByValues, getEventEmoji } from '@/constants/categories';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
@@ -10,11 +10,10 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, Image, Linking, RefreshControl, Text, TouchableOpacity, View , Alert } from 'react-native';
+import { Alert, FlatList, Image, Linking, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import icons from '@/constants/icons';
-import images from '@/constants/images';
 import UserAvatar from '../components/UserAvatar';
 
 import { Event as AppEvent } from '@/lib/types/Events';
@@ -239,11 +238,10 @@ export default function Feed() {
         </View>
       </View>
 
-      {/* Event Image (Placeholder) */}
-      <Image
-        source={images.onboarding} // Placeholder for event image
-        className="w-full h-48 object-cover"
-      />
+      {/* Event Emoji Container */}
+      <View className="w-full h-48 bg-gray-100 justify-center items-center">
+        <Text className="text-6xl">{getEventEmoji(item.tags)}</Text>
+      </View>
 
       {/* Event Details */}
       <View className="p-3">
