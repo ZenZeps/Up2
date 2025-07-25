@@ -17,13 +17,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserAvatar from '../components/UserAvatar';
 
 const Profile = () => {
   const router = useRouter();
   const { user } = useGlobalContext();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const userId = user?.$id;
 
   const [firstName, setFirstName] = useState(user?.profile?.firstName || '');
@@ -119,7 +120,7 @@ const Profile = () => {
 
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 70 + insets.bottom }} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View className="px-4 py-3 flex-row items-center justify-between border-b" style={{ borderBottomColor: colors.border }}>
           <Text className="text-2xl font-rubik-semibold" style={{ color: colors.text }}>

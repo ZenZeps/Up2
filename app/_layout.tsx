@@ -3,8 +3,9 @@ import { ThemeProvider } from "@/lib/context/ThemeContext";
 import { setupGlobalErrorHandler } from "@/lib/debug/globalErrorHandler";
 import GlobalProvider from "@/lib/global-provider";
 import { useFonts } from "expo-font";
-import { SplashScreen, Stack } from "expo-router";
+import { SplashScreen, Stack, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+import { BackHandler } from "react-native";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./globals.css";
 
@@ -12,6 +13,7 @@ import "./globals.css";
 setupGlobalErrorHandler();
 
 export default function RootLayout() {
+  const router = useRouter();
   const [fontsLoaded] = useFonts({
     "Rubik-ExtraBold": require("../assets/fonts/Rubik-ExtraBold.ttf"),
     "Rubik-Light": require("../assets/fonts/Rubik-Light.ttf"),
@@ -22,6 +24,20 @@ export default function RootLayout() {
 
   const [isAppReady, setIsAppReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  // Handle hardware back button for proper navigation
+  useEffect(() => {
+    const backAction = () => {
+      if (router.canGoBack()) {
+        router.back();
+        return true; // Prevent default behavior
+      }
+      return false; // Allow default behavior (exit app)
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [router]);
 
   useEffect(() => {
     const checkAuth = async () => {

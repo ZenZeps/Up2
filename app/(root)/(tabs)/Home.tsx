@@ -14,7 +14,7 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
 import EventForm from '../components/EventForm';
 import { EventsContext } from '../context/EventContext';
@@ -29,6 +29,7 @@ const creatorNameCache = new Map<string, string>();
 
 export default function Home() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   // Safely access the context values
   const eventsContext = React.useContext(EventsContext);
@@ -729,14 +730,16 @@ export default function Home() {
               </View>
             }
             showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 70 + insets.bottom }}
           />
         )}
       </View>
 
       {/* Add Event FAB */}
       <TouchableOpacity
-        className="absolute bottom-8 right-8 w-16 h-16 rounded-full items-center justify-center"
+        className="absolute right-8 w-16 h-16 rounded-full items-center justify-center"
         style={{
+          bottom: 32 + insets.bottom, // Dynamic bottom positioning based on safe area
           backgroundColor: colors.primary,
           shadowColor: colors.text,
           shadowOffset: { width: 0, height: 2 },

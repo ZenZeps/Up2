@@ -20,13 +20,14 @@ import {
   View
 } from 'react-native';
 import { ID, Query } from 'react-native-appwrite';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserAvatar from '../components/UserAvatar';
 import { useEvents } from '../context/EventContext';
 
 const Explore = () => {
   const router = useRouter();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { events, refetchEvents } = useEvents();
 
   // State variables
@@ -384,7 +385,7 @@ const Explore = () => {
         </View>
 
         {/* Main content: Users or Events list */}
-        <ScrollView className="flex-1">
+        <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 70 + insets.bottom }}>
           {loading ? (
             <ActivityIndicator size="large" color="#0061FF" className="mt-10" />
           ) : mode === 'users' ? (

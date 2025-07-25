@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import { Image, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // TabIcon: Renders an icon and label for each tab in the bottom navigation bar
 const TabIcon = ({ focused, icon, title, colors }: { focused: boolean; icon: any; title: string; colors: any }) => (
@@ -28,6 +29,7 @@ const TabIcon = ({ focused, icon, title, colors }: { focused: boolean; icon: any
 // TabsLayout: Main layout for the tab navigator
 const TabsLayout = () => {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -41,7 +43,8 @@ const TabsLayout = () => {
             position: 'absolute',
             borderTopColor: colors.border,
             borderTopWidth: 1,
-            minHeight: 70, // Height of the tab bar
+            height: 70 + insets.bottom, // Add bottom safe area padding
+            paddingBottom: insets.bottom, // Ensure content is above safe area
           }
         }}
       >

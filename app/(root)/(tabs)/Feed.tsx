@@ -11,7 +11,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Image, Linking, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import icons from '@/constants/icons';
 import UserAvatar from '../components/UserAvatar';
@@ -28,6 +28,7 @@ dayjs.extend(relativeTime);
 type FeedItem = (AppEvent & { type: 'event'; creatorName?: string }) | (TravelAnnouncementWithUserInfo & { type: 'travel' });
 export default function Feed() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { events, refetchEvents } = useEvents();
   const params = useLocalSearchParams();
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<AppEvent[]>([]);
@@ -371,11 +372,11 @@ export default function Feed() {
       <View className="flex-row items-center justify-between p-4 border-b" style={{ backgroundColor: colors.background, borderBottomColor: colors.border }}>
         <Text className="text-2xl font-rubik-extrabold" style={{ color: colors.text }}>Up2 You</Text>
         <View className="flex-row space-x-3">
-          <TouchableOpacity onPress={() => setTravelFormVisible(true)}>
-            <Image source={icons.location} className="w-6 h-6" resizeMode="contain" style={{ tintColor: colors.text }} />
+          <TouchableOpacity onPress={() => setTravelFormVisible(true)} className="p-2 rounded-lg" style={{ backgroundColor: colors.card }}>
+            <Image source={icons.location} className="w-8 h-8" resizeMode="contain" style={{ tintColor: colors.text }} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setFormVisible(true)}>
-            <Image source={icons.edit} className="w-6 h-6" resizeMode="contain" style={{ tintColor: colors.text }} />
+          <TouchableOpacity onPress={() => setFormVisible(true)} className="p-2 rounded-lg" style={{ backgroundColor: colors.card }}>
+            <Image source={icons.edit} className="w-8 h-8" resizeMode="contain" style={{ tintColor: colors.text }} />
           </TouchableOpacity>
         </View>
       </View>
@@ -385,7 +386,7 @@ export default function Feed() {
         data={feedItems}
         keyExtractor={(item) => `${item.type}-${item.$id}`}
         renderItem={renderFeedItem}
-        contentContainerStyle={{ paddingVertical: 16, paddingBottom: 70 }}
+        contentContainerStyle={{ paddingVertical: 16, paddingBottom: 70 + insets.bottom }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
