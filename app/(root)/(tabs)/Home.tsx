@@ -1,4 +1,5 @@
 import { getEventColor } from '@/constants/categories';
+import { enrichEventsWithGroupNames } from '@/lib/api/event';
 import { getActiveTravelForUser } from '@/lib/api/travel';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { account } from '@/lib/appwrite/appwrite';
@@ -94,6 +95,7 @@ export default function Home() {
   const [calendarHeight, setCalendarHeight] = useState(0);
   const [userTravelData, setUserTravelData] = useState<TravelAnnouncement[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('calendar');
+  const [enrichedEvents, setEnrichedEvents] = useState<AppEvent[]>([]);
 
   // Track when data was last fetched to prevent unnecessary refetches
   const lastFetchTime = useRef<number>(0);
@@ -181,9 +183,28 @@ export default function Home() {
     );
   }, [events, currentUser]);
 
+  // Enrich events with group names
+  useEffect(() => {
+    const enrichEvents = async () => {
+      if (userEvents && userEvents.length > 0) {
+        try {
+          const enriched = await enrichEventsWithGroupNames(userEvents);
+          setEnrichedEvents(enriched);
+        } catch (error) {
+          authDebug.error('Failed to enrich events with group names:', error);
+          setEnrichedEvents(userEvents); // Fallback to original events
+        }
+      } else {
+        setEnrichedEvents([]);
+      }
+    };
+
+    enrichEvents();
+  }, [userEvents]);
+
   // Format events for the calendar with date validation
   const calendarEvents = useMemo(() => {
-    if (!userEvents || !Array.isArray(userEvents)) {
+    if (!enrichedEvents || !Array.isArray(enrichedEvents)) {
       return [];
     }
 
@@ -191,10 +212,10 @@ export default function Home() {
     const shouldLog = false; // Set to true only when debugging is needed
 
     if (shouldLog) {
-      authDebug.debug(`Processing ${userEvents.length} user events for calendar`);
+      authDebug.debug(`Processing ${enrichedEvents.length} user events for calendar`);
     }
 
-    return userEvents
+    return enrichedEvents
       .filter((e: AppEvent) => {
         // Safety check for null or undefined events
         if (!e || typeof e !== 'object') {
@@ -259,7 +280,7 @@ export default function Home() {
       })
       .filter(Boolean); // Remove any null events from mapping errors
 
-  }, [userEvents, getCreatorName]);
+  }, [enrichedEvents, getCreatorName]);
 
   // Memoize event handlers (declare before renderEvent to avoid dependency issues)
   const handlePressEvent = useCallback((event: any) => {
@@ -677,6 +698,11 @@ export default function Home() {
                   <Text className="font-rubik mt-1" style={{ color: colors.textSecondary }}>
                     {item.rawEvent?.attendees?.length || 0} attending
                   </Text>
+                  {item.rawEvent?.groupName && (
+                    <Text className="font-rubik mt-1" style={{ color: colors.primary }}>
+                      📋 {item.rawEvent.groupName}
+                    </Text>
+                  )}
                   {item.location && item.location !== 'No location' && (
                     <Text className="font-rubik mt-1" style={{ color: colors.textSecondary }}>
                       📍 {item.location}

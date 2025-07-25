@@ -13,6 +13,7 @@ export interface Event {
   tags: string[]; // Event categories/tags (sports, music, art, etc.)
   isPrivate?: boolean; // Whether the event is private (only visible to invitees)
   groupId?: string; // Optional group ID if event belongs to a group
+  groupName?: string; // Optional group name for display (computed field)
 }
 
 export interface EventWithDetails extends Event {

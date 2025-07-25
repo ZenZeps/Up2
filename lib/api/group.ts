@@ -66,7 +66,20 @@ export const getGroupById = async (groupId: string): Promise<Group | null> => {
             config.groupsCollectionID!,
             groupId
         );
-        return response as unknown as Group;
+
+        return {
+            $id: response.$id,
+            id: response.id || response.$id,
+            title: response.title,
+            description: response.description || '',
+            creatorId: response.creatorId,
+            isPrivate: response.isPrivate || false,
+            users: response.users || [],
+            events: response.events || [],
+            memberCount: (response.users || []).length,
+            $createdAt: response.$createdAt,
+            $updatedAt: response.$updatedAt,
+        } as Group;
     } catch (error) {
         console.error('Error fetching group:', error);
         return null;
@@ -76,7 +89,13 @@ export const getGroupById = async (groupId: string): Promise<Group | null> => {
 /**
  * Create a new group
  */
-export const createGroup = async (title: string, creatorId: string, members?: string[]): Promise<Group | null> => {
+export const createGroup = async (
+    title: string,
+    creatorId: string,
+    members?: string[],
+    isPrivate: boolean = false,
+    description?: string
+): Promise<Group | null> => {
     try {
         const groupId = ID.unique();
         // Include creator and any additional members, remove duplicates
@@ -88,7 +107,9 @@ export const createGroup = async (title: string, creatorId: string, members?: st
             groupId,
             {
                 title,
+                description: description || '',
                 creatorId,
+                isPrivate,
                 // For relationship attributes, pass array of user IDs
                 users: allMembers,
             }
@@ -170,15 +191,148 @@ export const getAllGroups = async (): Promise<Group[]> => {
             $id: doc.$id,
             id: doc.id || doc.$id,
             title: doc.title,
+            description: doc.description || '',
             creatorId: doc.creatorId,
+            isPrivate: doc.isPrivate || false,
             users: doc.users || [],
             events: doc.events || [],
+            memberCount: (doc.users || []).length,
             $createdAt: doc.$createdAt,
             $updatedAt: doc.$updatedAt,
         }));
     } catch (error) {
         console.error('Error fetching all groups:', error);
         return [];
+    }
+};
+
+/**
+ * Get all public groups for discovery
+ */
+export const getPublicGroups = async (): Promise<Group[]> => {
+    try {
+        const response = await databases.listDocuments(
+            config.databaseID!,
+            config.groupsCollectionID!,
+            [Query.equal('isPrivate', false)]
+        );
+
+        return response.documents.map(doc => ({
+            $id: doc.$id,
+            id: doc.id || doc.$id,
+            title: doc.title,
+            description: doc.description || '',
+            creatorId: doc.creatorId,
+            isPrivate: doc.isPrivate || false,
+            users: doc.users || [],
+            events: doc.events || [],
+            memberCount: (doc.users || []).length,
+            $createdAt: doc.$createdAt,
+            $updatedAt: doc.$updatedAt,
+        }));
+    } catch (error) {
+        console.error('Error fetching public groups:', error);
+        return [];
+    }
+};
+
+/**
+ * Search public groups by title
+ */
+export const searchPublicGroups = async (searchTerm: string): Promise<Group[]> => {
+    try {
+        const response = await databases.listDocuments(
+            config.databaseID!,
+            config.groupsCollectionID!,
+            [
+                Query.equal('isPrivate', false),
+                Query.search('title', searchTerm)
+            ]
+        );
+
+        return response.documents.map(doc => ({
+            $id: doc.$id,
+            id: doc.id || doc.$id,
+            title: doc.title,
+            description: doc.description || '',
+            creatorId: doc.creatorId,
+            isPrivate: doc.isPrivate || false,
+            users: doc.users || [],
+            events: doc.events || [],
+            memberCount: (doc.users || []).length,
+            $createdAt: doc.$createdAt,
+            $updatedAt: doc.$updatedAt,
+        }));
+    } catch (error) {
+        console.error('Error searching public groups:', error);
+        return [];
+    }
+};
+
+/**
+ * Join a public group
+ */
+export const joinGroup = async (groupId: string, userId: string): Promise<boolean> => {
+    try {
+        const group = await getGroupById(groupId);
+        if (!group) return false;
+
+        // Check if group is public
+        if (group.isPrivate) {
+            console.error('Cannot join private group without invitation');
+            return false;
+        }
+
+        // Check if user is already a member
+        const currentUsers = group.users || [];
+        if (currentUsers.includes(userId)) {
+            return true; // User already in group
+        }
+
+        await databases.updateDocument(
+            config.databaseID!,
+            config.groupsCollectionID!,
+            groupId,
+            {
+                users: [...currentUsers, userId]
+            }
+        );
+        return true;
+    } catch (error) {
+        console.error('Error joining group:', error);
+        return false;
+    }
+};
+
+/**
+ * Leave a group
+ */
+export const leaveGroup = async (groupId: string, userId: string): Promise<boolean> => {
+    try {
+        const group = await getGroupById(groupId);
+        if (!group) return false;
+
+        // Don't allow creator to leave their own group
+        if (group.creatorId === userId) {
+            console.error('Group creator cannot leave the group');
+            return false;
+        }
+
+        const currentUsers = group.users || [];
+        const updatedUsers = currentUsers.filter(id => id !== userId);
+
+        await databases.updateDocument(
+            config.databaseID!,
+            config.groupsCollectionID!,
+            groupId,
+            {
+                users: updatedUsers
+            }
+        );
+        return true;
+    } catch (error) {
+        console.error('Error leaving group:', error);
+        return false;
     }
 };
 

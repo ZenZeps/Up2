@@ -10,6 +10,7 @@ import {
     Alert,
     FlatList,
     ScrollView,
+    Switch,
     Text,
     TextInput,
     TouchableOpacity,
@@ -25,6 +26,8 @@ const CreateGroup = () => {
     const userId = user?.$id;
 
     const [groupName, setGroupName] = useState('');
+    const [groupDescription, setGroupDescription] = useState('');
+    const [isPrivate, setIsPrivate] = useState(false);
     const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
     const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -72,7 +75,13 @@ const CreateGroup = () => {
             // Include current user in the group along with selected users
             const allMembers = [userId, ...selectedUsers];
 
-            const group = await createGroup(groupName.trim(), userId, allMembers);
+            const group = await createGroup(
+                groupName.trim(),
+                userId,
+                allMembers,
+                isPrivate,
+                groupDescription.trim() || undefined
+            );
 
             if (group) {
                 Alert.alert('Success', 'Group created successfully!', [
@@ -137,11 +146,61 @@ const CreateGroup = () => {
                     />
                 </View>
 
+                {/* Group Description Input */}
+                <View className="pb-6">
+                    <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>
+                        Description (Optional)
+                    </Text>
+                    <TextInput
+                        value={groupDescription}
+                        onChangeText={setGroupDescription}
+                        placeholder="Enter group description..."
+                        placeholderTextColor={colors.textSecondary}
+                        className="p-4 rounded-lg border font-rubik"
+                        style={{
+                            backgroundColor: colors.background,
+                            borderColor: colors.border,
+                            color: colors.text
+                        }}
+                        maxLength={200}
+                        multiline
+                        numberOfLines={3}
+                    />
+                </View>
+
+                {/* Privacy Setting */}
+                <View className="pb-6">
+                    <View className="flex-row items-center justify-between">
+                        <View className="flex-1">
+                            <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>
+                                Private Group
+                            </Text>
+                            <Text className="text-sm font-rubik mt-1" style={{ color: colors.textSecondary }}>
+                                {isPrivate
+                                    ? 'Only invited members can join this group'
+                                    : 'Anyone can discover and join this group'
+                                }
+                            </Text>
+                        </View>
+                        <Switch
+                            value={isPrivate}
+                            onValueChange={setIsPrivate}
+                            trackColor={{ false: colors.border, true: colors.primary }}
+                            thumbColor={isPrivate ? colors.background : colors.textSecondary}
+                        />
+                    </View>
+                </View>
+
                 {/* Members Selection */}
                 <View className="flex-1">
                     <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>
-                        Invite Members ({selectedUsers.length} selected)
+                        {isPrivate ? 'Invite Members' : 'Add Initial Members'} ({selectedUsers.length} selected)
                     </Text>
+                    {!isPrivate && (
+                        <Text className="text-sm font-rubik mb-3" style={{ color: colors.textSecondary }}>
+                            For public groups, you can add initial members and others can join later
+                        </Text>
+                    )}
 
                     {isLoadingUsers ? (
                         <View className="py-8 items-center">

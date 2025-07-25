@@ -3,10 +3,49 @@ import { Event } from "@/lib/types/Events";
 import { ID, Query } from "react-native-appwrite";
 import { authDebug } from "../debug/authDebug";
 import { cacheManager } from "../debug/cacheManager";
+import { getGroupById } from "./group";
 
 // Cache constants
 const EVENT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const EVENT_COLLECTION_CACHE_KEY = 'all-events';
+
+/**
+ * Enrich events with group names
+ */
+export async function enrichEventsWithGroupNames(events: Event[]): Promise<Event[]> {
+  try {
+    const enrichedEvents = await Promise.all(
+      events.map(async (event) => {
+        if (event.groupId) {
+          try {
+            const group = await getGroupById(event.groupId);
+            return {
+              ...event,
+              groupName: group?.title || undefined
+            };
+          } catch (error) {
+            authDebug.warn(`Failed to fetch group for event ${event.$id}:`, error);
+            return event;
+          }
+        }
+        return event;
+      })
+    );
+
+    return enrichedEvents;
+  } catch (error) {
+    authDebug.error('Error enriching events with group names:', error);
+    return events; // Return original events if enrichment fails
+  }
+}
+
+/**
+ * Fetch all events with caching and group names
+ */
+export async function fetchEventsWithGroupNames(): Promise<Event[]> {
+  const events = await fetchEvents();
+  return await enrichEventsWithGroupNames(events);
+}
 
 /**
  * Fetch all events with caching

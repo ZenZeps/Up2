@@ -322,6 +322,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
         description: description.trim(),
         tags: tags.filter(tag => tag && tag.trim()), // Filter out empty tags
         isPrivate: isPrivate,
+        groupId: groupId || undefined, // Include group ID if provided
       };
 
       console.log("Saving event with data:", eventData);

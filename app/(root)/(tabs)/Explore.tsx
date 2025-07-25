@@ -1,4 +1,5 @@
 import icons from '@/constants/icons';
+import { enrichEventsWithGroupNames } from '@/lib/api/event';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getAllUsers, getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
@@ -31,7 +32,7 @@ const Explore = () => {
   // State variables
   const [query, setQuery] = useState(''); // Search query
   const [users, setUsers] = useState<any[]>([]); // All users except current
-  const [mode, setMode] = useState<'events' | 'users'>('users'); // 'events' or 'users'
+  const [mode, setMode] = useState<'events' | 'users' | 'groups'>('users'); // 'events', 'users', or 'groups'
 
   const [loading, setLoading] = useState(true); // Loading state
   const [userId, setUserId] = useState(''); // Current user ID
@@ -120,11 +121,14 @@ const Explore = () => {
         return true;
       });
 
-      const uniqueCreatorIds = [...new Set(filteredEvents.map(event => event.creatorId))];
+      // Enrich events with group names
+      const eventsWithGroupNames = await enrichEventsWithGroupNames(filteredEvents);
+
+      const uniqueCreatorIds = [...new Set(eventsWithGroupNames.map(event => event.creatorId))];
       const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
       const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, userDisplayUtils.getFullName(profile)]));
 
-      const eventsWithNames = filteredEvents.map(event => ({
+      const eventsWithNames = eventsWithGroupNames.map(event => ({
         ...event,
         creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
       }));
@@ -348,6 +352,22 @@ const Explore = () => {
               Events
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setMode('groups')}
+            className="flex-1 items-center py-3 rounded-lg mx-1"
+            style={{
+              backgroundColor: mode === 'groups' ? colors.primary : colors.surface
+            }}
+          >
+            <Text
+              className="text-lg font-rubik-medium"
+              style={{
+                color: mode === 'groups' ? colors.background : colors.text
+              }}
+            >
+              Groups
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Search Bar */}
@@ -434,30 +454,55 @@ const Explore = () => {
             ) : (
               <Text className="mt-4 text-center font-rubik" style={{ color: colors.textSecondary }}>No users found</Text>
             )
-          ) : filteredEvents.length > 0 ? (
-            filteredEvents.map((event) => (
-              <TouchableOpacity
-                key={event.$id}
-                className="p-4 rounded-lg shadow-sm mb-3 border"
-                style={{ backgroundColor: colors.card, borderColor: colors.border }}
-                onPress={() => router.push(`/event/${event.$id}`)}
-              >
-                <View className="flex-row justify-between items-center mb-1">
-                  <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>{event.title}</Text>
-                  <Text className="text-xs font-rubik" style={{ color: colors.textSecondary }}>{event.creatorName}</Text>
-                </View>
-                <Text className="text-sm font-rubik" style={{ color: colors.textSecondary }}>
-                  <TouchableOpacity onPress={() => openInMaps(event.location)}>
-                    <Text className="underline" style={{ color: colors.primary }}>{event.location}</Text>
-                  </TouchableOpacity>
-                </Text>
-                <Text className="text-xs font-rubik mt-1" style={{ color: colors.textSecondary }}>
-                  {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
-                </Text>
-              </TouchableOpacity>
-            ))
+          ) : mode === 'events' ? (
+            filteredEvents.length > 0 ? (
+              filteredEvents.map((event) => (
+                <TouchableOpacity
+                  key={event.$id}
+                  className="p-4 rounded-lg shadow-sm mb-3 border"
+                  style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                  onPress={() => router.push(`/event/${event.$id}`)}
+                >
+                  <View className="flex-row justify-between items-center mb-1">
+                    <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>{event.title}</Text>
+                    <Text className="text-xs font-rubik" style={{ color: colors.textSecondary }}>{event.creatorName}</Text>
+                  </View>
+                  {event.groupName && (
+                    <View className="mb-1">
+                      <Text className="text-sm font-rubik" style={{ color: colors.primary }}>
+                        📋 {event.groupName}
+                      </Text>
+                    </View>
+                  )}
+                  <Text className="text-sm font-rubik" style={{ color: colors.textSecondary }}>
+                    <TouchableOpacity onPress={() => openInMaps(event.location)}>
+                      <Text className="underline" style={{ color: colors.primary }}>{event.location}</Text>
+                    </TouchableOpacity>
+                  </Text>
+                  <Text className="text-xs font-rubik mt-1" style={{ color: colors.textSecondary }}>
+                    {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <Text className="mt-4 text-center font-rubik" style={{ color: colors.textSecondary }}>No events found</Text>
+            )
           ) : (
-            <Text className="mt-4 text-center font-rubik" style={{ color: colors.textSecondary }}>No events found</Text>
+            /* Groups mode */
+            <View className="items-center py-8">
+              <Text className="text-lg font-rubik-semibold mb-4" style={{ color: colors.text }}>
+                Discover Groups
+              </Text>
+              <Text className="text-center font-rubik mb-6" style={{ color: colors.textSecondary }}>
+                Find and join public groups to connect with people who share your interests
+              </Text>
+              <TouchableOpacity
+                onPress={() => router.push('/GroupsExplore')}
+                className="bg-blue-500 px-6 py-3 rounded-lg"
+              >
+                <Text className="text-white font-rubik-medium">Explore Groups</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </ScrollView>
       </View>
