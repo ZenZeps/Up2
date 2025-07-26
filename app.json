@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.up2.Up2",
+      "bundleIdentifier": "com.nikolajszeps.up2",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "We need access to your photo library to allow you to select a profile photo.",
         "NSCameraUsageDescription": "We need access to your camera to allow you to take profile photos.",
@@ -19,7 +19,7 @@
       }
     },
     "android": {
-      "package": "com.Up2.Up2",
+      "package": "com.nikolajszeps.up2",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/Up2-Logo.png",
         "backgroundColor": "#ffffff"

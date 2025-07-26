@@ -242,9 +242,15 @@ const Explore = () => {
   };
 
   const filteredUsers = useMemo(() => {
-    return users.filter((u) =>
-      userDisplayUtils.getSearchableText(u).includes(query.toLowerCase())
-    );
+    return users
+      .filter((u) =>
+        userDisplayUtils.getSearchableText(u).includes(query.toLowerCase())
+      )
+      .sort((a, b) => {
+        const nameA = userDisplayUtils.getFullName(a).toLowerCase();
+        const nameB = userDisplayUtils.getFullName(b).toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
   }, [query, users]);
 
   const filteredEvents = useMemo(() => {

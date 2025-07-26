@@ -14,6 +14,7 @@ import { Alert, FlatList, Image, Linking, RefreshControl, Text, TouchableOpacity
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import icons from '@/constants/icons';
+import images from '@/constants/images';
 import UserAvatar from '../components/UserAvatar';
 
 import { Event as AppEvent } from '@/lib/types/Events';
@@ -39,6 +40,7 @@ export default function Feed() {
   const [friends, setFriends] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [creatorPhotoUrls, setCreatorPhotoUrls] = useState<Record<string, string | null>>({});
 
   // Optimized fetch function for scalability
   const fetchFeedData = useCallback(async () => {
@@ -72,6 +74,20 @@ export default function Feed() {
         const creatorMap = new Map(
           creatorProfiles.flat().map(profile => [profile.$id, userDisplayUtils.getFullName(profile)])
         );
+
+        // Fetch creator profile photos
+        const creatorPhotoMap: Record<string, string | null> = {};
+        await Promise.all(
+          uniqueCreatorIds.map(async (creatorId) => {
+            try {
+              const photoUrl = await getUserProfilePhotoUrl(creatorId);
+              creatorPhotoMap[creatorId] = photoUrl;
+            } catch (error) {
+              creatorPhotoMap[creatorId] = null;
+            }
+          })
+        );
+        setCreatorPhotoUrls(creatorPhotoMap);
 
         const filteredAndMappedEvents = friendEvents.documents
           .map(event => ({
@@ -208,6 +224,32 @@ export default function Feed() {
     }
   };
 
+  const handleInviteFriend = async (event: AppEvent) => {
+    Alert.alert(
+      'Invite Friends',
+      'Choose how to invite friends to this event:',
+      [
+        {
+          text: 'Share Link',
+          onPress: () => {
+            // TODO: Implement deep linking when ready
+            Alert.alert('Coming Soon', 'Event sharing link feature is coming soon!');
+          }
+        },
+        {
+          text: 'Message',
+          onPress: () => {
+            Alert.alert('Coming Soon', 'In-app messaging feature is coming soon!');
+          }
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        }
+      ]
+    );
+  };
+
   // Filter for upcoming events only and combine with travel announcements for the feed
   const now = new Date();
   const upcomingEvents = eventsWithCreatorNames.filter(event => new Date(event.endTime) > now);
@@ -224,38 +266,38 @@ export default function Feed() {
   });
 
   const renderEventItem = ({ item }: { item: AppEvent & { creatorName?: string } }) => (
-    <View className="bg-white rounded-lg shadow-md mb-4 mx-4">
+    <View className="rounded-lg shadow-md mb-4 mx-4" style={{ backgroundColor: colors.card }}>
       {/* Event Header */}
       <View className="flex-row items-center p-3">
         <UserAvatar
-          photoUrl={null} // TODO: Get actual creator photo
+          photoUrl={creatorPhotoUrls[item.creatorId] || null}
           name={item.creatorName}
           size={40}
           className="mr-3"
         />
         <View>
-          <Text className="font-rubik-semibold text-base">{item.creatorName || 'Unknown Creator'}</Text>
-          <Text className="text-gray-500 text-xs">{dayjs(item.startTime).fromNow()}</Text>
+          <Text className="font-rubik-semibold text-base" style={{ color: colors.text }}>{item.creatorName || 'Unknown Creator'}</Text>
+          <Text className="text-xs" style={{ color: colors.textSecondary }}>{dayjs(item.startTime).fromNow()}</Text>
         </View>
       </View>
 
       {/* Event Emoji Container */}
-      <View className="w-full h-48 bg-gray-100 justify-center items-center">
+      <View className="w-full h-48 justify-center items-center" style={{ backgroundColor: colors.surface }}>
         <Text className="text-6xl">{getEventEmoji(item.tags)}</Text>
       </View>
 
       {/* Event Details */}
       <View className="p-3">
-        <Text className="font-rubik-bold text-lg mb-1">{item.title}</Text>
+        <Text className="font-rubik-bold text-lg mb-1" style={{ color: colors.text }}>{item.title}</Text>
         <View className="flex-row items-center mb-2">
           <View className="flex-row items-center mb-2">
-            <Image source={icons.location} className="w-4 h-4 mr-1" resizeMode="contain" />
+            <Image source={icons.location} className="w-4 h-4 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
             <TouchableOpacity onPress={() => openInMaps(item.location)}>
               <Text className="text-blue-600 underline text-sm">{item.location}</Text>
             </TouchableOpacity>
           </View>
         </View>
-        <Text className="text-gray-700 text-sm mb-2">
+        <Text className="text-sm mb-2" style={{ color: colors.textSecondary }}>
           {dayjs(item.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(item.endTime).format('h:mm A')}
         </Text>
 
@@ -271,17 +313,17 @@ export default function Feed() {
           </View>
         )}
 
-        <Text className="text-gray-800 text-base">{item.description}</Text>
+        <Text className="text-base" style={{ color: colors.text }}>{item.description}</Text>
       </View>
 
       {/* Actions */}
-      <View className="flex-row justify-around p-3 border-t border-gray-200">
+      <View className="flex-row justify-around p-3" style={{ borderTopWidth: 1, borderTopColor: colors.border }}>
         {item.isAttending ? (
           <TouchableOpacity
             onPress={() => handleNotAttend(item)}
             className="flex-row items-center"
           >
-            <Image source={icons.people} className="w-5 h-5 mr-1" resizeMode="contain" />
+            <Image source={icons.people} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
             <Text className="text-red-500 font-rubik-medium">Not Attending</Text>
           </TouchableOpacity>
         ) : (
@@ -289,20 +331,20 @@ export default function Feed() {
             onPress={() => handleAttend(item)}
             className="flex-row items-center"
           >
-            <Image source={icons.people} className="w-5 h-5 mr-1" resizeMode="contain" />
-            <Text className="text-primary-500 font-rubik-medium">Attend</Text>
+            <Image source={icons.people} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
+            <Text className="font-rubik-medium" style={{ color: colors.primary }}>Attend</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity onPress={() => Alert.alert('Invite Friend', 'This feature is coming soon!')} className="flex-row items-center">
-          <Image source={icons.bell} className="w-5 h-5 mr-1" resizeMode="contain" />
-          <Text className="text-primary-500 font-rubik-medium">Invite</Text>
+        <TouchableOpacity onPress={() => handleInviteFriend(item)} className="flex-row items-center">
+          <Image source={icons.bell} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
+          <Text className="font-rubik-medium" style={{ color: colors.primary }}>Invite</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
   const renderTravelItem = ({ item }: { item: TravelAnnouncementWithUserInfo }) => (
-    <View className="bg-white rounded-lg shadow-md mb-4 mx-4">
+    <View className="rounded-lg shadow-md mb-4 mx-4" style={{ backgroundColor: colors.card }}>
       {/* Travel Header */}
       <View className="flex-row items-center p-3">
         <UserAvatar
@@ -312,8 +354,8 @@ export default function Feed() {
           className="mr-3"
         />
         <View>
-          <Text className="font-rubik-semibold text-base">{item.userName}</Text>
-          <Text className="text-gray-500 text-xs">{dayjs(item.createdAt).fromNow()}</Text>
+          <Text className="font-rubik-semibold text-base" style={{ color: colors.text }}>{item.userName}</Text>
+          <Text className="text-xs" style={{ color: colors.textSecondary }}>{dayjs(item.createdAt).fromNow()}</Text>
         </View>
       </View>
 
@@ -326,33 +368,33 @@ export default function Feed() {
       {/* Travel Details */}
       <View className="p-3">
         <View className="flex-row items-center mb-2">
-          <Image source={icons.location} className="w-5 h-5 mr-2" resizeMode="contain" />
-          <Text className="font-rubik-bold text-lg text-primary-600">
+          <Image source={icons.location} className="w-5 h-5 mr-2" resizeMode="contain" style={{ tintColor: colors.text }} />
+          <Text className="font-rubik-bold text-lg" style={{ color: colors.primary }}>
             Traveling to {item.destination}
           </Text>
         </View>
 
         <View className="flex-row items-center mb-2">
-          <Image source={icons.calendar} className="w-4 h-4 mr-2" resizeMode="contain" />
-          <Text className="text-gray-700 text-sm">
+          <Image source={icons.calendar} className="w-4 h-4 mr-2" resizeMode="contain" style={{ tintColor: colors.text }} />
+          <Text className="text-sm" style={{ color: colors.textSecondary }}>
             {dayjs(item.startDate).format('MMM D')} - {dayjs(item.endDate).format('MMM D, YYYY')}
           </Text>
         </View>
 
         {item.description && (
-          <Text className="text-gray-800 text-base mt-2">{item.description}</Text>
+          <Text className="text-base mt-2" style={{ color: colors.text }}>{item.description}</Text>
         )}
       </View>
 
       {/* Travel Actions */}
-      <View className="flex-row justify-around p-3 border-t border-gray-200">
+      <View className="flex-row justify-around p-3" style={{ borderTopWidth: 1, borderTopColor: colors.border }}>
         <TouchableOpacity className="flex-row items-center">
-          <Image source={icons.heart} className="w-5 h-5 mr-1" resizeMode="contain" />
-          <Text className="text-primary-500 font-rubik-medium">Like</Text>
+          <Image source={icons.heart} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
+          <Text className="font-rubik-medium" style={{ color: colors.primary }}>Like</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => Alert.alert('Message', 'Messaging feature coming soon!')} className="flex-row items-center">
-          <Image source={icons.chat} className="w-5 h-5 mr-1" resizeMode="contain" />
-          <Text className="text-primary-500 font-rubik-medium">Message</Text>
+          <Image source={icons.chat} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
+          <Text className="font-rubik-medium" style={{ color: colors.primary }}>Message</Text>
         </TouchableOpacity>
       </View>
     </View>

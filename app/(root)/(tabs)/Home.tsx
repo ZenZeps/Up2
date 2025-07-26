@@ -739,7 +739,7 @@ export default function Home() {
       <TouchableOpacity
         className="absolute right-8 w-16 h-16 rounded-full items-center justify-center"
         style={{
-          bottom: 32 + insets.bottom, // Dynamic bottom positioning based on safe area
+          bottom: 100 + insets.bottom, // Increased bottom margin to avoid tab bar overlap
           backgroundColor: colors.primary,
           shadowColor: colors.text,
           shadowOffset: { width: 0, height: 2 },
