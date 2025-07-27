@@ -18,6 +18,7 @@ interface EventDetailsModalProps {
   onEdit: (event: Event) => void;
   onAttend: () => void;
   onNotAttend: () => void;
+  onChat?: (event: Event) => void;
   currentUserId: string;
 }
 
@@ -28,6 +29,7 @@ const EventDetailsModal = ({
   onEdit,
   onAttend,
   onNotAttend,
+  onChat,
   currentUserId
 }: EventDetailsModalProps) => {
   const [attendeeProfiles, setAttendeeProfiles] = useState<any[]>([]);
@@ -157,6 +159,17 @@ const EventDetailsModal = ({
 
             {/* Event Title */}
             <Text style={styles.eventTitle}>{event.title}</Text>
+
+            {/* Chat Button - Only show if user is attending and onChat is provided */}
+            {isAttending && onChat && (
+              <TouchableOpacity
+                style={styles.chatButton}
+                onPress={() => onChat(event)}
+              >
+                <Image source={icons.chat} style={styles.chatIcon} />
+                <Text style={styles.chatButtonText}>Join Event Chat</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Event Details */}
             <View style={styles.detailRow}>
@@ -418,6 +431,27 @@ const styles = StyleSheet.create({
   },
   attendeesModalList: {
     width: '100%',
+  },
+  chatButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4A90E2',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginVertical: 10,
+  },
+  chatIcon: {
+    width: 20,
+    height: 20,
+    marginRight: 8,
+    tintColor: 'white',
+  },
+  chatButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

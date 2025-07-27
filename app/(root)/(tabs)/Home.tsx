@@ -17,6 +17,7 @@ import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
 import EventForm from '../components/EventForm';
+import MessageModal from '../components/MessageModal';
 import { EventsContext } from '../context/EventContext';
 
 // Define available calendar view modes
@@ -97,6 +98,8 @@ export default function Home() {
   const [userTravelData, setUserTravelData] = useState<TravelAnnouncement[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('calendar');
   const [enrichedEvents, setEnrichedEvents] = useState<AppEvent[]>([]);
+  const [messageModalVisible, setMessageModalVisible] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Track when data was last fetched to prevent unnecessary refetches
   const lastFetchTime = useRef<number>(0);
@@ -134,6 +137,11 @@ export default function Home() {
     dependencies: [currentUser?.$id],
     skip: !currentUser?.$id,
   });
+
+  // Set currentUserId when currentUser changes
+  useEffect(() => {
+    setCurrentUserId(currentUser?.$id || null);
+  }, [currentUser]);
 
   // Get unique creator IDs from events
   const creatorIds = useMemo(() => {
@@ -537,6 +545,12 @@ export default function Home() {
     }
   }, [eventsContext, smartRefetchEvents]);
 
+  const handleEventChat = useCallback((event: AppEvent) => {
+    setSelectedEvent(event);
+    setDetailsModalVisible(false);
+    setMessageModalVisible(true);
+  }, []);
+
   // React to screen focus (navigation) - only fetch when navigating to this screen
   useFocusEffect(
     useCallback(() => {
@@ -773,7 +787,22 @@ export default function Home() {
           onEdit={() => handleEditEvent(selectedEvent)}
           onAttend={handleEventAttend}
           onNotAttend={handleEventNotAttend}
+          onChat={handleEventChat}
           currentUserId={currentUser?.$id || ''}
+        />
+      )}
+
+      {/* Message Modal */}
+      {messageModalVisible && selectedEvent && (
+        <MessageModal
+          visible={messageModalVisible}
+          onClose={() => {
+            setMessageModalVisible(false);
+            setSelectedEvent(null);
+          }}
+          eventId={selectedEvent.$id}
+          title={`${selectedEvent.title} Chat`}
+          currentUserId={currentUserId ?? ''}
         />
       )}
     </SafeAreaView>

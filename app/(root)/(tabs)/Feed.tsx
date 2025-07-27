@@ -90,6 +90,14 @@ export default function Feed() {
         setCreatorPhotoUrls(creatorPhotoMap);
 
         const filteredAndMappedEvents = friendEvents.documents
+          .filter(event => {
+            // Only show upcoming events that the user is NOT attending
+            const eventDate = new Date(event.date);
+            const now = new Date();
+            const isUpcoming = eventDate >= now;
+            const isNotAttending = !event.attendees?.includes(user.$id ?? '');
+            return isUpcoming && isNotAttending;
+          })
           .map(event => ({
             ...(event as unknown as AppEvent),
             creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
@@ -224,32 +232,6 @@ export default function Feed() {
     }
   };
 
-  const handleInviteFriend = async (event: AppEvent) => {
-    Alert.alert(
-      'Invite Friends',
-      'Choose how to invite friends to this event:',
-      [
-        {
-          text: 'Share Link',
-          onPress: () => {
-            // TODO: Implement deep linking when ready
-            Alert.alert('Coming Soon', 'Event sharing link feature is coming soon!');
-          }
-        },
-        {
-          text: 'Message',
-          onPress: () => {
-            Alert.alert('Coming Soon', 'In-app messaging feature is coming soon!');
-          }
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        }
-      ]
-    );
-  };
-
   // Filter for upcoming events only and combine with travel announcements for the feed
   const now = new Date();
   const upcomingEvents = eventsWithCreatorNames.filter(event => new Date(event.endTime) > now);
@@ -335,10 +317,6 @@ export default function Feed() {
             <Text className="font-rubik-medium" style={{ color: colors.primary }}>Attend</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity onPress={() => handleInviteFriend(item)} className="flex-row items-center">
-          <Image source={icons.bell} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
-          <Text className="font-rubik-medium" style={{ color: colors.primary }}>Invite</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
