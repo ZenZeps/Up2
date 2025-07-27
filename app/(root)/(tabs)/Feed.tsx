@@ -12,6 +12,10 @@ import { useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Image, Linking, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import EnhancedCard from '@/components/ui/EnhancedCard';
+import EnhancedButton from '@/components/ui/EnhancedButton';
+import EnhancedFAB from '@/components/ui/EnhancedFAB';
+import LoadingIndicator from '@/components/ui/LoadingIndicator';
 
 import icons from '@/constants/icons';
 import images from '@/constants/images';
@@ -248,134 +252,158 @@ export default function Feed() {
   });
 
   const renderEventItem = ({ item }: { item: AppEvent & { creatorName?: string } }) => (
-    <View className="rounded-lg shadow-md mb-4 mx-4" style={{ backgroundColor: colors.card }}>
+    <EnhancedCard variant="elevated" style={{ marginHorizontal: 16, marginBottom: 16 }}>
       {/* Event Header */}
-      <View className="flex-row items-center p-3">
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
         <UserAvatar
           photoUrl={creatorPhotoUrls[item.creatorId] || null}
           name={item.creatorName}
           size={40}
           className="mr-3"
         />
-        <View>
-          <Text className="font-rubik-semibold text-base" style={{ color: colors.text }}>{item.creatorName || 'Unknown Creator'}</Text>
-          <Text className="text-xs" style={{ color: colors.textSecondary }}>{dayjs(item.startTime).fromNow()}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>
+            {item.creatorName || 'Unknown Creator'}
+          </Text>
+          <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+            {dayjs(item.startTime).fromNow()}
+          </Text>
         </View>
       </View>
 
       {/* Event Emoji Container */}
-      <View className="w-full h-48 justify-center items-center" style={{ backgroundColor: colors.surface }}>
-        <Text className="text-6xl">{getEventEmoji(item.tags)}</Text>
+      <View style={{ 
+        width: '100%', 
+        height: 120, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        backgroundColor: colors.surface,
+        borderRadius: 12,
+        marginBottom: 12
+      }}>
+        <Text style={{ fontSize: 48 }}>{getEventEmoji(item.tags)}</Text>
       </View>
 
       {/* Event Details */}
-      <View className="p-3">
-        <Text className="font-rubik-bold text-lg mb-1" style={{ color: colors.text }}>{item.title}</Text>
-        <View className="flex-row items-center mb-2">
-          <View className="flex-row items-center mb-2">
-            <Image source={icons.location} className="w-4 h-4 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
-            <TouchableOpacity onPress={() => openInMaps(item.location)}>
-              <Text className="text-blue-600 underline text-sm">{item.location}</Text>
-            </TouchableOpacity>
-          </View>
+      <View style={{ marginBottom: 12 }}>
+        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
+          {item.title}
+        </Text>
+        
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+          <Image source={icons.location} style={{ width: 16, height: 16, marginRight: 8, tintColor: colors.textSecondary }} />
+          <TouchableOpacity onPress={() => openInMaps(item.location)}>
+            <Text style={{ color: colors.primary, fontSize: 14, textDecorationLine: 'underline' }}>
+              {item.location}
+            </Text>
+          </TouchableOpacity>
         </View>
-        <Text className="text-sm mb-2" style={{ color: colors.textSecondary }}>
+        
+        <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 8 }}>
           {dayjs(item.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(item.endTime).format('h:mm A')}
         </Text>
 
         {/* Display event tags */}
         {item.tags && item.tags.length > 0 && (
-          <View className="flex-row flex-wrap mb-2">
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 }}>
             {getCategoriesByValues(item.tags).map((category) => (
-              <View key={category.value} className="bg-blue-100 px-2 py-1 rounded-full mr-1 mb-1 flex-row items-center">
-                <Text className="text-xs mr-1">{category.emoji}</Text>
-                <Text className="text-xs text-blue-800">{category.label}</Text>
+              <View key={category.value} style={{ 
+                backgroundColor: colors.primaryLight + '20',
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 16,
+                marginRight: 4,
+                marginBottom: 4,
+                flexDirection: 'row',
+                alignItems: 'center'
+              }}>
+                <Text style={{ fontSize: 12, marginRight: 4 }}>{category.emoji}</Text>
+                <Text style={{ fontSize: 12, color: colors.primary }}>{category.label}</Text>
               </View>
             ))}
           </View>
         )}
 
-        <Text className="text-base" style={{ color: colors.text }}>{item.description}</Text>
+        <Text style={{ fontSize: 14, color: colors.text, lineHeight: 20 }}>{item.description}</Text>
       </View>
 
       {/* Actions */}
-      <View className="flex-row justify-around p-3" style={{ borderTopWidth: 1, borderTopColor: colors.border }}>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
         {item.isAttending ? (
-          <TouchableOpacity
+          <EnhancedButton
+            title="Not Attending"
             onPress={() => handleNotAttend(item)}
-            className="flex-row items-center"
-          >
-            <Image source={icons.people} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
-            <Text className="text-red-500 font-rubik-medium">Not Attending</Text>
-          </TouchableOpacity>
+            variant="outline"
+            size="medium"
+            style={{ flex: 1 }}
+          />
         ) : (
-          <TouchableOpacity
+          <EnhancedButton
+            title="Attend"
             onPress={() => handleAttend(item)}
-            className="flex-row items-center"
-          >
-            <Image source={icons.people} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
-            <Text className="font-rubik-medium" style={{ color: colors.primary }}>Attend</Text>
-          </TouchableOpacity>
+            variant="primary"
+            size="medium"
+            style={{ flex: 1 }}
+          />
         )}
       </View>
-    </View>
+    </EnhancedCard>
   );
 
   const renderTravelItem = ({ item }: { item: TravelAnnouncementWithUserInfo }) => (
-    <View className="rounded-lg shadow-md mb-4 mx-4" style={{ backgroundColor: colors.card }}>
+    <EnhancedCard variant="elevated" style={{ marginHorizontal: 16, marginBottom: 16 }}>
       {/* Travel Header */}
-      <View className="flex-row items-center p-3">
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
         <UserAvatar
           photoUrl={item.userPhotoUrl}
           name={item.userName}
           size={40}
           className="mr-3"
         />
-        <View>
-          <Text className="font-rubik-semibold text-base" style={{ color: colors.text }}>{item.userName}</Text>
-          <Text className="text-xs" style={{ color: colors.textSecondary }}>{dayjs(item.createdAt).fromNow()}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>{item.userName}</Text>
+          <Text style={{ fontSize: 12, color: colors.textSecondary }}>{dayjs(item.createdAt).fromNow()}</Text>
         </View>
       </View>
 
       {/* Travel Image - Using a travel/destination placeholder */}
       <Image
-        source={images.onboarding} // You could add a travel-specific placeholder
-        className="w-full h-48 object-cover"
+        source={images.onboarding}
+        style={{ width: '100%', height: 192, borderRadius: 12, marginBottom: 12 }}
+        resizeMode="cover"
       />
 
       {/* Travel Details */}
-      <View className="p-3">
-        <View className="flex-row items-center mb-2">
-          <Image source={icons.location} className="w-5 h-5 mr-2" resizeMode="contain" style={{ tintColor: colors.text }} />
-          <Text className="font-rubik-bold text-lg" style={{ color: colors.primary }}>
-            Traveling to {item.destination}
-          </Text>
-        </View>
-
-        <View className="flex-row items-center mb-2">
-          <Image source={icons.calendar} className="w-4 h-4 mr-2" resizeMode="contain" style={{ tintColor: colors.text }} />
-          <Text className="text-sm" style={{ color: colors.textSecondary }}>
-            {dayjs(item.startDate).format('MMM D')} - {dayjs(item.endDate).format('MMM D, YYYY')}
-          </Text>
-        </View>
-
+      <View style={{ marginBottom: 12 }}>
+        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+          ✈️ {item.destination}
+        </Text>
+        <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 4 }}>
+          {dayjs(item.startDate).format('MMM D')} - {dayjs(item.endDate).format('MMM D, YYYY')}
+        </Text>
         {item.description && (
-          <Text className="text-base mt-2" style={{ color: colors.text }}>{item.description}</Text>
+          <Text style={{ fontSize: 14, color: colors.text, lineHeight: 20 }}>{item.description}</Text>
         )}
       </View>
 
       {/* Travel Actions */}
-      <View className="flex-row justify-around p-3" style={{ borderTopWidth: 1, borderTopColor: colors.border }}>
-        <TouchableOpacity className="flex-row items-center">
-          <Image source={icons.heart} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
-          <Text className="font-rubik-medium" style={{ color: colors.primary }}>Like</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => Alert.alert('Message', 'Messaging feature coming soon!')} className="flex-row items-center">
-          <Image source={icons.chat} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
-          <Text className="font-rubik-medium" style={{ color: colors.primary }}>Message</Text>
-        </TouchableOpacity>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <EnhancedButton
+          title="View Details"
+          onPress={() => Linking.openURL(`https://maps.google.com/search/${encodeURIComponent(item.destination)}`)}
+          variant="outline"
+          size="medium"
+          style={{ flex: 1 }}
+        />
+        <EnhancedButton
+          title="Message"
+          onPress={() => Alert.alert('Message', `Send a message to ${item.userName} about their trip!`)}
+          variant="secondary"
+          size="medium"
+          style={{ flex: 1 }}
+        />
       </View>
-    </View>
+    </EnhancedCard>
   );
 
   const renderFeedItem = ({ item }: { item: FeedItem }) => {
@@ -417,6 +445,22 @@ export default function Feed() {
           />
         }
       />
+
+      {/* Enhanced Action Buttons */}
+      <View style={{ position: 'absolute', bottom: 80 + insets.bottom, right: 16, gap: 12 }}>
+        <EnhancedFAB
+          onPress={() => setTravelFormVisible(true)}
+          icon="✈️"
+          size="medium"
+          position={{ bottom: 60, right: 0 }}
+        />
+        <EnhancedFAB
+          onPress={() => setFormVisible(true)}
+          icon="+"
+          size="large"
+          position={{ bottom: 0, right: 0 }}
+        />
+      </View>
 
       {/* Event Form Modal */}
       {formVisible && (

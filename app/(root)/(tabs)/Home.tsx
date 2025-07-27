@@ -10,6 +10,7 @@ import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import EnhancedFAB from '@/components/ui/EnhancedFAB';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Text, TouchableOpacity, View } from 'react-native';
@@ -749,22 +750,16 @@ export default function Home() {
         )}
       </View>
 
-      {/* Add Event FAB */}
-      <TouchableOpacity
-        className="absolute right-8 w-16 h-16 rounded-full items-center justify-center"
-        style={{
-          bottom: 100 + insets.bottom, // Increased bottom margin to avoid tab bar overlap
-          backgroundColor: colors.primary,
-          shadowColor: colors.text,
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.25,
-          shadowRadius: 4,
-          elevation: 5,
-        }}
+      {/* Enhanced Add Event FAB */}
+      <EnhancedFAB
         onPress={handleCreateEventPress}
-      >
-        <Text className="text-2xl" style={{ color: colors.background }}>+</Text>
-      </TouchableOpacity>
+        icon="+"
+        size="large"
+        position={{
+          bottom: 100 + insets.bottom,
+          right: 24,
+        }}
+      />
 
       {/* Event Form Modal */}
       {formVisible && (

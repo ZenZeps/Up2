@@ -9,17 +9,40 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // TabIcon: Renders an icon and label for each tab in the bottom navigation bar
 const TabIcon = ({ focused, icon, title, colors }: { focused: boolean; icon: any; title: string; colors: any }) => (
-  <View className="flex-1 mt-3 flex flex-col items-center">
-    {/* Tab icon with dynamic tint color based on focus */}
-    <Image
-      source={icon}
-      style={{ width: 24, height: 24, tintColor: focused ? colors.primary : colors.textSecondary }}
-      resizeMode="contain"
-    />
-    {/* Tab label with dynamic style based on focus */}
+  <View style={{ 
+    flex: 1, 
+    marginTop: 12, 
+    alignItems: 'center',
+    justifyContent: 'center',
+  }}>
+    {/* Tab icon with enhanced styling and animations */}
+    <View style={{
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: focused ? colors.primary + '20' : 'transparent',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 4,
+    }}>
+      <Image
+        source={icon}
+        style={{ 
+          width: focused ? 24 : 22, 
+          height: focused ? 24 : 22, 
+          tintColor: focused ? colors.primary : colors.textSecondary 
+        }}
+        resizeMode="contain"
+      />
+    </View>
+    {/* Tab label with enhanced typography */}
     <Text
-      className={`${focused ? 'font-rubik-medium' : 'font-rubik'} text-xs w-full text-center mt-1`}
-      style={{ color: focused ? colors.primary : colors.textSecondary }}
+      style={{
+        fontSize: focused ? 12 : 11,
+        fontWeight: focused ? '600' : '400',
+        color: focused ? colors.primary : colors.textSecondary,
+        textAlign: 'center',
+      }}
     >
       {title}
     </Text>
@@ -45,6 +68,12 @@ const TabsLayout = () => {
             borderTopWidth: 1,
             height: 70 + insets.bottom, // Add bottom safe area padding
             paddingBottom: insets.bottom, // Ensure content is above safe area
+            paddingTop: 8,
+            shadowColor: colors.shadow,
+            shadowOffset: { width: 0, height: -2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 4,
+            elevation: 8,
           }
         }}
       >

@@ -5,13 +5,17 @@ import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Group } from '@/lib/types/Groups';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import EnhancedCard from '@/components/ui/EnhancedCard';
+import EnhancedButton from '@/components/ui/EnhancedButton';
+import EnhancedAvatar from '@/components/ui/EnhancedAvatar';
+import StatsCard from '@/components/ui/StatsCard';
+import LoadingIndicator from '@/components/ui/LoadingIndicator';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
-  Image,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -23,7 +27,7 @@ import UserAvatar from '../components/UserAvatar';
 const Profile = () => {
   const router = useRouter();
   const { user } = useGlobalContext();
-  const { colors } = useTheme();
+  const { colors, spacing } = useTheme();
   const insets = useSafeAreaInsets();
   const userId = user?.$id;
 
@@ -88,24 +92,24 @@ const Profile = () => {
         quality: 0.7,
       });
 
-      if (!result.canceled && result.assets[0]) {
+      if (!result.canceled && result.assets[0] && userId) {
         setIsUploadingPhoto(true);
 
         const asset = result.assets[0];
-        const photoId = await uploadProfilePhoto(asset.uri, userId!);
+        const photoId = await uploadProfilePhoto(userId, asset.uri);
 
-        if (photoId && user?.profile) {
+        if (photoId) {
           // Update user profile with new photo ID
-          const updatedProfile = {
-            ...user.profile,
-            photoId: photoId
-          };
+          if (user?.profile) {
+            await updateUserProfile({ 
+              ...user.profile,
+              photoId
+            });
+          }
 
-          await updateUserProfile(updatedProfile);
-
-          // Update local state
-          const photoUrl = await getProfilePhotoUrl(photoId);
-          setProfilePhotoUrl(photoUrl);
+          // Get the new photo URL and update state
+          const newPhotoUrl = await getProfilePhotoUrl(photoId);
+          setProfilePhotoUrl(newPhotoUrl);
 
           Alert.alert('Success', 'Profile photo updated successfully!');
         }
@@ -119,136 +123,177 @@ const Profile = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 70 + insets.bottom }} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View className="px-4 py-3 flex-row items-center justify-between border-b" style={{ borderBottomColor: colors.border }}>
-          <Text className="text-2xl font-rubik-semibold" style={{ color: colors.text }}>
-            {userDisplayUtils.getFullName({ firstName, lastName })}
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      <ScrollView 
+        contentContainerStyle={{ 
+          flexGrow: 1, 
+          paddingBottom: 70 + insets.bottom,
+          padding: spacing.md
+        }} 
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Enhanced Header */}
+        <View style={{ 
+          flexDirection: 'row', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          marginBottom: spacing.lg
+        }}>
+          <Text style={{ fontSize: 24, fontWeight: '600', color: colors.text }}>
+            Profile
           </Text>
-          <TouchableOpacity onPress={() => router.push('/(root)/Settings')}>
-            <View className="w-6 h-6 rounded-full border-2 border-gray-400 items-center justify-center">
-              <View className="w-2 h-2 bg-gray-400 rounded-full" />
-              <View className="absolute w-4 h-4 border border-gray-400 rounded-full" />
-            </View>
-          </TouchableOpacity>
+          <EnhancedButton
+            title="Settings"
+            onPress={() => router.push('/(root)/Settings')}
+            variant="ghost"
+            size="small"
+          />
         </View>
 
-        {/* Profile Info Section */}
-        <View className="px-4 py-4">
-          <View className="flex-row items-center">
-            {/* Profile Photo */}
-            <View className="mr-6 relative">
-              <TouchableOpacity onPress={handleUpdateProfilePhoto} disabled={isUploadingPhoto}>
-                {profilePhotoUrl ? (
-                  <Image
-                    source={{ uri: profilePhotoUrl }}
-                    className="w-20 h-20 rounded-full"
-                  />
-                ) : (
-                  <View className="w-20 h-20 rounded-full bg-gray-200 items-center justify-center">
-                    <Text className="text-4xl text-gray-400 font-rubik-medium">
-                      {userDisplayUtils.getInitials({ firstName, lastName })}
-                    </Text>
-                  </View>
-                )}
-                {/* Edit indicator */}
-                <View className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-500 rounded-full items-center justify-center border-2 border-white">
-                  <Text className="text-white text-xs font-bold">
-                    {isUploadingPhoto ? '...' : '✎'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </View>
+        {/* Enhanced Profile Info Section */}
+        <EnhancedCard variant="elevated" style={{ marginBottom: spacing.lg }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
+            {/* Enhanced Avatar */}
+            <EnhancedAvatar
+              firstName={firstName}
+              lastName={lastName}
+              size={80}
+              photoUrl={profilePhotoUrl}
+              showEditIcon
+              onPress={handleUpdateProfilePhoto}
+              loading={isUploadingPhoto}
+              style={{ marginRight: spacing.md }}
+            />
 
-            {/* Stats */}
-            <View className="flex-row flex-1 justify-around">
-              <View className="items-center">
-                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.friends}</Text>
-                <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Friends</Text>
-              </View>
-              <View className="items-center">
-                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.groups}</Text>
-                <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Groups</Text>
-              </View>
+            {/* User Info */}
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
+                {userDisplayUtils.getFullName({ firstName, lastName })}
+              </Text>
+              <Text style={{ fontSize: 14, color: colors.textSecondary }}>
+                Member since {user?.profile?.createdAt ? new Date(user.profile.createdAt).getFullYear() : 'Recently'}
+              </Text>
             </View>
           </View>
 
-          {/* Friends Section */}
-          <View className="mt-6">
-            <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>Friends</Text>
+          {/* Enhanced Stats */}
+          <StatsCard 
+            stats={[
+              { 
+                label: 'Friends', 
+                value: stats.friends, 
+                onPress: () => Alert.alert('Friends', 'View your friends list') 
+              },
+              { 
+                label: 'Groups', 
+                value: stats.groups, 
+                onPress: () => Alert.alert('Groups', 'View your groups') 
+              },
+              { 
+                label: 'Events', 
+                value: 0, 
+                onPress: () => Alert.alert('Events', 'View your events') 
+              }
+            ]}
+          />
+        </EnhancedCard>
+
+        {/* Enhanced Friends Section */}
+        <EnhancedCard variant="default" style={{ marginBottom: spacing.md }}>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: spacing.sm }}>
+            Friends ({friends.length})
+          </Text>
+          {friends.length > 0 ? (
             <View style={{ height: 100 }}>
               <FlatList
                 data={friends}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 keyExtractor={(item) => item.$id}
-                nestedScrollEnabled={true}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    className="mr-4 items-center"
+                    style={{ marginRight: spacing.md, alignItems: 'center' }}
                     onPress={() => router.push(`/(root)/UserProfile/${item.$id}` as any)}
                   >
                     <UserAvatar
                       photoUrl={item.photoId ? getProfilePhotoUrl(item.photoId) : null}
-                      firstName={item.firstName}
-                      lastName={item.lastName}
-                      size={64}
+                      name={userDisplayUtils.getFullName(item)}
+                      size={60}
+                      className="mb-2"
                     />
-                    <Text className="text-sm font-rubik mt-1" style={{ color: colors.text }}>{userDisplayUtils.getFullName(item)}</Text>
-                  </TouchableOpacity>
-                )}
-                ListEmptyComponent={
-                  <Text className="text-gray-500 font-rubik" style={{ color: colors.textSecondary }}>No friends yet</Text>
-                }
-              />
-            </View>
-          </View>
-
-          {/* Groups Section */}
-          <View className="mt-6">
-            <View className="flex-row items-center justify-between mb-3">
-              <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>Groups</Text>
-              <TouchableOpacity
-                onPress={() => router.push('/(root)/CreateGroup')}
-                className="bg-blue-500 px-3 py-1 rounded-lg"
-              >
-                <Text className="text-white font-rubik-medium text-sm">+ New</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={{ height: 100 }}>
-              <FlatList
-                data={groups}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                keyExtractor={(item) => item.$id}
-                nestedScrollEnabled={true}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    className="mr-4 items-center"
-                    onPress={() => router.push(`/Group/${item.$id}`)}
-                  >
-                    <View className="w-16 h-16 rounded-full bg-blue-500 items-center justify-center mb-2">
-                      <Text className="text-white text-xl font-rubik-semibold">
-                        {item.title.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                    <Text
-                      className="text-sm font-rubik text-center"
-                      style={{ color: colors.text }}
-                      numberOfLines={1}
-                    >
-                      {item.title}
+                    <Text style={{ fontSize: 12, color: colors.text, textAlign: 'center' }}>
+                      {userDisplayUtils.getFullName(item)}
                     </Text>
                   </TouchableOpacity>
                 )}
-                ListEmptyComponent={
-                  <Text className="text-gray-500 font-rubik" style={{ color: colors.textSecondary }}>No groups yet</Text>
-                }
               />
             </View>
+          ) : (
+            <Text style={{ color: colors.textSecondary, fontStyle: 'italic' }}>
+              No friends yet
+            </Text>
+          )}
+        </EnhancedCard>
+
+        {/* Enhanced Groups Section */}
+        <EnhancedCard variant="default">
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>
+              Groups ({groups.length})
+            </Text>
+            <EnhancedButton
+              title="Create"
+              onPress={() => router.push('/(root)/CreateGroup')}
+              variant="outline"
+              size="small"
+            />
           </View>
-        </View>
+          
+          {groups.length > 0 ? (
+            <FlatList
+              data={groups}
+              keyExtractor={(item) => item.$id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={{ 
+                    paddingVertical: spacing.sm, 
+                    borderBottomWidth: 1, 
+                    borderBottomColor: colors.border 
+                  }}
+                  onPress={() => router.push(`/(root)/Group/${item.$id}` as any)}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ 
+                      width: 40, 
+                      height: 40, 
+                      borderRadius: 20, 
+                      backgroundColor: colors.primary,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: spacing.sm
+                    }}>
+                      <Text style={{ color: 'white', fontWeight: '600' }}>
+                        {item.title?.charAt(0).toUpperCase() || 'G'}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>
+                        {item.title || 'Untitled Group'}
+                      </Text>
+                      <Text style={{ fontSize: 14, color: colors.textSecondary }}>
+                        {item.users?.length || 0} members
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
+          ) : (
+            <Text style={{ color: colors.textSecondary, fontStyle: 'italic' }}>
+              No groups yet
+            </Text>
+          )}
+        </EnhancedCard>
       </ScrollView>
     </SafeAreaView>
   );

@@ -5,6 +5,9 @@ import { getAllUsers, getUserProfile, getUsersByIds, updateUserProfile } from '@
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import EnhancedCard from '@/components/ui/EnhancedCard';
+import EnhancedButton from '@/components/ui/EnhancedButton';
+import EnhancedInput from '@/components/ui/EnhancedInput';
 import dayjs from 'dayjs';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -377,18 +380,22 @@ const Explore = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Search Bar */}
-        <View className="flex-row items-center rounded-xl px-4 py-3 mb-6 border" style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
-          <Image source={icons.search} className="w-5 h-5 mr-3" resizeMode="contain" style={{ tintColor: colors.textSecondary }} />
-          <TextInput
-            placeholder={`Search ${mode}...`}
-            value={query}
-            onChangeText={setQuery}
-            className="flex-1 text-base font-rubik"
-            style={{ color: colors.text }}
-            placeholderTextColor={colors.textSecondary}
-          />
-        </View>
+        {/* Enhanced Search Bar */}
+        <EnhancedInput
+          placeholder={`Search ${mode}...`}
+          value={query}
+          onChangeText={setQuery}
+          variant="filled"
+          leftIcon={
+            <Image 
+              source={icons.search} 
+              className="w-5 h-5" 
+              resizeMode="contain" 
+              style={{ tintColor: colors.textSecondary }} 
+            />
+          }
+          containerStyle={{ marginBottom: 24 }}
+        />
 
         {/* Main content: Users or Events list */}
         <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 70 + insets.bottom }}>
@@ -399,63 +406,63 @@ const Explore = () => {
               filteredUsers.map((user) => {
                 const isFriend = friends.includes(user.$id);
                 return (
-                  <View
+                  <EnhancedCard
                     key={user.$id}
-                    className="flex-row items-center justify-between p-4 rounded-lg shadow-sm mb-3 border"
-                    style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                    variant="interactive"
+                    style={{ marginBottom: 12 }}
+                    pressable={false}
                   >
-                    <TouchableOpacity
-                      className="flex-row items-center flex-1 mr-2"
-                      onPress={() => router.push(`/(root)/UserProfile/${user.$id}` as any)}
-                    >
-                      <UserAvatar
-                        photoUrl={userPhotoUrls[user.$id]}
-                        firstName={user.firstName}
-                        lastName={user.lastName}
-                        name={userDisplayUtils.getFullName(user)}
-                        size={40}
-                        className="mr-3"
-                      />
-                      <Text
-                        className="text-lg font-rubik-medium"
-                        style={{ color: isFriend ? colors.primary : colors.text }}
-                      >
-                        {userDisplayUtils.getFullName(user)}
-                      </Text>
-                    </TouchableOpacity>
-                    {isFriend ? (
+                    <View className="flex-row items-center justify-between">
                       <TouchableOpacity
-                        onPress={() => handleDeleteFriend(user.$id)}
-                        className="px-4 py-2 rounded-full shadow-sm min-w-[80px]"
-                        style={{ backgroundColor: colors.textSecondary }}
+                        className="flex-row items-center flex-1 mr-3"
+                        onPress={() => router.push(`/(root)/UserProfile/${user.$id}` as any)}
                       >
-                        <Text className="font-rubik-medium text-sm text-center" style={{ color: colors.background }}>Remove</Text>
+                        <UserAvatar
+                          photoUrl={userPhotoUrls[user.$id]}
+                          firstName={user.firstName}
+                          lastName={user.lastName}
+                          name={userDisplayUtils.getFullName(user)}
+                          size={48}
+                          className="mr-3"
+                        />
+                        <View className="flex-1">
+                          <Text
+                            className="text-lg font-rubik-semibold"
+                            style={{ color: colors.text }}
+                          >
+                            {userDisplayUtils.getFullName(user)}
+                          </Text>
+                          {isFriend && (
+                            <Text className="text-sm font-rubik" style={{ color: colors.primary }}>
+                              Friend
+                            </Text>
+                          )}
+                        </View>
                       </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        onPress={() => {
-                          if (requestedUsers.includes(user.$id)) {
-                            handleCancelFriendRequest(user.$id);
-                          } else {
-                            handleSendFriendRequest(user.$id);
-                          }
-                        }}
-                        className="px-4 py-2 rounded-full shadow-sm min-w-[80px]"
-                        style={{
-                          backgroundColor: requestedUsers.includes(user.$id) ? colors.surface : colors.primary
-                        }}
-                      >
-                        <Text
-                          className="font-rubik-medium text-sm text-center"
-                          style={{
-                            color: requestedUsers.includes(user.$id) ? colors.text : colors.background
+                      
+                      {isFriend ? (
+                        <EnhancedButton
+                          title="Remove"
+                          onPress={() => handleDeleteFriend(user.$id)}
+                          variant="outline"
+                          size="small"
+                        />
+                      ) : (
+                        <EnhancedButton
+                          title={requestedUsers.includes(user.$id) ? 'Cancel' : 'Add Friend'}
+                          onPress={() => {
+                            if (requestedUsers.includes(user.$id)) {
+                              handleCancelFriendRequest(user.$id);
+                            } else {
+                              handleSendFriendRequest(user.$id);
+                            }
                           }}
-                        >
-                          {requestedUsers.includes(user.$id) ? 'Pending' : 'Add'}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
+                          variant={requestedUsers.includes(user.$id) ? 'ghost' : 'primary'}
+                          size="small"
+                        />
+                      )}
+                    </View>
+                  </EnhancedCard>
                 );
               })
             ) : (
@@ -464,52 +471,63 @@ const Explore = () => {
           ) : mode === 'events' ? (
             filteredEvents.length > 0 ? (
               filteredEvents.map((event) => (
-                <TouchableOpacity
+                <EnhancedCard
                   key={event.$id}
-                  className="p-4 rounded-lg shadow-sm mb-3 border"
-                  style={{ backgroundColor: colors.card, borderColor: colors.border }}
-                  onPress={() => router.push(`/event/${event.$id}`)}
+                  variant="interactive"
+                  onPress={() => router.push(`/(root)/Event/${event.$id}` as any)}
+                  style={{ marginBottom: 12 }}
                 >
-                  <View className="flex-row justify-between items-center mb-1">
-                    <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>{event.title}</Text>
-                    <Text className="text-xs font-rubik" style={{ color: colors.textSecondary }}>{event.creatorName}</Text>
-                  </View>
-                  {event.groupName && (
-                    <View className="mb-1">
-                      <Text className="text-sm font-rubik" style={{ color: colors.primary }}>
-                        📋 {event.groupName}
+                  <View>
+                    <View className="flex-row justify-between items-start mb-2">
+                      <Text className="text-lg font-rubik-semibold flex-1 mr-2" style={{ color: colors.text }}>
+                        {event.title}
+                      </Text>
+                      <Text className="text-xs font-rubik" style={{ color: colors.textSecondary }}>
+                        {event.creatorName}
                       </Text>
                     </View>
-                  )}
-                  <Text className="text-sm font-rubik" style={{ color: colors.textSecondary }}>
-                    <TouchableOpacity onPress={() => openInMaps(event.location)}>
-                      <Text className="underline" style={{ color: colors.primary }}>{event.location}</Text>
+                    
+                    {event.groupName && (
+                      <View className="mb-2">
+                        <Text className="text-sm font-rubik" style={{ color: colors.primary }}>
+                          📋 {event.groupName}
+                        </Text>
+                      </View>
+                    )}
+                    
+                    <TouchableOpacity onPress={() => openInMaps(event.location)} className="mb-2">
+                      <Text className="text-sm font-rubik underline" style={{ color: colors.primary }}>
+                        📍 {event.location}
+                      </Text>
                     </TouchableOpacity>
-                  </Text>
-                  <Text className="text-xs font-rubik mt-1" style={{ color: colors.textSecondary }}>
-                    {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
-                  </Text>
-                </TouchableOpacity>
+                    
+                    <Text className="text-sm font-rubik" style={{ color: colors.textSecondary }}>
+                      {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
+                    </Text>
+                  </View>
+                </EnhancedCard>
               ))
             ) : (
               <Text className="mt-4 text-center font-rubik" style={{ color: colors.textSecondary }}>No events found</Text>
             )
           ) : (
             /* Groups mode */
-            <View className="items-center py-8">
-              <Text className="text-lg font-rubik-semibold mb-4" style={{ color: colors.text }}>
-                Discover Groups
-              </Text>
-              <Text className="text-center font-rubik mb-6" style={{ color: colors.textSecondary }}>
-                Find and join public groups to connect with people who share your interests
-              </Text>
-              <TouchableOpacity
-                onPress={() => router.push('/GroupsExplore')}
-                className="bg-blue-500 px-6 py-3 rounded-lg"
-              >
-                <Text className="text-white font-rubik-medium">Explore Groups</Text>
-              </TouchableOpacity>
-            </View>
+            <EnhancedCard variant="elevated" style={{ marginTop: 32 }}>
+              <View className="items-center py-8">
+                <Text className="text-2xl mb-2">🎯</Text>
+                <Text className="text-xl font-rubik-semibold mb-4 text-center" style={{ color: colors.text }}>
+                  Discover Groups
+                </Text>
+                <Text className="text-center font-rubik mb-6 leading-6" style={{ color: colors.textSecondary }}>
+                  Find and join public groups to connect with people who share your interests
+                </Text>
+                <EnhancedButton
+                  title="Explore Groups"
+                  onPress={() => router.push('/GroupsExplore')}
+                  variant="primary"
+                />
+              </View>
+            </EnhancedCard>
           )}
         </ScrollView>
       </View>

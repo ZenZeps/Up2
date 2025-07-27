@@ -3,6 +3,9 @@ import icons from '@/constants/icons';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUsersByIds } from '@/lib/api/user';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { useTheme } from '@/lib/context/ThemeContext';
+import EnhancedButton from '@/components/ui/EnhancedButton';
+import EnhancedCard from '@/components/ui/EnhancedCard';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import React, { useEffect, useState } from 'react';
@@ -32,6 +35,7 @@ const EventDetailsModal = ({
   onChat,
   currentUserId
 }: EventDetailsModalProps) => {
+  const { colors } = useTheme();
   const [attendeeProfiles, setAttendeeProfiles] = useState<any[]>([]);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
   const [creatorPhotoUrl, setCreatorPhotoUrl] = useState<string | null>(null);
@@ -203,27 +207,19 @@ const EventDetailsModal = ({
             {/* Action Buttons */}
             <View style={styles.actionButtons}>
               {isCreator ? (
-                <TouchableOpacity
-                  style={[styles.button, styles.editButton]}
+                <EnhancedButton
+                  title="Edit Event"
                   onPress={() => onEdit(event)}
-                >
-                  <Text style={styles.buttonText}>Edit Event</Text>
-                </TouchableOpacity>
+                  variant="primary"
+                  fullWidth
+                />
               ) : (
-                <TouchableOpacity
-                  style={[
-                    styles.button,
-                    isAttending ? styles.notAttendingButton : styles.attendingButton
-                  ]}
+                <EnhancedButton
+                  title={isAttending ? 'Not Attending' : 'Attend Event'}
                   onPress={isAttending ? onNotAttend : onAttend}
-                >
-                  <Text style={[
-                    styles.buttonText,
-                    isAttending ? styles.notAttendingText : styles.attendingText
-                  ]}>
-                    {isAttending ? 'Not Attending' : 'Attend Event'}
-                  </Text>
-                </TouchableOpacity>
+                  variant={isAttending ? 'outline' : 'primary'}
+                  fullWidth
+                />
               )}
             </View>
           </ScrollView>
