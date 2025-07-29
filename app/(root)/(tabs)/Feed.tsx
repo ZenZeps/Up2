@@ -8,6 +8,7 @@ import { batchProcess, createOptimizedQuery, dbConnectionPool } from '@/lib/util
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Image, Linking, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
@@ -275,7 +276,7 @@ export default function Feed() {
           <View className="flex-row items-center mb-2">
             <Image source={icons.location} className="w-4 h-4 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
             <TouchableOpacity onPress={() => openInMaps(item.location)}>
-              <Text className="text-blue-600 underline text-sm">{item.location}</Text>
+              <Text className="text-black underline text-sm">{item.location}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -287,9 +288,9 @@ export default function Feed() {
         {item.tags && item.tags.length > 0 && (
           <View className="flex-row flex-wrap mb-2">
             {getCategoriesByValues(item.tags).map((category) => (
-              <View key={category.value} className="bg-blue-100 px-2 py-1 rounded-full mr-1 mb-1 flex-row items-center">
+              <View key={category.value} className="bg-gray-100 px-2 py-1 rounded-full mr-1 mb-1 flex-row items-center">
                 <Text className="text-xs mr-1">{category.emoji}</Text>
-                <Text className="text-xs text-blue-800">{category.label}</Text>
+                <Text className="text-xs text-gray-800">{category.label}</Text>
               </View>
             ))}
           </View>
@@ -389,17 +390,23 @@ export default function Feed() {
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: colors.surface }}>
       {/* Header */}
-      <View className="flex-row items-center justify-between p-4 border-b" style={{ backgroundColor: colors.background, borderBottomColor: colors.border }}>
-        <Text className="text-2xl font-rubik-extrabold" style={{ color: colors.text }}>Up2 You</Text>
+      <LinearGradient
+        colors={['#1a1a1a', '#4a4a4a']}
+        start={[0, 0]}
+        end={[1, 0]}
+        className="flex-row items-center justify-between p-4 border-b"
+        style={{ borderBottomColor: '#333333' }}
+      >
+        <Text className="text-2xl font-rubik-extrabold" style={{ color: '#ffffff' }}>Up2 You</Text>
         <View className="flex-row space-x-3">
-          <TouchableOpacity onPress={() => setTravelFormVisible(true)} className="p-2 rounded-lg" style={{ backgroundColor: colors.card }}>
-            <Image source={icons.location} className="w-8 h-8" resizeMode="contain" style={{ tintColor: colors.text }} />
+          <TouchableOpacity onPress={() => setTravelFormVisible(true)} className="p-2">
+            <Image source={icons.location} className="w-8 h-8" resizeMode="contain" style={{ tintColor: '#ffffff' }} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setFormVisible(true)} className="p-2 rounded-lg" style={{ backgroundColor: colors.card }}>
-            <Image source={icons.edit} className="w-8 h-8" resizeMode="contain" style={{ tintColor: colors.text }} />
+          <TouchableOpacity onPress={() => setFormVisible(true)} className="p-2">
+            <Image source={icons.edit} className="w-8 h-8" resizeMode="contain" style={{ tintColor: '#ffffff' }} />
           </TouchableOpacity>
         </View>
-      </View>
+      </LinearGradient>
 
       {/* Event Feed with Pull-to-Refresh for scalability */}
       <FlatList

@@ -23,7 +23,7 @@ export const CATEGORIES: CategoryOption[] = [
 ];
 
 // Default color for events without tags
-export const DEFAULT_EVENT_COLOR = '#007AFF'; // Default blue
+export const DEFAULT_EVENT_COLOR = '#000000'; // Default black
 
 // Helper function to get category by value
 export const getCategoryByValue = (value: string): CategoryOption | undefined => {

@@ -9,6 +9,9 @@ export interface UserProfile {
     photoId?: string;
     notificationToken?: string;
     notificationsEnabled?: boolean;
+    status?: string;
+    nationality?: string;
+    age?: number;
     createdAt?: string;
     updatedAt?: string;
 } 

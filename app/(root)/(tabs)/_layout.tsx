@@ -13,13 +13,13 @@ const TabIcon = ({ focused, icon, title, colors }: { focused: boolean; icon: any
     {/* Tab icon with dynamic tint color based on focus */}
     <Image
       source={icon}
-      style={{ width: 24, height: 24, tintColor: focused ? colors.primary : colors.textSecondary }}
+      style={{ width: 24, height: 24, tintColor: focused ? '#000000' : colors.textSecondary }}
       resizeMode="contain"
     />
     {/* Tab label with dynamic style based on focus */}
     <Text
       className={`${focused ? 'font-rubik-medium' : 'font-rubik'} text-xs w-full text-center mt-1`}
-      style={{ color: focused ? colors.primary : colors.textSecondary }}
+      style={{ color: focused ? '#000000' : colors.textSecondary }}
     >
       {title}
     </Text>

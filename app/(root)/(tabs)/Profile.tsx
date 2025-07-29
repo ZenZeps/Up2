@@ -6,6 +6,7 @@ import { useGlobalContext } from '@/lib/global-provider';
 import { Group } from '@/lib/types/Groups';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -14,6 +15,7 @@ import {
   Image,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -29,10 +31,14 @@ const Profile = () => {
 
   const [firstName, setFirstName] = useState(user?.profile?.firstName || '');
   const [lastName, setLastName] = useState(user?.profile?.lastName || '');
+  const [status, setStatus] = useState(user?.profile?.status || '');
+  const [nationality, setNationality] = useState(user?.profile?.nationality || '');
+  const [age, setAge] = useState(user?.profile?.age?.toString() || '');
   const [friends, setFriends] = useState<any[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [stats, setStats] = useState({
     friends: 0,
     groups: 0,
@@ -69,6 +75,17 @@ const Profile = () => {
 
     loadUserData();
   }, [userId, user?.profile?.photoId]);
+
+  // Update local state when user profile changes
+  useEffect(() => {
+    if (user?.profile) {
+      setFirstName(user.profile.firstName || '');
+      setLastName(user.profile.lastName || '');
+      setStatus(user.profile.status || '');
+      setNationality(user.profile.nationality || '');
+      setAge(user.profile.age?.toString() || '');
+    }
+  }, [user?.profile]);
 
   const handleUpdateProfilePhoto = async () => {
     try {
@@ -118,60 +135,186 @@ const Profile = () => {
     }
   };
 
+  const handleSaveProfile = async () => {
+    try {
+      if (!user?.profile) return;
+
+      const updatedProfile = {
+        ...user.profile,
+        status: status.trim(),
+        nationality: nationality.trim(),
+        age: age && age.trim() ? parseInt(age.toString()) : undefined,
+      };
+
+      await updateUserProfile(updatedProfile);
+      setIsEditing(false);
+      Alert.alert('Success', 'Profile updated successfully!');
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      Alert.alert('Error', 'Failed to update profile. Please try again.');
+    }
+  };
+
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 70 + insets.bottom }} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View className="px-4 py-3 flex-row items-center justify-between border-b" style={{ borderBottomColor: colors.border }}>
-          <Text className="text-2xl font-rubik-semibold" style={{ color: colors.text }}>
-            {userDisplayUtils.getFullName({ firstName, lastName })}
-          </Text>
-          <TouchableOpacity onPress={() => router.push('/(root)/Settings')}>
-            <View className="w-6 h-6 rounded-full border-2 border-gray-400 items-center justify-center">
-              <View className="w-2 h-2 bg-gray-400 rounded-full" />
-              <View className="absolute w-4 h-4 border border-gray-400 rounded-full" />
+      {/* Header */}
+      <LinearGradient
+        colors={['#1a1a1a', '#4a4a4a']}
+        start={[0, 0]}
+        end={[1, 0]}
+        className="flex-row items-center justify-between p-4 border-b"
+        style={{ borderBottomColor: '#333333' }}
+      >
+        <View className="flex-row items-center">
+          <TouchableOpacity onPress={handleUpdateProfilePhoto} disabled={isUploadingPhoto}>
+            {profilePhotoUrl ? (
+              <Image
+                source={{ uri: profilePhotoUrl }}
+                className="w-16 h-16 rounded-full"
+              />
+            ) : (
+              <View className="w-16 h-16 rounded-full bg-gray-200 items-center justify-center">
+                <Text className="text-xl text-gray-400 font-rubik-medium">
+                  {userDisplayUtils.getInitials({ firstName, lastName })}
+                </Text>
+              </View>
+            )}
+            {/* Edit indicator */}
+            <View className="absolute -bottom-1 -right-1 w-5 h-5 bg-white rounded-full items-center justify-center border border-gray-300">
+              <Text className="text-black text-xs font-bold">
+                {isUploadingPhoto ? '...' : '✎'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          <View className="ml-3">
+            <Text className="text-xl font-rubik-semibold" style={{ color: '#ffffff' }}>
+              {userDisplayUtils.getFullName({ firstName, lastName })}
+            </Text>
+          </View>
+        </View>
+        <View className="flex-row items-center">
+          <View className="flex-row items-center mr-8">
+            <View className="items-center mr-4">
+              <Text className="text-lg font-rubik-semibold" style={{ color: '#ffffff' }}>{stats.friends}</Text>
+              <Text className="text-xs" style={{ color: '#ffffff', opacity: 0.8 }}>Friends</Text>
+            </View>
+            <View className="items-center mr-6">
+              <Text className="text-lg font-rubik-semibold" style={{ color: '#ffffff' }}>{stats.groups}</Text>
+              <Text className="text-xs" style={{ color: '#ffffff', opacity: 0.8 }}>Groups</Text>
+            </View>
+          </View>
+          <TouchableOpacity onPress={() => router.push('/(root)/Settings')} className="p-2">
+            <View className="w-6 h-6 rounded-full border-2 border-white items-center justify-center">
+              <View className="w-2 h-2 bg-white rounded-full" />
+              <View className="absolute w-4 h-4 border border-white rounded-full" />
             </View>
           </TouchableOpacity>
         </View>
+      </LinearGradient>
 
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 70 + insets.bottom }} showsVerticalScrollIndicator={false}>
         {/* Profile Info Section */}
         <View className="px-4 py-4">
-          <View className="flex-row items-center">
-            {/* Profile Photo */}
-            <View className="mr-6 relative">
-              <TouchableOpacity onPress={handleUpdateProfilePhoto} disabled={isUploadingPhoto}>
-                {profilePhotoUrl ? (
-                  <Image
-                    source={{ uri: profilePhotoUrl }}
-                    className="w-20 h-20 rounded-full"
-                  />
-                ) : (
-                  <View className="w-20 h-20 rounded-full bg-gray-200 items-center justify-center">
-                    <Text className="text-4xl text-gray-400 font-rubik-medium">
-                      {userDisplayUtils.getInitials({ firstName, lastName })}
-                    </Text>
-                  </View>
-                )}
-                {/* Edit indicator */}
-                <View className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-500 rounded-full items-center justify-center border-2 border-white">
-                  <Text className="text-white text-xs font-bold">
-                    {isUploadingPhoto ? '...' : '✎'}
-                  </Text>
-                </View>
+          {/* Status Section */}
+          <View className="mb-6">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>Status</Text>
+              <TouchableOpacity
+                onPress={() => setIsEditing(!isEditing)}
+                className="px-3 py-1 rounded-lg"
+                style={{ backgroundColor: isEditing ? colors.success : colors.primary }}
+              >
+                <Text className="text-white font-rubik-medium text-sm">
+                  {isEditing ? 'Cancel' : 'Edit'}
+                </Text>
               </TouchableOpacity>
             </View>
+            {isEditing ? (
+              <View>
+                <TextInput
+                  value={status}
+                  onChangeText={setStatus}
+                  placeholder="What's on your mind?"
+                  placeholderTextColor={colors.textSecondary}
+                  className="p-3 rounded-lg border text-base font-rubik"
+                  style={{
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                    color: colors.text
+                  }}
+                  multiline
+                  numberOfLines={3}
+                />
+                <TouchableOpacity
+                  onPress={handleSaveProfile}
+                  className="mt-3 px-4 py-2 rounded-lg self-end"
+                  style={{ backgroundColor: colors.success }}
+                >
+                  <Text className="text-white font-rubik-medium">Save Changes</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View className="p-3 rounded-lg" style={{ backgroundColor: colors.surface }}>
+                <Text className="text-base font-rubik" style={{ color: colors.text }}>
+                  {status || "No status set"}
+                </Text>
+              </View>
+            )}
+          </View>
 
-            {/* Stats */}
-            <View className="flex-row flex-1 justify-around">
-              <View className="items-center">
-                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.friends}</Text>
-                <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Friends</Text>
+          {/* About Me Section */}
+          <View className="mb-6">
+            <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>About Me</Text>
+            {isEditing ? (
+              <View>
+                <View className="mb-3">
+                  <Text className="text-sm font-rubik-medium mb-2" style={{ color: colors.textSecondary }}>Nationality</Text>
+                  <TextInput
+                    value={nationality}
+                    onChangeText={setNationality}
+                    placeholder="Your nationality"
+                    placeholderTextColor={colors.textSecondary}
+                    className="p-3 rounded-lg border text-base font-rubik"
+                    style={{
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                      color: colors.text
+                    }}
+                  />
+                </View>
+                <View className="mb-3">
+                  <Text className="text-sm font-rubik-medium mb-2" style={{ color: colors.textSecondary }}>Age</Text>
+                  <TextInput
+                    value={age.toString()}
+                    onChangeText={setAge}
+                    placeholder="Your age"
+                    placeholderTextColor={colors.textSecondary}
+                    className="p-3 rounded-lg border text-base font-rubik"
+                    style={{
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                      color: colors.text
+                    }}
+                    keyboardType="numeric"
+                  />
+                </View>
               </View>
-              <View className="items-center">
-                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.groups}</Text>
-                <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Groups</Text>
+            ) : (
+              <View className="p-3 rounded-lg" style={{ backgroundColor: colors.surface }}>
+                <View className="flex-row justify-between items-center mb-2">
+                  <Text className="text-sm font-rubik-medium" style={{ color: colors.textSecondary }}>Nationality:</Text>
+                  <Text className="text-base font-rubik" style={{ color: colors.text }}>
+                    {nationality || "Not specified"}
+                  </Text>
+                </View>
+                <View className="flex-row justify-between items-center">
+                  <Text className="text-sm font-rubik-medium" style={{ color: colors.textSecondary }}>Age:</Text>
+                  <Text className="text-base font-rubik" style={{ color: colors.text }}>
+                    {age ? `${age} years old` : "Not specified"}
+                  </Text>
+                </View>
               </View>
-            </View>
+            )}
           </View>
 
           {/* Friends Section */}
@@ -211,7 +354,7 @@ const Profile = () => {
               <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>Groups</Text>
               <TouchableOpacity
                 onPress={() => router.push('/(root)/CreateGroup')}
-                className="bg-blue-500 px-3 py-1 rounded-lg"
+                className="bg-black px-3 py-1 rounded-lg"
               >
                 <Text className="text-white font-rubik-medium text-sm">+ New</Text>
               </TouchableOpacity>
@@ -228,7 +371,7 @@ const Profile = () => {
                     className="mr-4 items-center"
                     onPress={() => router.push(`/Group/${item.$id}`)}
                   >
-                    <View className="w-16 h-16 rounded-full bg-blue-500 items-center justify-center mb-2">
+                    <View className="w-16 h-16 rounded-full bg-black items-center justify-center mb-2">
                       <Text className="text-white text-xl font-rubik-semibold">
                         {item.title.charAt(0).toUpperCase()}
                       </Text>

@@ -339,7 +339,7 @@ export default function Home() {
       }
 
       const isMonthView = viewMode === 'month';
-      const eventColor = event.color || colors.primary;
+      const eventColor = event.color || '#000000';
 
       // Convert hex color to rgba for opacity in month view
       const hexToRgba = (hex: string, alpha: number) => {
@@ -440,7 +440,7 @@ export default function Home() {
         </TouchableOpacity>
       );
     }
-  }, [viewMode, colors.primary, colors.background, colors.error, handlePressEvent]);
+  }, [viewMode, '#000000', colors.background, colors.error, handlePressEvent]);
 
   // Handler for pressing a calendar cell (to create a new event)
   const handleCellPress = useCallback((date: Date) => {
@@ -487,16 +487,16 @@ export default function Home() {
             justifyContent: 'center',
             // Subtle travel date indicator - small border only
             borderWidth: isTravelDate ? 1 : 0,
-            borderColor: isTravelDate ? colors.primary : 'transparent',
+            borderColor: isTravelDate ? '#000000' : 'transparent',
             borderRadius: 12,
-            backgroundColor: isTravelDate ? colors.primary + '10' : 'transparent',
+            backgroundColor: isTravelDate ? '#000000' + '10' : 'transparent',
           }}
         >
           <Text
             style={{
               fontSize: 14,
               fontWeight: isTravelDate ? '600' : 'normal',
-              color: isTravelDate ? colors.primary : colors.text,
+              color: isTravelDate ? '#000000' : colors.text,
             }}
           >
             {date.getDate()}
@@ -581,12 +581,12 @@ export default function Home() {
         <TouchableOpacity
           onPress={() => setActiveTab('calendar')}
           className={`flex-1 py-2 ${activeTab === 'calendar' ? 'border-b-2' : ''}`}
-          style={{ borderBottomColor: activeTab === 'calendar' ? colors.primary : 'transparent' }}
+          style={{ borderBottomColor: activeTab === 'calendar' ? '#000000' : 'transparent' }}
         >
           <Text
             className="text-center font-rubik-medium"
             style={{
-              color: activeTab === 'calendar' ? colors.primary : colors.textSecondary
+              color: activeTab === 'calendar' ? '#000000' : colors.textSecondary
             }}
           >
             Calendar
@@ -596,12 +596,12 @@ export default function Home() {
         <TouchableOpacity
           onPress={() => setActiveTab('agenda')}
           className={`flex-1 py-2 ${activeTab === 'agenda' ? 'border-b-2' : ''}`}
-          style={{ borderBottomColor: activeTab === 'agenda' ? colors.primary : 'transparent' }}
+          style={{ borderBottomColor: activeTab === 'agenda' ? '#000000' : 'transparent' }}
         >
           <Text
             className="text-center font-rubik-medium"
             style={{
-              color: activeTab === 'agenda' ? colors.primary : colors.textSecondary
+              color: activeTab === 'agenda' ? '#000000' : colors.textSecondary
             }}
           >
             Agenda
@@ -620,9 +620,9 @@ export default function Home() {
                   <TouchableOpacity
                     key={mode}
                     onPress={() => setViewMode(mode)}
-                    className={`px-3 py-1 mr-2 rounded ${viewMode === mode ? 'bg-blue-500' : ''}`}
+                    className={`px-3 py-1 mr-2 rounded ${viewMode === mode ? 'bg-black' : ''}`}
                     style={{
-                      backgroundColor: viewMode === mode ? colors.primary : colors.background,
+                      backgroundColor: viewMode === mode ? '#000000' : colors.background,
                       borderWidth: viewMode === mode ? 0 : 1,
                       borderColor: colors.border,
                     }}
@@ -638,7 +638,7 @@ export default function Home() {
               </View>
 
               <TouchableOpacity onPress={handleTodayPress}>
-                <Text className="font-rubik-medium" style={{ color: colors.primary }}>Today</Text>
+                <Text className="font-rubik-medium" style={{ color: '#000000' }}>Today</Text>
               </TouchableOpacity>
             </View>
 
@@ -677,49 +677,84 @@ export default function Home() {
             </View>
           </View>
         ) : (
-          /* Agenda View */
+          /* Modern Agenda View */
           <FlatList
-            className="flex-1 px-4 pt-4"
+            className="flex-1 px-6 pt-4"
+            style={{ backgroundColor: '#F8F9FA' }}
             data={calendarEvents
               .filter((item): item is NonNullable<typeof item> => item !== null && new Date(item.start) > new Date()) // Only show upcoming events
               .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <TouchableOpacity onPress={() => handlePressEvent(item)} className="mb-3">
+              <TouchableOpacity onPress={() => handlePressEvent(item)} className="mb-4">
                 <View
-                  className="p-4 rounded-lg border"
+                  className="p-5 rounded-2xl"
                   style={{
-                    backgroundColor: colors.surface, // Use surface color for better contrast in light mode
-                    borderColor: colors.border,
-                    shadowColor: colors.shadow,
-                    shadowOffset: { width: 0, height: 1 },
-                    shadowOpacity: 0.2,
-                    shadowRadius: 2,
-                    elevation: 2,
+                    backgroundColor: '#FFFFFF',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.06,
+                    shadowRadius: 12,
+                    elevation: 3,
                   }}
                 >
-                  <View className="flex-row items-center justify-between mb-2">
-                    <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>
+                  <View className="flex-row items-center justify-between mb-3">
+                    <Text
+                      className="text-xl font-rubik-bold flex-1"
+                      style={{
+                        color: '#1A1A1A',
+                        fontWeight: '700',
+                      }}
+                      numberOfLines={2}
+                    >
                       {item.title}
                     </Text>
                     <View
-                      className="w-4 h-4 rounded-full"
-                      style={{ backgroundColor: item.color || colors.primary }}
+                      className="w-4 h-4 rounded-full ml-3"
+                      style={{ backgroundColor: item.color || '#000000' }}
                     />
                   </View>
-                  <Text className="font-rubik" style={{ color: colors.textSecondary }}>
+                  <Text
+                    className="font-rubik-medium mb-2"
+                    style={{
+                      color: '#6B7280',
+                      fontSize: 15,
+                      fontWeight: '500',
+                    }}
+                  >
                     {new Date(item.start).toLocaleDateString()} at {new Date(item.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
-                  <Text className="font-rubik mt-1" style={{ color: colors.textSecondary }}>
+                  <Text
+                    className="font-rubik-medium mb-2"
+                    style={{
+                      color: '#6B7280',
+                      fontSize: 14,
+                      fontWeight: '500',
+                    }}
+                  >
                     {item.rawEvent?.attendees?.length || 0} attending
                   </Text>
                   {item.rawEvent?.groupName && (
-                    <Text className="font-rubik mt-1" style={{ color: colors.primary }}>
+                    <Text
+                      className="font-rubik-semibold mb-1"
+                      style={{
+                        color: '#000000',
+                        fontSize: 14,
+                        fontWeight: '600',
+                      }}
+                    >
                       📋 {item.rawEvent.groupName}
                     </Text>
                   )}
                   {item.location && item.location !== 'No location' && (
-                    <Text className="font-rubik mt-1" style={{ color: colors.textSecondary }}>
+                    <Text
+                      className="font-rubik-medium"
+                      style={{
+                        color: '#6B7280',
+                        fontSize: 14,
+                        fontWeight: '500',
+                      }}
+                    >
                       📍 {item.location}
                     </Text>
                   )}
@@ -728,18 +763,47 @@ export default function Home() {
             )}
             ListEmptyComponent={
               <View className="flex-1 justify-center items-center py-12">
-                <Text className="text-lg font-rubik-semibold mb-2" style={{ color: colors.text }}>
+                <Text
+                  className="text-2xl font-rubik-bold mb-3"
+                  style={{
+                    color: '#1A1A1A',
+                    fontWeight: '700',
+                  }}
+                >
                   No Events Yet
                 </Text>
-                <Text className="text-center font-rubik mb-6" style={{ color: colors.textSecondary }}>
+                <Text
+                  className="text-center font-rubik-medium mb-8"
+                  style={{
+                    color: '#6B7280',
+                    fontSize: 16,
+                    lineHeight: 24,
+                  }}
+                >
                   Create your first event to get started!
                 </Text>
                 <TouchableOpacity
                   onPress={handleCreateEventPress}
-                  className="px-6 py-3 rounded-lg"
-                  style={{ backgroundColor: colors.primary }}
+                  className="px-8 py-4 rounded-2xl"
+                  style={{
+                    backgroundColor: '#000000',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.15,
+                    shadowRadius: 12,
+                    elevation: 4,
+                  }}
                 >
-                  <Text className="font-rubik-medium" style={{ color: colors.background }}>Create First Event</Text>
+                  <Text
+                    className="font-rubik-semibold"
+                    style={{
+                      color: '#FFFFFF',
+                      fontSize: 16,
+                      fontWeight: '600',
+                    }}
+                  >
+                    Create First Event
+                  </Text>
                 </TouchableOpacity>
               </View>
             }
@@ -749,21 +813,29 @@ export default function Home() {
         )}
       </View>
 
-      {/* Add Event FAB */}
+      {/* Modern Add Event FAB */}
       <TouchableOpacity
-        className="absolute right-8 w-16 h-16 rounded-full items-center justify-center"
+        className="absolute right-8 w-16 h-16 rounded-2xl items-center justify-center"
         style={{
           bottom: 100 + insets.bottom, // Increased bottom margin to avoid tab bar overlap
-          backgroundColor: colors.primary,
-          shadowColor: colors.text,
-          shadowOffset: { width: 0, height: 2 },
+          backgroundColor: '#000000',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 8 },
           shadowOpacity: 0.25,
-          shadowRadius: 4,
-          elevation: 5,
+          shadowRadius: 16,
+          elevation: 8,
         }}
         onPress={handleCreateEventPress}
       >
-        <Text className="text-2xl" style={{ color: colors.background }}>+</Text>
+        <Text
+          className="text-2xl"
+          style={{
+            color: '#FFFFFF',
+            fontWeight: '300',
+          }}
+        >
+          +
+        </Text>
       </TouchableOpacity>
 
       {/* Event Form Modal */}

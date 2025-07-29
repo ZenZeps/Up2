@@ -6,6 +6,7 @@ import { useGlobalContext } from '@/lib/global-provider';
 import { Group } from '@/lib/types/Groups';
 import { UserProfile as UserProfileType } from '@/lib/types/Users';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -116,53 +117,89 @@ const UserProfile = () => {
 
     return (
         <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
-            <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
-                {/* Header */}
-                <View className="px-4 py-3 flex-row items-center justify-between border-b" style={{ borderBottomColor: colors.border }}>
-                    <TouchableOpacity onPress={() => router.back()}>
-                        <Text className="text-lg" style={{ color: colors.primary }}>← Back</Text>
-                    </TouchableOpacity>
-                    <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>
-                        {userDisplayUtils.getFullName({ firstName, lastName })}
-                    </Text>
-                    <TouchableOpacity onPress={handleMessageUser}>
-                        <View className="w-8 h-8 rounded-full bg-blue-500 items-center justify-center">
-                            <Text className="text-white text-sm font-bold">💬</Text>
+            {/* Header */}
+            <LinearGradient
+                colors={['#1a1a1a', '#4a4a4a']}
+                start={[0, 0]}
+                end={[1, 0]}
+                className="flex-row items-center justify-between p-4 border-b"
+                style={{ borderBottomColor: '#333333' }}
+            >
+                <TouchableOpacity onPress={() => router.back()} className="mr-3">
+                    <Text className="text-lg font-rubik-medium" style={{ color: '#ffffff' }}>←</Text>
+                </TouchableOpacity>
+                <View className="flex-row items-center flex-1">
+                    {profilePhotoUrl ? (
+                        <Image
+                            source={{ uri: profilePhotoUrl }}
+                            className="w-16 h-16 rounded-full"
+                        />
+                    ) : (
+                        <View className="w-16 h-16 rounded-full bg-gray-200 items-center justify-center">
+                            <Text className="text-xl text-gray-400 font-rubik-medium">
+                                {userDisplayUtils.getInitials({ firstName, lastName })}
+                            </Text>
                         </View>
-                    </TouchableOpacity>
+                    )}
+                    <View className="ml-3 flex-1">
+                        <Text className="text-xl font-rubik-semibold" style={{ color: '#ffffff' }}>
+                            {userDisplayUtils.getFullName({ firstName, lastName })}
+                        </Text>
+                    </View>
                 </View>
-
-                {/* Profile Info Section */}
-                <View className="px-4 py-4">
+                <View className="flex-row items-center">
                     <View className="flex-row items-center">
-                        {/* Profile Photo */}
-                        <View className="mr-6">
-                            {profilePhotoUrl ? (
-                                <Image
-                                    source={{ uri: profilePhotoUrl }}
-                                    className="w-20 h-20 rounded-full"
-                                />
-                            ) : (
-                                <View className="w-20 h-20 rounded-full bg-gray-200 items-center justify-center">
-                                    <Text className="text-4xl text-gray-400 font-rubik-medium">
-                                        {userDisplayUtils.getInitials({ firstName, lastName })}
-                                    </Text>
-                                </View>
-                            )}
+                        <View className="items-center mr-4">
+                            <Text className="text-lg font-rubik-semibold" style={{ color: '#ffffff' }}>{stats.friends}</Text>
+                            <Text className="text-xs" style={{ color: '#ffffff', opacity: 0.8 }}>Friends</Text>
                         </View>
-
-                        {/* Stats */}
-                        <View className="flex-row flex-1 justify-around">
-                            <View className="items-center">
-                                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.friends}</Text>
-                                <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Friends</Text>
-                            </View>
-                            <View className="items-center">
-                                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>{stats.groups}</Text>
-                                <Text className="text-gray-600" style={{ color: colors.textSecondary }}>Groups</Text>
-                            </View>
+                        <View className="items-center">
+                            <Text className="text-lg font-rubik-semibold" style={{ color: '#ffffff' }}>{stats.groups}</Text>
+                            <Text className="text-xs" style={{ color: '#ffffff', opacity: 0.8 }}>Groups</Text>
                         </View>
                     </View>
+                </View>
+            </LinearGradient>
+
+            <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+                {/* Profile Info Section */}
+                <View className="px-4 py-4">
+                    {/* Status Section - Only show if user has a status */}
+                    {userProfile.status && (
+                        <View className="mb-6">
+                            <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>Status</Text>
+                            <View className="p-3 rounded-lg" style={{ backgroundColor: colors.surface }}>
+                                <Text className="text-base font-rubik" style={{ color: colors.text }}>
+                                    {userProfile.status}
+                                </Text>
+                            </View>
+                        </View>
+                    )}
+
+                    {/* About Me Section - Only show if user has nationality or age */}
+                    {(userProfile.nationality || userProfile.age) && (
+                        <View className="mb-6">
+                            <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>About Me</Text>
+                            <View className="p-3 rounded-lg" style={{ backgroundColor: colors.surface }}>
+                                {userProfile.nationality && (
+                                    <View className={`flex-row justify-between items-center ${userProfile.age ? 'mb-2' : ''}`}>
+                                        <Text className="text-sm font-rubik-medium" style={{ color: colors.textSecondary }}>Nationality:</Text>
+                                        <Text className="text-base font-rubik" style={{ color: colors.text }}>
+                                            {userProfile.nationality}
+                                        </Text>
+                                    </View>
+                                )}
+                                {userProfile.age && (
+                                    <View className="flex-row justify-between items-center">
+                                        <Text className="text-sm font-rubik-medium" style={{ color: colors.textSecondary }}>Age:</Text>
+                                        <Text className="text-base font-rubik" style={{ color: colors.text }}>
+                                            {userProfile.age} years old
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
+                        </View>
+                    )}
 
                     {/* Friends Section */}
                     <View className="mt-6">
@@ -213,7 +250,7 @@ const UserProfile = () => {
                                         className="mr-4 items-center"
                                         onPress={() => router.push(`/Group/${item.$id}`)}
                                     >
-                                        <View className="w-16 h-16 rounded-full bg-blue-500 items-center justify-center mb-2">
+                                        <View className="w-16 h-16 rounded-full bg-black items-center justify-center mb-2">
                                             <Text className="text-white text-xl font-rubik-semibold">
                                                 {item.title.charAt(0).toUpperCase()}
                                             </Text>
@@ -238,7 +275,7 @@ const UserProfile = () => {
                     <View className="mt-6">
                         <TouchableOpacity
                             onPress={handleViewCalendar}
-                            className="bg-blue-500 py-3 px-6 rounded-lg items-center"
+                            className="bg-black py-3 px-6 rounded-lg items-center"
                         >
                             <Text className="text-white font-rubik-semibold text-lg">View Calendar</Text>
                         </TouchableOpacity>
