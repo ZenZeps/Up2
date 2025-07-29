@@ -1,14 +1,14 @@
 import { getUserGroups } from '@/lib/api/group';
 import { getProfilePhotoUrl, uploadProfilePhoto } from '@/lib/api/profilePhoto';
-import { getFriends, updateUserProfile } from '@/lib/api/user';
+import { getFriends, getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Group } from '@/lib/types/Groups';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -50,11 +50,21 @@ const Profile = () => {
       if (!userId) return;
 
       try {
-        // Load friends and groups
-        const [userFriends, userGroups] = await Promise.all([
+        // Load user profile, friends and groups
+        const [freshProfile, userFriends, userGroups] = await Promise.all([
+          getUserProfile(userId),
           getFriends(userId),
           getUserGroups(userId)
         ]);
+
+        // Update profile information with fresh data
+        if (freshProfile) {
+          setFirstName(freshProfile.firstName || '');
+          setLastName(freshProfile.lastName || '');
+          setStatus(freshProfile.status || '');
+          setNationality(freshProfile.nationality || '');
+          setAge(freshProfile.age?.toString() || '');
+        }
 
         setFriends(userFriends || []);
         setGroups(userGroups || []);
@@ -64,8 +74,8 @@ const Profile = () => {
         });
 
         // Load profile photo if available
-        if (user?.profile?.photoId) {
-          const photoUrl = await getProfilePhotoUrl(user.profile.photoId);
+        if (freshProfile?.photoId) {
+          const photoUrl = await getProfilePhotoUrl(freshProfile.photoId);
           setProfilePhotoUrl(photoUrl);
         }
       } catch (error) {
@@ -74,18 +84,69 @@ const Profile = () => {
     };
 
     loadUserData();
-  }, [userId, user?.profile?.photoId]);
+  }, [userId]);
 
-  // Update local state when user profile changes
+  // Update local state when user profile changes (fallback for context updates)
   useEffect(() => {
-    if (user?.profile) {
+    // Only update if we don't have fresh data or if it's a context update after save
+    if (user?.profile && (!firstName || !lastName)) {
       setFirstName(user.profile.firstName || '');
       setLastName(user.profile.lastName || '');
       setStatus(user.profile.status || '');
       setNationality(user.profile.nationality || '');
       setAge(user.profile.age?.toString() || '');
     }
-  }, [user?.profile]);
+  }, [user?.profile, firstName, lastName]);
+
+  // Create a reusable loadUserData function
+  const loadUserData = useCallback(async () => {
+    if (!userId) return;
+
+    try {
+      // Load user profile, friends and groups
+      const [freshProfile, userFriends, userGroups] = await Promise.all([
+        getUserProfile(userId),
+        getFriends(userId),
+        getUserGroups(userId)
+      ]);
+
+      // Update profile information with fresh data
+      if (freshProfile) {
+        setFirstName(freshProfile.firstName || '');
+        setLastName(freshProfile.lastName || '');
+        setStatus(freshProfile.status || '');
+        setNationality(freshProfile.nationality || '');
+        setAge(freshProfile.age?.toString() || '');
+      }
+
+      setFriends(userFriends || []);
+      setGroups(userGroups || []);
+      setStats({
+        friends: userFriends?.length || 0,
+        groups: userGroups?.length || 0,
+      });
+
+      // Load profile photo if available
+      if (freshProfile?.photoId) {
+        const photoUrl = await getProfilePhotoUrl(freshProfile.photoId);
+        setProfilePhotoUrl(photoUrl);
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    }
+  }, [userId]);
+
+  // Load data on mount
+  useEffect(() => {
+    loadUserData();
+  }, [loadUserData]);
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadUserData();
+    }, [loadUserData])
+  );
 
   const handleUpdateProfilePhoto = async () => {
     try {

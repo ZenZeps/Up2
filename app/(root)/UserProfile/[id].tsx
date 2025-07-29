@@ -7,8 +7,8 @@ import { Group } from '@/lib/types/Groups';
 import { UserProfile as UserProfileType } from '@/lib/types/Users';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     FlatList,
     Image,
@@ -37,48 +37,57 @@ const UserProfile = () => {
         groups: 0,
     });
 
-    // Load user data
-    useEffect(() => {
-        const loadUserData = async () => {
-            if (!userId) return;
+    // Create a reusable loadUserData function
+    const loadUserData = useCallback(async () => {
+        if (!userId) return;
 
-            try {
-                setLoading(true);
+        try {
+            setLoading(true);
 
-                // Load user profile
-                const profile = await getUserProfile(userId);
-                if (!profile) {
-                    router.back();
-                    return;
-                } setUserProfile(profile);
-
-                // Load friends and groups
-                const [userFriends, userGroups] = await Promise.all([
-                    getFriends(userId),
-                    getUserGroups(userId)
-                ]);
-
-                setFriends(userFriends || []);
-                setGroups(userGroups || []);
-                setStats({
-                    friends: userFriends?.length || 0,
-                    groups: userGroups?.length || 0,
-                });
-
-                // Load profile photo if available
-                if (profile?.photoId) {
-                    const photoUrl = await getProfilePhotoUrl(profile.photoId);
-                    setProfilePhotoUrl(photoUrl);
-                }
-            } catch (error) {
-                console.error('Error loading user profile:', error);
-            } finally {
-                setLoading(false);
+            // Load user profile
+            const profile = await getUserProfile(userId);
+            if (!profile) {
+                router.back();
+                return;
             }
-        };
+            setUserProfile(profile);
 
+            // Load friends and groups
+            const [userFriends, userGroups] = await Promise.all([
+                getFriends(userId),
+                getUserGroups(userId)
+            ]);
+
+            setFriends(userFriends || []);
+            setGroups(userGroups || []);
+            setStats({
+                friends: userFriends?.length || 0,
+                groups: userGroups?.length || 0,
+            });
+
+            // Load profile photo if available
+            if (profile?.photoId) {
+                const photoUrl = await getProfilePhotoUrl(profile.photoId);
+                setProfilePhotoUrl(photoUrl);
+            }
+        } catch (error) {
+            console.error('Error loading user profile:', error);
+        } finally {
+            setLoading(false);
+        }
+    }, [userId, router]);
+
+    // Load data on mount
+    useEffect(() => {
         loadUserData();
-    }, [userId]);
+    }, [loadUserData]);
+
+    // Refresh data when screen comes into focus
+    useFocusEffect(
+        useCallback(() => {
+            loadUserData();
+        }, [loadUserData])
+    );
 
     const handleMessageUser = () => {
         // Navigate to conversation with this user
