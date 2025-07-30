@@ -3,6 +3,7 @@ import { Chat, Message, MessageInput, MessageThread, MessageWithAuthor } from '@
 import { getOrCreateEventChat, getOrCreateGroupChat } from './chats';
 import { getUserProfilePhotoUrl } from './profilePhoto';
 import { getUserProfile } from './user';
+import { sendChatMessageNotification } from '../notifications/notificationUtils';
 
 /**
  * Create a new message in a chat
@@ -28,7 +29,60 @@ export const createMessage = async (messageInput: MessageInput, authorId: string
             messageData
         );
 
-        return response as unknown as Message;
+        const message = response as unknown as Message;
+
+        // Send notifications to other chat participants
+        try {
+            // Get chat details to find participants
+            const chat = await databases.getDocument(
+                config.databaseID!,
+                config.chatsCollectionID!,
+                messageInput.chatId
+            ) as unknown as Chat;
+
+            // Get sender's profile for notification
+            const senderProfile = await getUserProfile(authorId);
+            const senderName = senderProfile 
+                ? `${senderProfile.firstName} ${senderProfile.lastName}`.trim() 
+                : 'Someone';
+
+            // Get participants based on chat type
+            let participantIds: string[] = [];
+            
+            if (chat.eventId) {
+                // For event chats, get event attendees
+                const event = await databases.getDocument(
+                    config.databaseID!,
+                    config.eventsCollectionID!,
+                    chat.eventId
+                );
+                participantIds = event.attendees || [];
+            } else if (chat.groupId) {
+                // For group chats, get group members
+                const group = await databases.getDocument(
+                    config.databaseID!,
+                    config.groupsCollectionID!,
+                    chat.groupId
+                );
+                participantIds = group.members || [];
+            }
+
+            // Send notification to other participants
+            if (participantIds.length > 1) {
+                await sendChatMessageNotification(
+                    participantIds,
+                    senderName,
+                    messageInput.content.trim(),
+                    messageInput.chatId,
+                    authorId
+                );
+            }
+        } catch (notificationError) {
+            // Don't fail message creation if notifications fail
+            console.warn('Failed to send chat message notification:', notificationError);
+        }
+
+        return message;
     } catch (error) {
         console.error('Error creating message:', error);
         throw error;

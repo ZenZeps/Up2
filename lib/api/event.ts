@@ -4,6 +4,8 @@ import { ID, Query } from "react-native-appwrite";
 import { authDebug } from "../debug/authDebug";
 import { cacheManager } from "../debug/cacheManager";
 import { getGroupById } from "./group";
+import { sendEventInviteNotification } from "../notifications/notificationUtils";
+import { getUserProfile } from "./user";
 
 // Cache constants
 const EVENT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -260,6 +262,30 @@ export async function createEvent(event: Event) {
 
     // Clear the all-events cache to force refresh
     cacheManager.remove(EVENT_COLLECTION_CACHE_KEY);
+
+    // Send notifications to invitees if there are any
+    if (sanitizedEvent.inviteeIds && sanitizedEvent.inviteeIds.length > 0) {
+      try {
+        // Get creator's profile to get their name for the notification
+        const creatorProfile = await getUserProfile(sanitizedEvent.creatorId);
+        const creatorName = creatorProfile 
+          ? `${creatorProfile.firstName} ${creatorProfile.lastName}`.trim() 
+          : 'Someone';
+
+        // Send notifications to all invitees
+        await sendEventInviteNotification(
+          sanitizedEvent.inviteeIds,
+          sanitizedEvent.title,
+          creatorName,
+          createdEvent.$id
+        );
+        
+        authDebug.info(`Event invite notifications sent to ${sanitizedEvent.inviteeIds.length} users`);
+      } catch (notificationError) {
+        // Don't fail event creation if notifications fail
+        authDebug.warn('Failed to send event invite notifications:', notificationError);
+      }
+    }
 
     return createdEvent;
 

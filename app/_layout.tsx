@@ -2,8 +2,10 @@ import { account } from "@/lib/appwrite/client";
 import { ThemeProvider } from "@/lib/context/ThemeContext";
 import { setupGlobalErrorHandler } from "@/lib/debug/globalErrorHandler";
 import GlobalProvider from "@/lib/global-provider";
+import notificationService from "@/lib/notifications/notificationService";
 import { useFonts } from "expo-font";
 import { SplashScreen, Stack, useRouter } from "expo-router";
+import * as Notifications from 'expo-notifications';
 import { useEffect, useState } from "react";
 import { BackHandler } from "react-native";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -78,6 +80,46 @@ export default function RootLayout() {
       checkAuth();
     }
   }, [fontsLoaded]);
+
+  // Set up notification listeners
+  useEffect(() => {
+    const setupNotifications = () => {
+      // Add notification response listener (when user taps notification)
+      const responseListener = notificationService.addNotificationResponseListener(
+        (response) => {
+          const data = response.notification.request.content.data;
+          
+          if (data?.type === 'event_invite' && data?.eventId) {
+            // Navigate to event details
+            router.push(`/(root)/event/${data.eventId}` as any);
+          } else if (data?.type === 'chat_message' && data?.chatId) {
+            // Navigate to chat
+            router.push(`/(root)/Messages/${data.chatId}` as any);
+          } else if (data?.type === 'friend_request') {
+            // Navigate to invites page
+            router.push('/(root)/Invites' as any);
+          }
+        }
+      );
+
+      // Add notification received listener (when notification arrives)
+      const notificationListener = notificationService.addNotificationListener(
+        (notification) => {
+          console.log('Notification received:', notification);
+          // You can add any custom handling here (e.g., badge updates)
+        }
+      );
+
+      // Cleanup listeners
+      return () => {
+        notificationService.removeNotificationListener(responseListener);
+        notificationService.removeNotificationListener(notificationListener);
+      };
+    };
+
+    const cleanup = setupNotifications();
+    return cleanup;
+  }, [router]);
 
   if (!fontsLoaded || !isAppReady || isAuthenticated === null) return null;
 

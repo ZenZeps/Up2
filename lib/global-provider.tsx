@@ -3,6 +3,7 @@ import { account, getCurrentUserWithProfile } from "./appwrite/appwrite";
 import { useAppwrite } from "./appwrite/useAppwrite";
 import { authDebug } from "./debug/authDebug";
 import { UserProfile } from "./types/Users";
+import notificationService from "./notifications/notificationService";
 
 interface User {
     $id: string;
@@ -43,6 +44,11 @@ export const GlobalProvider = ({ children }: { children: ReactNode }) => {
 
             if (isLoggedIn && user) {
                 authDebug.info(`User authenticated: ${user.$id}`);
+                
+                // Initialize push notifications for authenticated user
+                notificationService.updateUserNotificationToken(user.$id).catch(error => {
+                    console.error('Failed to update notification token:', error);
+                });
             } else {
                 if (error) {
                     authDebug.info(`Not authenticated: ${error}`);
