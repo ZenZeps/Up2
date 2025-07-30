@@ -47,7 +47,9 @@
         {
           "icon": "./assets/images/Up2-Logo.png",
           "color": "#000000",
-          "sounds": ["./assets/sounds/notification.wav"]
+          "sounds": [
+            "./assets/sounds/notification.wav"
+          ]
         }
       ],
       [

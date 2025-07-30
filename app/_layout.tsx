@@ -5,7 +5,6 @@ import GlobalProvider from "@/lib/global-provider";
 import notificationService from "@/lib/notifications/notificationService";
 import { useFonts } from "expo-font";
 import { SplashScreen, Stack, useRouter } from "expo-router";
-import * as Notifications from 'expo-notifications';
 import { useEffect, useState } from "react";
 import { BackHandler } from "react-native";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -88,7 +87,7 @@ export default function RootLayout() {
       const responseListener = notificationService.addNotificationResponseListener(
         (response) => {
           const data = response.notification.request.content.data;
-          
+
           if (data?.type === 'event_invite' && data?.eventId) {
             // Navigate to event details
             router.push(`/(root)/event/${data.eventId}` as any);

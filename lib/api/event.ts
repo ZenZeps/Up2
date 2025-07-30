@@ -3,8 +3,8 @@ import { Event } from "@/lib/types/Events";
 import { ID, Query } from "react-native-appwrite";
 import { authDebug } from "../debug/authDebug";
 import { cacheManager } from "../debug/cacheManager";
-import { getGroupById } from "./group";
 import { sendEventInviteNotification } from "../notifications/notificationUtils";
+import { getGroupById } from "./group";
 import { getUserProfile } from "./user";
 
 // Cache constants
@@ -268,8 +268,8 @@ export async function createEvent(event: Event) {
       try {
         // Get creator's profile to get their name for the notification
         const creatorProfile = await getUserProfile(sanitizedEvent.creatorId);
-        const creatorName = creatorProfile 
-          ? `${creatorProfile.firstName} ${creatorProfile.lastName}`.trim() 
+        const creatorName = creatorProfile
+          ? `${creatorProfile.firstName} ${creatorProfile.lastName}`.trim()
           : 'Someone';
 
         // Send notifications to all invitees
@@ -279,7 +279,7 @@ export async function createEvent(event: Event) {
           creatorName,
           createdEvent.$id
         );
-        
+
         authDebug.info(`Event invite notifications sent to ${sanitizedEvent.inviteeIds.length} users`);
       } catch (notificationError) {
         // Don't fail event creation if notifications fail

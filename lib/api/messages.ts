@@ -1,9 +1,9 @@
 import { config, databases, ID, Query } from '@/lib/appwrite/appwrite';
 import { Chat, Message, MessageInput, MessageThread, MessageWithAuthor } from '@/lib/types/Messages';
+import { sendChatMessageNotification } from '../notifications/notificationUtils';
 import { getOrCreateEventChat, getOrCreateGroupChat } from './chats';
 import { getUserProfilePhotoUrl } from './profilePhoto';
 import { getUserProfile } from './user';
-import { sendChatMessageNotification } from '../notifications/notificationUtils';
 
 /**
  * Create a new message in a chat
@@ -42,13 +42,13 @@ export const createMessage = async (messageInput: MessageInput, authorId: string
 
             // Get sender's profile for notification
             const senderProfile = await getUserProfile(authorId);
-            const senderName = senderProfile 
-                ? `${senderProfile.firstName} ${senderProfile.lastName}`.trim() 
+            const senderName = senderProfile
+                ? `${senderProfile.firstName} ${senderProfile.lastName}`.trim()
                 : 'Someone';
 
             // Get participants based on chat type
             let participantIds: string[] = [];
-            
+
             if (chat.eventId) {
                 // For event chats, get event attendees
                 const event = await databases.getDocument(
