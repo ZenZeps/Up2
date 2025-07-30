@@ -173,13 +173,13 @@ const UserProfile = () => {
             <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
                 {/* Profile Info Section */}
                 <View className="px-4 py-4">
-                    {/* Status Section - Only show if user has a status */}
-                    {userProfile.status && (
+                    {/* About Section - Only show if user has about info */}
+                    {userProfile.about && (
                         <View className="mb-6">
-                            <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>Status</Text>
+                            <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>About</Text>
                             <View className="p-3 rounded-lg" style={{ backgroundColor: colors.surface }}>
                                 <Text className="text-base font-rubik" style={{ color: colors.text }}>
-                                    {userProfile.status}
+                                    {userProfile.about}
                                 </Text>
                             </View>
                         </View>

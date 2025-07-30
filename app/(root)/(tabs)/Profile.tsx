@@ -31,7 +31,7 @@ const Profile = () => {
 
   const [firstName, setFirstName] = useState(user?.profile?.firstName || '');
   const [lastName, setLastName] = useState(user?.profile?.lastName || '');
-  const [status, setStatus] = useState(user?.profile?.status || '');
+  const [about, setAbout] = useState(user?.profile?.about || '');
   const [nationality, setNationality] = useState(user?.profile?.nationality || '');
   const [age, setAge] = useState(user?.profile?.age?.toString() || '');
   const [friends, setFriends] = useState<any[]>([]);
@@ -61,7 +61,7 @@ const Profile = () => {
         if (freshProfile) {
           setFirstName(freshProfile.firstName || '');
           setLastName(freshProfile.lastName || '');
-          setStatus(freshProfile.status || '');
+          setAbout(freshProfile.about || '');
           setNationality(freshProfile.nationality || '');
           setAge(freshProfile.age?.toString() || '');
         }
@@ -92,7 +92,7 @@ const Profile = () => {
     if (user?.profile && (!firstName || !lastName)) {
       setFirstName(user.profile.firstName || '');
       setLastName(user.profile.lastName || '');
-      setStatus(user.profile.status || '');
+      setAbout(user.profile.about || '');
       setNationality(user.profile.nationality || '');
       setAge(user.profile.age?.toString() || '');
     }
@@ -114,7 +114,7 @@ const Profile = () => {
       if (freshProfile) {
         setFirstName(freshProfile.firstName || '');
         setLastName(freshProfile.lastName || '');
-        setStatus(freshProfile.status || '');
+        setAbout(freshProfile.about || '');
         setNationality(freshProfile.nationality || '');
         setAge(freshProfile.age?.toString() || '');
       }
@@ -202,7 +202,7 @@ const Profile = () => {
 
       const updatedProfile = {
         ...user.profile,
-        status: status.trim(),
+        about: about.trim(),
         nationality: nationality.trim(),
         age: age && age.trim() ? parseInt(age.toString()) : undefined,
       };
@@ -276,10 +276,10 @@ const Profile = () => {
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 70 + insets.bottom }} showsVerticalScrollIndicator={false}>
         {/* Profile Info Section */}
         <View className="px-4 py-4">
-          {/* Status Section */}
+          {/* About Section */}
           <View className="mb-6">
             <View className="flex-row items-center justify-between mb-3">
-              <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>Status</Text>
+              <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>About</Text>
               <TouchableOpacity
                 onPress={() => setIsEditing(!isEditing)}
                 className="px-3 py-1 rounded-lg"
@@ -293,9 +293,9 @@ const Profile = () => {
             {isEditing ? (
               <View>
                 <TextInput
-                  value={status}
-                  onChangeText={setStatus}
-                  placeholder="What's on your mind?"
+                  value={about}
+                  onChangeText={setAbout}
+                  placeholder="Tell us about yourself..."
                   placeholderTextColor={colors.textSecondary}
                   className="p-3 rounded-lg border text-base font-rubik"
                   style={{
@@ -317,7 +317,7 @@ const Profile = () => {
             ) : (
               <View className="p-3 rounded-lg" style={{ backgroundColor: colors.surface }}>
                 <Text className="text-base font-rubik" style={{ color: colors.text }}>
-                  {status || "No status set"}
+                  {about || "No about information set"}
                 </Text>
               </View>
             )}

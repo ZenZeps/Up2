@@ -10,6 +10,7 @@ import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Text, TouchableOpacity, View } from 'react-native';
@@ -90,6 +91,7 @@ export default function Home() {
   const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
   const [viewMode, setViewMode] = useState<Mode>('week');
   const [date, setDate] = useState(() => new Date()); // Use function to initialize once
+  const [displayedMonth, setDisplayedMonth] = useState(() => new Date()); // Track the month being displayed
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<AppEvent | null>(null);
   const [startHour] = useState(() => new Date().getHours() - 4); // Initialize once, no setter
@@ -142,6 +144,11 @@ export default function Home() {
   useEffect(() => {
     setCurrentUserId(currentUser?.$id || null);
   }, [currentUser]);
+
+  // Sync displayedMonth with date changes (for better month display tracking)
+  useEffect(() => {
+    setDisplayedMonth(date);
+  }, [date]);
 
   // Get unique creator IDs from events
   const creatorIds = useMemo(() => {
@@ -375,10 +382,10 @@ export default function Home() {
                 bottom: 1,
                 left: 1,
                 right: 1,
-                height: 14,
-                minHeight: 14,
-                maxHeight: 14,
-                top: 28, // Push events down below the date number area
+                height: 12,
+                minHeight: 12,
+                maxHeight: 12,
+                top: 20, // Reduced from 24 to bring events closer to date
               }),
             }
           ]}
@@ -390,7 +397,7 @@ export default function Home() {
             numberOfLines={1}
             style={{
               textAlign: 'center',
-              fontSize: isMonthView ? 10 : 12,
+              fontSize: isMonthView ? 9 : 12,
               color: isMonthView ? colors.background : colors.background, // Use background color (white in dark mode)
               marginBottom: isMonthView ? 0 : -2, // Reduce space below title in week/day view
             }}
@@ -450,12 +457,22 @@ export default function Home() {
   }, []);
 
   // Memoize date change handler to prevent re-renders
-  const handleDateChange = useCallback((dates: any) => {
-    if (Array.isArray(dates)) {
-      setDate(dates[0]);
+  const handleDateChange = useCallback((range: any) => {
+    // The BigCalendar library passes different formats depending on the view mode
+    let newDate: Date;
+    if (range && typeof range === 'object') {
+      if (range.start) {
+        newDate = new Date(range.start);
+      } else if (Array.isArray(range)) {
+        newDate = new Date(range[0]);
+      } else {
+        newDate = new Date(range);
+      }
     } else {
-      setDate(dates);
+      newDate = new Date(range);
     }
+    setDate(newDate);
+    setDisplayedMonth(newDate); // Update the displayed month when date changes
   }, []);
 
   // Handler for editing event
@@ -508,7 +525,9 @@ export default function Home() {
 
   // Memoize button handlers
   const handleTodayPress = useCallback(() => {
-    setDate(new Date());
+    const today = new Date();
+    setDate(today);
+    setDisplayedMonth(today); // Also update the displayed month
   }, []);
 
   const handleCreateEventPress = useCallback(() => {
@@ -570,11 +589,17 @@ export default function Home() {
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
       {/* Header */}
-      <View className="px-0 py-0 border-b" style={{ borderBottomColor: colors.border }}>
-        <Text className="text-2xl font-rubik-semibold text-center" style={{ color: colors.text }}>
+      <LinearGradient
+        colors={['#1a1a1a', '#4a4a4a']}
+        start={[0, 0]}
+        end={[1, 0]}
+        className="flex-row items-center justify-center p-4 border-b"
+        style={{ borderBottomColor: '#333333' }}
+      >
+        <Text className="text-2xl font-rubik-extrabold" style={{ color: '#ffffff' }}>
           UP2
         </Text>
-      </View>
+      </LinearGradient>
 
       {/* Tab Navigation */}
       <View className="flex-row px-4 py-2 border-b" style={{ borderBottomColor: colors.border }}>
@@ -615,26 +640,37 @@ export default function Home() {
           <View className="flex-1">
             {/* Calendar Controls */}
             <View className="flex-row justify-between items-center px-4 py-2" style={{ backgroundColor: colors.surface }}>
-              <View className="flex-row">
-                {viewModes.map((mode) => (
-                  <TouchableOpacity
-                    key={mode}
-                    onPress={() => setViewMode(mode)}
-                    className={`px-3 py-1 mr-2 rounded ${viewMode === mode ? 'bg-black' : ''}`}
-                    style={{
-                      backgroundColor: viewMode === mode ? '#000000' : colors.background,
-                      borderWidth: viewMode === mode ? 0 : 1,
-                      borderColor: colors.border,
-                    }}
-                  >
-                    <Text
-                      className="font-rubik-medium capitalize"
-                      style={{ color: viewMode === mode ? colors.background : colors.text }}
+              <View className="flex-row items-center space-x-6">
+                <View className="flex-row">
+                  {viewModes.map((mode) => (
+                    <TouchableOpacity
+                      key={mode}
+                      onPress={() => setViewMode(mode)}
+                      className={`px-3 py-1 mr-2 rounded ${viewMode === mode ? 'bg-black' : ''}`}
+                      style={{
+                        backgroundColor: viewMode === mode ? '#000000' : colors.background,
+                        borderWidth: viewMode === mode ? 0 : 1,
+                        borderColor: colors.border,
+                      }}
                     >
-                      {mode}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text
+                        className="font-rubik-medium capitalize"
+                        style={{ color: viewMode === mode ? colors.background : colors.text }}
+                      >
+                        {mode}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Month Display */}
+                <Text
+                  key={`${date.getMonth()}-${date.getFullYear()}`}
+                  className="font-rubik-medium text-lg"
+                  style={{ color: colors.text }}
+                >
+                  {date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </Text>
               </View>
 
               <TouchableOpacity onPress={handleTodayPress}>
@@ -662,9 +698,18 @@ export default function Home() {
                   renderEvent={renderEvent}
                   renderCustomDateForMonth={renderCustomDateForMonth}
                   swipeEnabled={true}
-                  overlapOffset={0}
+                  overlapOffset={-6}
                   ampm={false}
                   scrollOffsetMinutes={0}
+                  showTime={false}
+                  theme={{
+                    palette: {
+                      gray: {
+                        '200': 'transparent', // This removes vertical grid lines
+                        '300': colors.border, // Keep horizontal lines
+                      },
+                    },
+                  }}
                   headerContainerStyle={{
                     height: 53,
                     backgroundColor: colors.surface,

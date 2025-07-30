@@ -9,7 +9,7 @@ export interface UserProfile {
     photoId?: string;
     notificationToken?: string;
     notificationsEnabled?: boolean;
-    status?: string;
+    about?: string;
     nationality?: string;
     age?: number;
     createdAt?: string;
