@@ -12,6 +12,21 @@ export interface Group {
     $updatedAt?: string; // Updated timestamp from Appwrite
 }
 
+export interface GroupInvite {
+    $id: string;
+    groupId: string;
+    fromUserId: string; // Who sent the invite
+    toUserId: string;   // Who received the invite
+    status: 'pending' | 'accepted' | 'declined';
+    $createdAt?: string;
+    $updatedAt?: string;
+}
+
+export interface GroupInviteWithDetails extends GroupInvite {
+    groupTitle: string;
+    fromUserName: string;
+}
+
 export interface GroupWithDetails extends Group {
     userCount: number;
     eventCount: number;

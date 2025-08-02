@@ -1,5 +1,5 @@
-import { addUserToGroup, leaveGroup } from '@/lib/api/group';
-import { getUsersByName } from '@/lib/api/user';
+import { sendGroupInvite } from '@/lib/api/group';
+import { getUserProfile } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Group } from '@/lib/types/Groups';
@@ -45,46 +45,67 @@ const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
             return;
         }
 
+        if (!user?.$id) {
+            Alert.alert('Error', 'User not authenticated');
+            return;
+        }
+
         try {
             setLoading(true);
 
-            // Find users by name
-            const users = await getUsersByName(inviteName.trim());
-            if (users.length === 0) {
-                Alert.alert('User Not Found', 'No users found with this name');
+            // Get current user's profile to access their friends list
+            const currentUserProfile = await getUserProfile(user.$id);
+            if (!currentUserProfile || !currentUserProfile.friends || currentUserProfile.friends.length === 0) {
+                Alert.alert('No Friends', 'You need to add friends before inviting them to groups.');
                 return;
             }
 
-            // If multiple users found, show selection
-            if (users.length > 1) {
+            // Search through the user's friends by name
+            const friendsProfiles = await Promise.all(
+                currentUserProfile.friends.map(friendId => getUserProfile(friendId))
+            );
+
+            const matchingFriends = friendsProfiles.filter(friendProfile => {
+                if (!friendProfile) return false;
+                const fullName = `${friendProfile.firstName || ''} ${friendProfile.lastName || ''}`.toLowerCase();
+                const searchTerm = inviteName.toLowerCase().trim();
+                return fullName.includes(searchTerm);
+            });
+
+            if (matchingFriends.length === 0) {
+                Alert.alert('Friend Not Found', 'No friends found with this name. Make sure they are in your friends list.');
+                return;
+            }
+
+            // If multiple friends found, show selection
+            if (matchingFriends.length > 1) {
                 Alert.alert(
-                    'Multiple Users Found',
-                    'Multiple users found with this name. Please be more specific.',
+                    'Multiple Friends Found',
+                    'Multiple friends found with this name. Please be more specific.',
                     [{ text: 'OK' }]
                 );
                 return;
             }
 
-            const userToAdd = users[0];
+            const friendToInvite = matchingFriends[0];
 
-            // Check if user is already in the group
-            if (group.users?.includes(userToAdd.$id)) {
-                Alert.alert('Info', 'This user is already a member of the group');
+            // Check if friend is already in the group
+            if (group.users?.includes(friendToInvite.$id)) {
+                Alert.alert('Info', 'This friend is already a member of the group');
                 return;
             }
 
-            // Add user to group
-            const success = await addUserToGroup(group.$id, userToAdd.$id);
+            // Send group invite instead of directly adding
+            const success = await sendGroupInvite(group.$id, user.$id, friendToInvite.$id);
             if (success) {
-                Alert.alert('Success', `${userToAdd.firstName} ${userToAdd.lastName} has been invited to the group!`);
+                Alert.alert('Success', `Group invite sent to ${friendToInvite.firstName} ${friendToInvite.lastName}!`);
                 setInviteName('');
-                onUpdateGroup();
             } else {
-                Alert.alert('Error', 'Failed to invite user to group');
+                Alert.alert('Error', 'Failed to send group invite. They may already have a pending invite.');
             }
         } catch (error) {
             console.error('Invite friend error:', error);
-            Alert.alert('Error', 'Failed to invite user to group');
+            Alert.alert('Error', 'Failed to send group invite');
         } finally {
             setLoading(false);
         }

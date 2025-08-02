@@ -1,5 +1,6 @@
 import { getEventColor } from '@/constants/categories';
 import { enrichEventsWithGroupNames } from '@/lib/api/event';
+import { getUserGroupInvites } from '@/lib/api/group';
 import { getActiveTravelForUser } from '@/lib/api/travel';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { account } from '@/lib/appwrite/appwrite';
@@ -100,6 +101,7 @@ export default function Home() {
   const [endHour] = useState(() => new Date().getHours() + 4); // Initialize once, no setter
   const [calendarHeight, setCalendarHeight] = useState(0);
   const [userTravelData, setUserTravelData] = useState<TravelAnnouncement[]>([]);
+  const [groupInvites, setGroupInvites] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('calendar');
   const [enrichedEvents, setEnrichedEvents] = useState<AppEvent[]>([]);
   const [messageModalVisible, setMessageModalVisible] = useState(false);
@@ -201,19 +203,39 @@ export default function Home() {
     );
   }, [events, currentUser]);
 
-  // Check for pending invites
+  // Check for pending invites (both event and group invites)
   const hasInvites = useMemo(() => {
     if (!currentUser?.$id || !events || events.length === 0) return false;
 
-    return events.some(event =>
+    // Check for event invites
+    const hasEventInvites = events.some(event =>
       event.creatorId !== currentUser.$id &&
       event.inviteeIds &&
       Array.isArray(event.inviteeIds) &&
       event.inviteeIds.includes(currentUser.$id)
     );
-  }, [events, currentUser]);
 
-  // Enrich events with group names
+    // Check for group invites
+    const hasGroupInvites = groupInvites.length > 0;
+
+    return hasEventInvites || hasGroupInvites;
+  }, [events, currentUser, groupInvites]);
+
+  // Fetch group invites
+  useEffect(() => {
+    const fetchGroupInvites = async () => {
+      if (!currentUser?.$id) return;
+
+      try {
+        const invites = await getUserGroupInvites(currentUser.$id);
+        setGroupInvites(invites);
+      } catch (error) {
+        console.error('Error fetching group invites:', error);
+      }
+    };
+
+    fetchGroupInvites();
+  }, [currentUser]);  // Enrich events with group names
   useEffect(() => {
     const enrichEvents = async () => {
       if (userEvents && userEvents.length > 0) {

@@ -510,3 +510,106 @@ export const addUserToGroup = async (groupId: string, userId: string): Promise<b
         return false;
     }
 };
+
+/**
+ * Send a group invite to a user
+ */
+export const sendGroupInvite = async (groupId: string, fromUserId: string, toUserId: string): Promise<boolean> => {
+    try {
+        // Check if invite already exists
+        const existingInvites = await databases.listDocuments(
+            config.databaseID!,
+            config.groupInvitesCollectionID!,
+            [
+                Query.equal('groupId', groupId),
+                Query.equal('toUserId', toUserId),
+                Query.equal('status', 'pending')
+            ]
+        );
+
+        if (existingInvites.documents.length > 0) {
+            console.log('Group invite already exists');
+            return false;
+        }
+
+        // Create new group invite
+        await databases.createDocument(
+            config.databaseID!,
+            config.groupInvitesCollectionID!,
+            ID.unique(),
+            {
+                groupId,
+                fromUserId,
+                toUserId,
+                status: 'pending'
+            }
+        );
+
+        return true;
+    } catch (error) {
+        console.error('Error sending group invite:', error);
+        return false;
+    }
+};
+
+/**
+ * Get pending group invites for a user
+ */
+export const getUserGroupInvites = async (userId: string) => {
+    try {
+        const invites = await databases.listDocuments(
+            config.databaseID!,
+            config.groupInvitesCollectionID!,
+            [
+                Query.equal('toUserId', userId),
+                Query.equal('status', 'pending')
+            ]
+        );
+
+        return invites.documents;
+    } catch (error) {
+        console.error('Error fetching group invites:', error);
+        return [];
+    }
+};
+
+/**
+ * Accept a group invite
+ */
+export const acceptGroupInvite = async (inviteId: string, groupId: string, userId: string): Promise<boolean> => {
+    try {
+        // Update invite status
+        await databases.updateDocument(
+            config.databaseID!,
+            config.groupInvitesCollectionID!,
+            inviteId,
+            { status: 'accepted' }
+        );
+
+        // Add user to group
+        const success = await addUserToGroup(groupId, userId);
+        return success;
+    } catch (error) {
+        console.error('Error accepting group invite:', error);
+        return false;
+    }
+};
+
+/**
+ * Decline a group invite
+ */
+export const declineGroupInvite = async (inviteId: string): Promise<boolean> => {
+    try {
+        await databases.updateDocument(
+            config.databaseID!,
+            config.groupInvitesCollectionID!,
+            inviteId,
+            { status: 'declined' }
+        );
+
+        return true;
+    } catch (error) {
+        console.error('Error declining group invite:', error);
+        return false;
+    }
+};

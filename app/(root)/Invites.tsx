@@ -1,3 +1,4 @@
+import { acceptGroupInvite, declineGroupInvite, getGroupById, getUserGroupInvites } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
@@ -19,6 +20,7 @@ export default function Invites() {
   const [userId, setUserId] = useState('');
   const router = useRouter();
   const [friendRequests, setFriendRequests] = useState<any[]>([]);
+  const [groupInvites, setGroupInvites] = useState<any[]>([]);
   const [senderPhotoUrls, setSenderPhotoUrls] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
   const { colors } = useTheme();
@@ -121,6 +123,69 @@ export default function Invites() {
     } catch (err) {
       alert('Failed to accept friend request');
       console.error("Accept friend request error:", err);
+    }
+  };
+
+  // Fetch group invites for this user
+  useEffect(() => {
+    const fetchGroupInvites = async () => {
+      if (!userId) return;
+
+      try {
+        const invites = await getUserGroupInvites(userId);
+
+        // Enrich invites with group and sender details
+        const enrichedInvites = await Promise.all(
+          invites.map(async (invite: any) => {
+            const [group, senderProfile] = await Promise.all([
+              getGroupById(invite.groupId),
+              getUserProfile(invite.fromUserId)
+            ]);
+
+            return {
+              ...invite,
+              groupTitle: group?.title || 'Unknown Group',
+              senderName: userDisplayUtils.getFullName(senderProfile || {}, 'Unknown User')
+            };
+          })
+        );
+
+        setGroupInvites(enrichedInvites);
+      } catch (error) {
+        console.error('Error fetching group invites:', error);
+      }
+    };
+
+    fetchGroupInvites();
+  }, [userId]);
+
+  const handleAcceptGroupInvite = async (invite: any) => {
+    try {
+      const success = await acceptGroupInvite(invite.$id, invite.groupId, userId);
+      if (success) {
+        setGroupInvites(prev => prev.filter(i => i.$id !== invite.$id));
+        alert('Group invite accepted!');
+      } else {
+        alert('Failed to accept group invite');
+      }
+    } catch (error) {
+      console.error('Error accepting group invite:', error);
+      alert('Failed to accept group invite');
+    }
+  };
+
+  const handleDeclineGroupInvite = async (invite: any) => {
+    try {
+      const success = await declineGroupInvite(invite.$id);
+      if (success) {
+        setGroupInvites(prev => prev.filter(i => i.$id !== invite.$id));
+        alert('Group invite declined');
+      } else {
+        alert('Failed to decline group invite');
+      }
+    } catch (error) {
+      console.error('Error declining group invite:', error);
+      alert('Failed to decline group invite');
     }
   };
 
@@ -303,6 +368,59 @@ export default function Invites() {
                 ))
               )}
             </View>
+
+            {/* Group Invites Card */}
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardTitleContainer}>
+                  <MaterialIcons name="group" size={20} color={colors.primary} />
+                  <Text style={[styles.cardTitle, { color: colors.text }]}>Group Invites</Text>
+                </View>
+              </View>
+
+              {groupInvites.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="group-add" size={48} color={colors.textSecondary} />
+                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
+                    No group invites yet
+                  </Text>
+                </View>
+              ) : (
+                groupInvites.map((invite) => (
+                  <View key={invite.$id} style={[styles.requestItem, { borderColor: colors.border }]}>
+                    <View style={styles.requestInfo}>
+                      <View style={[styles.groupIcon, { backgroundColor: colors.primary }]}>
+                        <MaterialIcons name="group" size={24} color="white" />
+                      </View>
+                      <View style={styles.requestDetails}>
+                        <Text style={[styles.requestName, { color: colors.text }]}>
+                          {invite.groupTitle}
+                        </Text>
+                        <Text style={[styles.requestLabel, { color: colors.textSecondary }]}>
+                          Invited by {invite.senderName}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.groupInviteActions}>
+                      <TouchableOpacity
+                        onPress={() => handleDeclineGroupInvite(invite)}
+                        style={[styles.declineButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                      >
+                        <MaterialIcons name="close" size={16} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleAcceptGroupInvite(invite)}
+                        style={[styles.acceptButton, { backgroundColor: colors.primary }]}
+                      >
+                        <MaterialIcons name="check" size={16} color="white" />
+                        <Text style={styles.acceptButtonText}>Accept</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
           </ScrollView>
         )}
       </View>
@@ -460,5 +578,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 8,
     flex: 1,
+  },
+  groupIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  groupInviteActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  declineButton: {
+    padding: 8,
+    borderRadius: 20,
+    borderWidth: 1,
   },
 });

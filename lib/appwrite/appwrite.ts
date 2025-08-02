@@ -46,6 +46,7 @@ export const config = {
   travelCollectionID: process.env.EXPO_PUBLIC_APPWRITE_TRAVEL_COLLECTION_ID || "68594f4d0034f9a3bb1b",
   profilePhotosBucketID: process.env.EXPO_PUBLIC_APPWRITE_PROFILE_PHOTOS_BUCKET_ID || "68594f610012a2c5c4d7",
   groupsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_GROUPS_ID || "temp_groups_id",
+  groupInvitesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_GROUP_INVITES_ID || "temp_group_invites_id",
   chatsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_CHATS_ID || "temp_chats_id",
   messagesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_MESSAGES_ID || "temp_messages_id",
 }; const client = new Client()
