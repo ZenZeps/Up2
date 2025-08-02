@@ -6,16 +6,15 @@ import { account, config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { batchProcess, createOptimizedQuery, dbConnectionPool } from '@/lib/utils/dbOptimization';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Image, Linking, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Linking, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import icons from '@/constants/icons';
-import images from '@/constants/images';
 import UserAvatar from '../components/UserAvatar';
 
 import { Event as AppEvent } from '@/lib/types/Events';
@@ -249,131 +248,161 @@ export default function Feed() {
   });
 
   const renderEventItem = ({ item }: { item: AppEvent & { creatorName?: string } }) => (
-    <View className="rounded-lg shadow-md mb-4 mx-4" style={{ backgroundColor: colors.card }}>
+    <View style={[styles.feedCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
       {/* Event Header */}
-      <View className="flex-row items-center p-3">
+      <View style={styles.cardHeader}>
         <UserAvatar
           photoUrl={creatorPhotoUrls[item.creatorId] || null}
           name={item.creatorName}
-          size={40}
-          className="mr-3"
+          size={48}
         />
-        <View>
-          <Text className="font-rubik-semibold text-base" style={{ color: colors.text }}>{item.creatorName || 'Unknown Creator'}</Text>
-          <Text className="text-xs" style={{ color: colors.textSecondary }}>{dayjs(item.startTime).fromNow()}</Text>
+        <View style={styles.headerText}>
+          <Text style={[styles.creatorName, { color: colors.text }]}>
+            {item.creatorName || 'Unknown Creator'}
+          </Text>
+          <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>
+            {dayjs(item.startTime).fromNow()}
+          </Text>
         </View>
+        <TouchableOpacity style={styles.moreButton}>
+          <MaterialIcons name="more-horiz" size={24} color={colors.textSecondary} />
+        </TouchableOpacity>
       </View>
 
       {/* Event Emoji Container */}
-      <View className="w-full h-48 justify-center items-center" style={{ backgroundColor: colors.surface }}>
-        <Text className="text-6xl">{getEventEmoji(item.tags)}</Text>
+      <View style={[styles.emojiContainer, { backgroundColor: colors.surface }]}>
+        <Text style={styles.eventEmoji}>{getEventEmoji(item.tags)}</Text>
       </View>
 
       {/* Event Details */}
-      <View className="p-3">
-        <Text className="font-rubik-bold text-lg mb-1" style={{ color: colors.text }}>{item.title}</Text>
-        <View className="flex-row items-center mb-2">
-          <View className="flex-row items-center mb-2">
-            <Image source={icons.location} className="w-4 h-4 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
+      <View style={styles.cardContent}>
+        <Text style={[styles.eventTitle, { color: colors.text }]}>{item.title}</Text>
+
+        <View style={styles.eventMeta}>
+          <View style={styles.metaRow}>
+            <MaterialIcons name="location-on" size={16} color={colors.primary} />
             <TouchableOpacity onPress={() => openInMaps(item.location)}>
-              <Text className="text-black underline text-sm">{item.location}</Text>
+              <Text style={[styles.metaText, { color: colors.primary, textDecorationLine: 'underline' }]}>
+                {item.location}
+              </Text>
             </TouchableOpacity>
           </View>
+
+          <View style={styles.metaRow}>
+            <MaterialIcons name="access-time" size={16} color={colors.primary} />
+            <Text style={[styles.metaText, { color: colors.textSecondary }]}>
+              {dayjs(item.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(item.endTime).format('h:mm A')}
+            </Text>
+          </View>
         </View>
-        <Text className="text-sm mb-2" style={{ color: colors.textSecondary }}>
-          {dayjs(item.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(item.endTime).format('h:mm A')}
-        </Text>
 
         {/* Display event tags */}
         {item.tags && item.tags.length > 0 && (
-          <View className="flex-row flex-wrap mb-2">
+          <View style={styles.tagsContainer}>
             {getCategoriesByValues(item.tags).map((category) => (
-              <View key={category.value} className="bg-gray-100 px-2 py-1 rounded-full mr-1 mb-1 flex-row items-center">
-                <Text className="text-xs mr-1">{category.emoji}</Text>
-                <Text className="text-xs text-gray-800">{category.label}</Text>
+              <View key={category.value} style={[styles.tag, { backgroundColor: colors.surface }]}>
+                <Text style={styles.tagEmoji}>{category.emoji}</Text>
+                <Text style={[styles.tagText, { color: colors.text }]}>{category.label}</Text>
               </View>
             ))}
           </View>
         )}
 
-        <Text className="text-base" style={{ color: colors.text }}>{item.description}</Text>
+        <Text style={[styles.eventDescription, { color: colors.text }]}>{item.description}</Text>
       </View>
 
       {/* Actions */}
-      <View className="flex-row justify-around p-3" style={{ borderTopWidth: 1, borderTopColor: colors.border }}>
+      <View style={[styles.cardActions, { borderTopColor: colors.border }]}>
         {item.isAttending ? (
           <TouchableOpacity
             onPress={() => handleNotAttend(item)}
-            className="flex-row items-center"
+            style={styles.actionButton}
           >
-            <Image source={icons.people} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
-            <Text className="text-red-500 font-rubik-medium">Not Attending</Text>
+            <MaterialIcons name="event-busy" size={20} color="#FF3B30" />
+            <Text style={[styles.actionText, { color: '#FF3B30' }]}>Not Attending</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
             onPress={() => handleAttend(item)}
-            className="flex-row items-center"
+            style={styles.actionButton}
           >
-            <Image source={icons.people} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
-            <Text className="font-rubik-medium" style={{ color: colors.primary }}>Attend</Text>
+            <MaterialIcons name="event-available" size={20} color={colors.primary} />
+            <Text style={[styles.actionText, { color: colors.primary }]}>Attend</Text>
           </TouchableOpacity>
         )}
+
+        <TouchableOpacity style={styles.actionButton}>
+          <MaterialIcons name="share" size={20} color={colors.textSecondary} />
+          <Text style={[styles.actionText, { color: colors.textSecondary }]}>Share</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
 
   const renderTravelItem = ({ item }: { item: TravelAnnouncementWithUserInfo }) => (
-    <View className="rounded-lg shadow-md mb-4 mx-4" style={{ backgroundColor: colors.card }}>
+    <View style={[styles.feedCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
       {/* Travel Header */}
-      <View className="flex-row items-center p-3">
+      <View style={styles.cardHeader}>
         <UserAvatar
           photoUrl={item.userPhotoUrl}
           name={item.userName}
-          size={40}
-          className="mr-3"
+          size={48}
         />
-        <View>
-          <Text className="font-rubik-semibold text-base" style={{ color: colors.text }}>{item.userName}</Text>
-          <Text className="text-xs" style={{ color: colors.textSecondary }}>{dayjs(item.createdAt).fromNow()}</Text>
+        <View style={styles.headerText}>
+          <Text style={[styles.creatorName, { color: colors.text }]}>{item.userName}</Text>
+          <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>
+            {dayjs(item.createdAt).fromNow()}
+          </Text>
         </View>
+        <TouchableOpacity style={styles.moreButton}>
+          <MaterialIcons name="more-horiz" size={24} color={colors.textSecondary} />
+        </TouchableOpacity>
       </View>
 
       {/* Travel Image - Using a travel/destination placeholder */}
-      <Image
-        source={images.onboarding} // You could add a travel-specific placeholder
-        className="w-full h-48 object-cover"
-      />
+      <View style={[styles.travelImageContainer, { backgroundColor: colors.surface }]}>
+        <MaterialIcons name="flight" size={80} color={colors.primary} />
+      </View>
 
       {/* Travel Details */}
-      <View className="p-3">
-        <View className="flex-row items-center mb-2">
-          <Image source={icons.location} className="w-5 h-5 mr-2" resizeMode="contain" style={{ tintColor: colors.text }} />
-          <Text className="font-rubik-bold text-lg" style={{ color: colors.primary }}>
+      <View style={styles.cardContent}>
+        <View style={styles.travelHeader}>
+          <MaterialIcons name="flight-takeoff" size={20} color={colors.primary} />
+          <Text style={[styles.travelTitle, { color: colors.primary }]}>
             Traveling to {item.destination}
           </Text>
         </View>
 
-        <View className="flex-row items-center mb-2">
-          <Image source={icons.calendar} className="w-4 h-4 mr-2" resizeMode="contain" style={{ tintColor: colors.text }} />
-          <Text className="text-sm" style={{ color: colors.textSecondary }}>
+        <View style={styles.metaRow}>
+          <MaterialIcons name="date-range" size={16} color={colors.primary} />
+          <Text style={[styles.metaText, { color: colors.textSecondary }]}>
             {dayjs(item.startDate).format('MMM D')} - {dayjs(item.endDate).format('MMM D, YYYY')}
           </Text>
         </View>
 
         {item.description && (
-          <Text className="text-base mt-2" style={{ color: colors.text }}>{item.description}</Text>
+          <Text style={[styles.eventDescription, { color: colors.text }]}>{item.description}</Text>
         )}
       </View>
 
       {/* Travel Actions */}
-      <View className="flex-row justify-around p-3" style={{ borderTopWidth: 1, borderTopColor: colors.border }}>
-        <TouchableOpacity className="flex-row items-center">
-          <Image source={icons.heart} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
-          <Text className="font-rubik-medium" style={{ color: colors.primary }}>Like</Text>
+      <View style={[styles.cardActions, { borderTopColor: colors.border }]}>
+        <TouchableOpacity style={styles.actionButton}>
+          <MaterialIcons name="favorite-border" size={20} color={colors.textSecondary} />
+          <Text style={[styles.actionText, { color: colors.textSecondary }]}>Like</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => Alert.alert('Message', 'Messaging feature coming soon!')} className="flex-row items-center">
-          <Image source={icons.chat} className="w-5 h-5 mr-1" resizeMode="contain" style={{ tintColor: colors.text }} />
-          <Text className="font-rubik-medium" style={{ color: colors.primary }}>Message</Text>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => Alert.alert('Message', 'Messaging feature coming soon!')}
+        >
+          <MaterialIcons name="chat-bubble-outline" size={20} color={colors.textSecondary} />
+          <Text style={[styles.actionText, { color: colors.textSecondary }]}>Message</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.actionButton}>
+          <MaterialIcons name="share" size={20} color={colors.textSecondary} />
+          <Text style={[styles.actionText, { color: colors.textSecondary }]}>Share</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -388,32 +417,41 @@ export default function Feed() {
   };
 
   return (
-    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.surface }}>
-      {/* Header */}
-      <LinearGradient
-        colors={['#1a1a1a', '#4a4a4a']}
-        start={[0, 0]}
-        end={[1, 0]}
-        className="flex-row items-center justify-between p-4 border-b"
-        style={{ borderBottomColor: '#333333' }}
-      >
-        <Text className="text-2xl font-rubik-extrabold" style={{ color: '#ffffff' }}>Up2 You</Text>
-        <View className="flex-row space-x-3">
-          <TouchableOpacity onPress={() => setTravelFormVisible(true)} className="p-2">
-            <Image source={icons.location} className="w-8 h-8" resizeMode="contain" style={{ tintColor: '#ffffff' }} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setFormVisible(true)} className="p-2">
-            <Image source={icons.edit} className="w-8 h-8" resizeMode="contain" style={{ tintColor: '#ffffff' }} />
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Enhanced Header with Black Gradient */}
+      <View style={styles.header}>
+        <LinearGradient
+          colors={['#000000', '#1a1a1a', '#2d2d2d']}
+          start={[0, 0]}
+          end={[1, 1]}
+          style={styles.headerGradient}
+        >
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>Up2 You</Text>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                onPress={() => setTravelFormVisible(true)}
+                style={styles.headerButton}
+              >
+                <MaterialIcons name="flight" size={24} color="white" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setFormVisible(true)}
+                style={styles.headerButton}
+              >
+                <MaterialIcons name="add" size={24} color="white" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </LinearGradient>
+      </View>
 
       {/* Event Feed with Pull-to-Refresh for scalability */}
       <FlatList
         data={feedItems}
         keyExtractor={(item) => `${item.type}-${item.$id}`}
         renderItem={renderFeedItem}
-        contentContainerStyle={{ paddingVertical: 16, paddingBottom: 70 + insets.bottom }}
+        contentContainerStyle={[styles.feedContent, { paddingBottom: 70 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -453,3 +491,162 @@ export default function Feed() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+  },
+  headerGradient: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  headerButton: {
+    padding: 8,
+    borderRadius: 8,
+  },
+  feedContent: {
+    paddingVertical: 16,
+  },
+  feedCard: {
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  headerText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  creatorName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  timeAgo: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  moreButton: {
+    padding: 4,
+  },
+  emojiContainer: {
+    width: '100%',
+    height: 200,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  eventEmoji: {
+    fontSize: 80,
+  },
+  travelImageContainer: {
+    width: '100%',
+    height: 200,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardContent: {
+    padding: 16,
+  },
+  eventTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  eventMeta: {
+    marginBottom: 12,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  metaText: {
+    fontSize: 14,
+    marginLeft: 8,
+    flex: 1,
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 12,
+  },
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 16,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  tagEmoji: {
+    fontSize: 12,
+    marginRight: 4,
+  },
+  tagText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  eventDescription: {
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  travelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  travelTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  actionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+});

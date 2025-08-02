@@ -1,10 +1,13 @@
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
+import { useTheme } from '@/lib/context/ThemeContext';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { MaterialIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Query } from 'react-native-appwrite';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import UserAvatar from './components/UserAvatar';
@@ -17,6 +20,8 @@ export default function Invites() {
   const router = useRouter();
   const [friendRequests, setFriendRequests] = useState<any[]>([]);
   const [senderPhotoUrls, setSenderPhotoUrls] = useState<Record<string, string | null>>({});
+  const [loading, setLoading] = useState(true);
+  const { colors } = useTheme();
 
 
   // Fetch current user ID
@@ -34,31 +39,38 @@ export default function Invites() {
       if (!userId) {
         return; // Early return if no userId
       }
-      const res = await databases.listDocuments(
-        config.databaseID!,
-        config.friendRequestsCollectionID,
-        [Query.equal('to', userId), Query.equal('status', 'pending')]
-      );
-      const requestsWithSenderNames = await Promise.all(
-        res.documents.map(async (req) => {
-          const senderProfile = await getUserProfile(req.from);
-          return { ...req, senderName: userDisplayUtils.getFullName(senderProfile || {}, 'Unknown User') };
-        })
-      );
-      setFriendRequests(requestsWithSenderNames);
+      try {
+        setLoading(true);
+        const res = await databases.listDocuments(
+          config.databaseID!,
+          config.friendRequestsCollectionID,
+          [Query.equal('to', userId), Query.equal('status', 'pending')]
+        );
+        const requestsWithSenderNames = await Promise.all(
+          res.documents.map(async (req) => {
+            const senderProfile = await getUserProfile(req.from);
+            return { ...req, senderName: userDisplayUtils.getFullName(senderProfile || {}, 'Unknown User') };
+          })
+        );
+        setFriendRequests(requestsWithSenderNames);
 
-      // Fetch profile photos for senders
-      const photoUrls: Record<string, string | null> = {};
-      for (const req of res.documents) {
-        try {
-          const photoUrl = await getUserProfilePhotoUrl(req.from);
-          photoUrls[req.from] = photoUrl;
-        } catch (error) {
-          console.error(`Error fetching photo for sender ${req.from}:`, error);
-          photoUrls[req.from] = null;
+        // Fetch profile photos for senders
+        const photoUrls: Record<string, string | null> = {};
+        for (const req of res.documents) {
+          try {
+            const photoUrl = await getUserProfilePhotoUrl(req.from);
+            photoUrls[req.from] = photoUrl;
+          } catch (error) {
+            console.error(`Error fetching photo for sender ${req.from}:`, error);
+            photoUrls[req.from] = null;
+          }
         }
+        setSenderPhotoUrls(photoUrls);
+      } catch (error) {
+        console.error('Error fetching friend requests:', error);
+      } finally {
+        setLoading(false);
       }
-      setSenderPhotoUrls(photoUrls);
     };
     fetchFriendRequests();
   }, [userId]);
@@ -138,90 +150,315 @@ export default function Invites() {
   }, [invites]);
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <View className="px-5 pt-5 flex-1">
-        {/* Header */}
-        <View className="flex-row items-center justify-between mb-6">
-          <TouchableOpacity onPress={() => router.push('/(root)/(tabs)/Explore')}>
-            <Text className="text-lg font-rubik-medium text-blue-500">Back</Text>
-          </TouchableOpacity>
-          <Text className="text-xl font-rubik-semibold">Invites</Text>
-          <View className="w-12 h-6" />{/* Spacer to balance header */}
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.content}>
+        {/* Enhanced Header with Black Gradient */}
+        <View style={styles.header}>
+          <LinearGradient
+            colors={['#000000', '#1a1a1a', '#2d2d2d']}
+            start={[0, 0]}
+            end={[1, 1]}
+            style={styles.headerGradient}
+          >
+            <View style={styles.headerContent}>
+              <TouchableOpacity
+                onPress={() => router.push('/(root)/(tabs)/Explore')}
+                style={styles.backButton}
+              >
+                <MaterialIcons name="arrow-back" size={20} color="white" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Invites</Text>
+              <View style={styles.headerSpacer} />
+            </View>
+          </LinearGradient>
         </View>
 
-        <ScrollView className="flex-1">
-          {/* Friend Requests */}
-          <Text className="text-lg font-rubik-semibold mb-4">Friend Requests</Text>
-          {friendRequests.length === 0 ? (
-            <Text className="text-gray-500 mb-4 text-center font-rubik">No friend requests.</Text>
-          ) : (
-            friendRequests.map((req) => (
-              <View key={req.$id} className="flex-row items-center justify-between bg-white p-3 rounded-lg shadow-sm mb-3 border border-gray-100">
-                <View className="flex-row items-center">
-                  <UserAvatar
-                    photoUrl={senderPhotoUrls[req.from]}
-                    name={req.senderName}
-                    size={40}
-                    className="mr-3"
-                  />
-                  <Text className="text-base font-rubik-medium text-gray-800">{req.senderName}</Text>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : (
+          <ScrollView
+            style={styles.scrollContainer}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Friend Requests Card */}
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardTitleContainer}>
+                  <MaterialIcons name="person-add" size={20} color={colors.primary} />
+                  <Text style={[styles.cardTitle, { color: colors.text }]}>Friend Requests</Text>
                 </View>
-                <TouchableOpacity
-                  onPress={() => handleAcceptFriendRequest(req)}
-                  className="bg-primary-300 px-4 py-2 rounded-full shadow-sm"
-                >
-                  <Text className="text-white font-rubik-medium text-sm">Accept</Text>
-                </TouchableOpacity>
               </View>
-            ))
-          )}
 
-          {/* Event Invites */}
-          <Text className="text-lg font-rubik-semibold mt-6 mb-4">Event Invites</Text>
-          {invitesWithCreatorNames.length === 0 ? (
-            <Text className="text-gray-500 mt-4 text-center font-rubik">No event invites yet.</Text>
-          ) : (
-            invitesWithCreatorNames.map((event) => (
-              <View
-                key={event.$id}
-                className="bg-white p-4 rounded-lg shadow-sm mb-3 border border-gray-100"
-              >
-                <Text className="text-sm font-rubik text-gray-600 mb-1">Invite from: {event.creatorName}</Text>
-                <Text className="text-lg font-rubik-semibold text-gray-900 mb-1">{event.title}</Text>
-                <Text className="text-sm font-rubik text-gray-600">{event.location}</Text>
-                <Text className="text-xs font-rubik text-gray-500 mt-1">
-                  {new Date(event.startTime).toLocaleString()} - {new Date(event.endTime).toLocaleString()}
-                </Text>
-                <TouchableOpacity
-                  className="bg-primary-300 px-4 py-2 rounded-full shadow-sm mt-3 self-start"
-                  onPress={async () => {
-                    try {
-                      // Remove userId from inviteeIds, add to attendingIds
-                      const updatedInvitees = event.inviteeIds.filter((id: string) => id !== userId);
-                      const updatedAttendees = [...(event.attendees || []), userId];
-                      await databases.updateDocument(
-                        config.databaseID!,
-                        config.eventsCollectionID!,
-                        event.$id,
-                        { inviteeIds: updatedInvitees, attendees: updatedAttendees }
-                      );
-                      if (typeof refetchEvents === 'function') {
-                        await refetchEvents();
-                      }
-                      alert('Event invite accepted!');
-                    } catch (err) {
-                      console.error("Error accepting event invite:", err);
-                      alert('Failed to accept event invite');
-                    }
-                  }}
-                >
-                  <Text className="text-white font-rubik-medium text-sm">Accept</Text>
-                </TouchableOpacity>
+              {friendRequests.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="people-outline" size={48} color={colors.textSecondary} />
+                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
+                    No friend requests
+                  </Text>
+                </View>
+              ) : (
+                friendRequests.map((req) => (
+                  <View key={req.$id} style={[styles.requestItem, { borderColor: colors.border }]}>
+                    <View style={styles.requestInfo}>
+                      <UserAvatar
+                        photoUrl={senderPhotoUrls[req.from]}
+                        name={req.senderName}
+                        size={56}
+                      />
+                      <View style={styles.requestDetails}>
+                        <Text style={[styles.requestName, { color: colors.text }]}>
+                          {req.senderName}
+                        </Text>
+                        <Text style={[styles.requestLabel, { color: colors.textSecondary }]}>
+                          Wants to be friends
+                        </Text>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => handleAcceptFriendRequest(req)}
+                      style={[styles.acceptButton, { backgroundColor: colors.primary }]}
+                    >
+                      <MaterialIcons name="check" size={16} color="white" />
+                      <Text style={styles.acceptButtonText}>Accept</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </View>
+
+            {/* Event Invites Card */}
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardTitleContainer}>
+                  <MaterialIcons name="event" size={20} color={colors.primary} />
+                  <Text style={[styles.cardTitle, { color: colors.text }]}>Event Invites</Text>
+                </View>
               </View>
-            ))
-          )}
-        </ScrollView>
+
+              {invitesWithCreatorNames.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="event-available" size={48} color={colors.textSecondary} />
+                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
+                    No event invites yet
+                  </Text>
+                </View>
+              ) : (
+                invitesWithCreatorNames.map((event) => (
+                  <View key={event.$id} style={[styles.eventItem, { borderColor: colors.border }]}>
+                    <View style={styles.eventHeader}>
+                      <Text style={[styles.eventTitle, { color: colors.text }]}>
+                        {event.title}
+                      </Text>
+                      <Text style={[styles.eventCreator, { color: colors.textSecondary }]}>
+                        by {event.creatorName}
+                      </Text>
+                    </View>
+
+                    <View style={styles.eventDetails}>
+                      <View style={styles.eventDetailRow}>
+                        <MaterialIcons name="location-on" size={16} color={colors.primary} />
+                        <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
+                          {event.location}
+                        </Text>
+                      </View>
+                      <View style={styles.eventDetailRow}>
+                        <MaterialIcons name="access-time" size={16} color={colors.primary} />
+                        <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
+                          {new Date(event.startTime).toLocaleDateString()} at {new Date(event.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[styles.acceptButton, { backgroundColor: colors.primary, alignSelf: 'flex-start' }]}
+                      onPress={async () => {
+                        try {
+                          // Remove userId from inviteeIds, add to attendingIds
+                          const updatedInvitees = event.inviteeIds.filter((id: string) => id !== userId);
+                          const updatedAttendees = [...(event.attendees || []), userId];
+                          await databases.updateDocument(
+                            config.databaseID!,
+                            config.eventsCollectionID!,
+                            event.$id,
+                            { inviteeIds: updatedInvitees, attendees: updatedAttendees }
+                          );
+                          if (typeof refetchEvents === 'function') {
+                            await refetchEvents();
+                          }
+                          // Remove from local state
+                          setInvitesWithCreatorNames(prev => prev.filter(e => e.$id !== event.$id));
+                        } catch (err) {
+                          console.error("Error accepting event invite:", err);
+                        }
+                      }}
+                    >
+                      <MaterialIcons name="check" size={16} color="white" />
+                      <Text style={styles.acceptButtonText}>Accept</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </View>
+          </ScrollView>
+        )}
       </View>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+  },
+  header: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+  },
+  headerGradient: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backButton: {
+    padding: 8,
+    borderRadius: 8,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  headerSpacer: {
+    width: 36,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 32,
+  },
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  cardHeader: {
+    marginBottom: 16,
+  },
+  cardTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  requestItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 16,
+    marginBottom: 16,
+    borderBottomWidth: 1,
+  },
+  requestInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  requestDetails: {
+    marginLeft: 16,
+    flex: 1,
+  },
+  requestName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  requestLabel: {
+    fontSize: 14,
+    marginTop: 2,
+  },
+  acceptButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginLeft: 12,
+  },
+  acceptButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'white',
+    marginLeft: 4,
+  },
+  eventItem: {
+    paddingBottom: 16,
+    marginBottom: 16,
+    borderBottomWidth: 1,
+  },
+  eventHeader: {
+    marginBottom: 12,
+  },
+  eventTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  eventCreator: {
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  eventDetails: {
+    marginBottom: 12,
+  },
+  eventDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  eventDetailText: {
+    fontSize: 14,
+    marginLeft: 8,
+    flex: 1,
+  },
+});

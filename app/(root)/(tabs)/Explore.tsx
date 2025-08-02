@@ -1,10 +1,10 @@
-import icons from '@/constants/icons';
 import { enrichEventsWithGroupNames } from '@/lib/api/event';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getAllUsers, getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -12,9 +12,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Linking,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -295,247 +295,564 @@ const Explore = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
-      <View className="flex-1">
-        {/* Header */}
-        <LinearGradient
-          colors={['#1a1a1a', '#4a4a4a']}
-          start={[0, 0]}
-          end={[1, 0]}
-          className="flex-row items-center justify-between p-4 border-b"
-          style={{ borderBottomColor: '#333333' }}
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.content}>
+        {/* Enhanced Header with Black Gradient */}
+        <View style={styles.header}>
+          <LinearGradient
+            colors={['#000000', '#1a1a1a', '#2d2d2d']}
+            start={[0, 0]}
+            end={[1, 1]}
+            style={styles.headerGradient}
+          >
+            <View style={styles.headerContent}>
+              <View style={styles.profileSection}>
+                <UserAvatar
+                  photoUrl={currentUserPhotoUrl}
+                  firstName={profile?.firstName}
+                  lastName={profile?.lastName}
+                  name={userDisplayUtils.getFullName(profile, 'User')}
+                  size={48}
+                />
+                <View style={styles.welcomeSection}>
+                  <Text style={styles.welcomeText}>Welcome back,</Text>
+                  <Text style={styles.headerUserName}>{userDisplayUtils.getFullName(profile, 'User')}</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => router.push('/Invites')}
+                style={styles.notificationButton}
+              >
+                <MaterialIcons
+                  name="notifications"
+                  size={24}
+                  color={hasInvites ? '#FF3B30' : 'white'}
+                />
+                {hasInvites && (
+                  <View style={styles.notificationDot} />
+                )}
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        </View>
+
+        <ScrollView
+          style={styles.scrollContainer}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 70 + insets.bottom }]}
+          showsVerticalScrollIndicator={false}
         >
-          <View className="flex-row items-center">
-            <UserAvatar
-              photoUrl={currentUserPhotoUrl}
-              firstName={profile?.firstName}
-              lastName={profile?.lastName}
-              name={userDisplayUtils.getFullName(profile, 'User')}
-              size={48}
-            />
-            <View className="ml-3">
-              <Text className="text-base font-rubik-medium" style={{ color: '#ffffff', opacity: 0.8 }}>Welcome back,</Text>
-              <Text className="text-xl font-rubik-semibold" style={{ color: '#ffffff' }}>{userDisplayUtils.getFullName(profile, 'User')}</Text>
+          {/* Mode Selection Card */}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardTitleContainer}>
+                <MaterialIcons name="explore" size={20} color={colors.primary} />
+                <Text style={[styles.cardTitle, { color: colors.text }]}>Explore</Text>
+              </View>
+            </View>
+            <View style={styles.modeToggle}>
+              <TouchableOpacity
+                onPress={() => setMode('events')}
+                style={[
+                  styles.modeButton,
+                  {
+                    backgroundColor: mode === 'events' ? colors.primary : colors.background,
+                    borderColor: colors.border,
+                  }
+                ]}
+              >
+                <MaterialIcons
+                  name="event"
+                  size={18}
+                  color={mode === 'events' ? 'white' : colors.text}
+                />
+                <Text
+                  style={[
+                    styles.modeButtonText,
+                    { color: mode === 'events' ? 'white' : colors.text }
+                  ]}
+                >
+                  Events
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setMode('users')}
+                style={[
+                  styles.modeButton,
+                  {
+                    backgroundColor: mode === 'users' ? colors.primary : colors.background,
+                    borderColor: colors.border,
+                  }
+                ]}
+              >
+                <MaterialIcons
+                  name="people"
+                  size={18}
+                  color={mode === 'users' ? 'white' : colors.text}
+                />
+                <Text
+                  style={[
+                    styles.modeButtonText,
+                    { color: mode === 'users' ? 'white' : colors.text }
+                  ]}
+                >
+                  Users
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setMode('groups')}
+                style={[
+                  styles.modeButton,
+                  {
+                    backgroundColor: mode === 'groups' ? colors.primary : colors.background,
+                    borderColor: colors.border,
+                  }
+                ]}
+              >
+                <MaterialIcons
+                  name="group"
+                  size={18}
+                  color={mode === 'groups' ? 'white' : colors.text}
+                />
+                <Text
+                  style={[
+                    styles.modeButtonText,
+                    { color: mode === 'groups' ? 'white' : colors.text }
+                  ]}
+                >
+                  Groups
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
-          <TouchableOpacity onPress={() => router.push('/Invites')} className="relative p-2">
-            <Image
-              source={icons.bell}
-              className="w-8 h-8"
-              style={{ tintColor: hasInvites ? '#FF3B30' : '#ffffff' }}
-            />
-            {hasInvites && (
-              <View className="absolute -top-1 -right-1 bg-red-500 rounded-full w-3 h-3 items-center justify-center">
-                <Text className="text-white text-xs"></Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </LinearGradient>
 
-        <View className="px-5 pt-5 flex-1">
-          {/* Toggle Buttons */}
-          <View className="flex-row mb-6">
-            <TouchableOpacity
-              onPress={() => setMode('events')}
-              className="flex-1 items-center py-3 rounded-lg mx-1"
-              style={{
-                backgroundColor: mode === 'events' ? '#000000' : colors.surface
-              }}
-            >
-              <Text
-                className="text-lg font-rubik-medium"
-                style={{
-                  color: mode === 'events' ? colors.background : colors.text
-                }}
-              >
-                Events
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setMode('users')}
-              className="flex-1 items-center py-3 rounded-lg mx-1"
-              style={{
-                backgroundColor: mode === 'users' ? '#000000' : colors.surface
-              }}
-            >
-              <Text
-                className="text-lg font-rubik-medium"
-                style={{
-                  color: mode === 'users' ? colors.background : colors.text
-                }}
-              >
-                Users
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setMode('groups')}
-              className="flex-1 items-center py-3 rounded-lg mx-1"
-              style={{
-                backgroundColor: mode === 'groups' ? '#000000' : colors.surface
-              }}
-            >
-              <Text
-                className="text-lg font-rubik-medium"
-                style={{
-                  color: mode === 'groups' ? colors.background : colors.text
-                }}
-              >
-                Groups
-              </Text>
-            </TouchableOpacity>
+          {/* Search Card */}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.searchContainer}>
+              <MaterialIcons name="search" size={20} color={colors.textSecondary} />
+              <TextInput
+                placeholder={`Search ${mode}...`}
+                value={query}
+                onChangeText={setQuery}
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
           </View>
 
-          {/* Search Bar */}
-          <View className="flex-row items-center rounded-xl px-4 py-3 mb-6 border" style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
-            <Image source={icons.search} className="w-5 h-5 mr-3" resizeMode="contain" style={{ tintColor: colors.textSecondary }} />
-            <TextInput
-              placeholder={`Search ${mode}...`}
-              value={query}
-              onChangeText={setQuery}
-              className="flex-1 text-base font-rubik"
-              style={{ color: colors.text }}
-              placeholderTextColor={colors.textSecondary}
-            />
-          </View>
-
-          {/* Main content: Users or Events list */}
-          <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 70 + insets.bottom }}>
-            {loading ? (
-              <ActivityIndicator size="large" color="#0061FF" className="mt-10" />
-            ) : mode === 'users' ? (
-              query.trim() ? (
-                filteredUsers.length > 0 ? (
-                  filteredUsers.map((user) => {
-                    const isFriend = friends.includes(user.$id);
-                    return (
-                      <View
-                        key={user.$id}
-                        className="flex-row items-center justify-between p-4 rounded-lg shadow-sm mb-3 border"
-                        style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          {/* Content based on mode */}
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : mode === 'users' ? (
+            query.trim() ? (
+              filteredUsers.length > 0 ? (
+                filteredUsers.map((user) => {
+                  const isFriend = friends.includes(user.$id);
+                  return (
+                    <View key={user.$id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <TouchableOpacity
+                        onPress={() => router.push(`/(root)/UserProfile/${user.$id}` as any)}
+                        style={styles.userItem}
                       >
-                        <TouchableOpacity
-                          className="flex-row items-center flex-1 mr-2"
-                          onPress={() => router.push(`/(root)/UserProfile/${user.$id}` as any)}
-                        >
+                        <View style={styles.userInfo}>
                           <UserAvatar
                             photoUrl={userPhotoUrls[user.$id]}
                             firstName={user.firstName}
                             lastName={user.lastName}
                             name={userDisplayUtils.getFullName(user)}
-                            size={40}
-                            className="mr-3"
+                            size={56}
                           />
-                          <Text
-                            className="text-lg font-rubik-medium"
-                            style={{ color: isFriend ? colors.primary : colors.text }}
-                          >
-                            {userDisplayUtils.getFullName(user)}
-                          </Text>
-                        </TouchableOpacity>
-                        {isFriend ? (
-                          <TouchableOpacity
-                            onPress={() => handleDeleteFriend(user.$id)}
-                            className="px-4 py-2 rounded-full shadow-sm min-w-[80px]"
-                            style={{ backgroundColor: colors.textSecondary }}
-                          >
-                            <Text className="font-rubik-medium text-sm text-center" style={{ color: colors.background }}>Remove</Text>
-                          </TouchableOpacity>
-                        ) : (
-                          <TouchableOpacity
-                            onPress={() => {
-                              if (requestedUsers.includes(user.$id)) {
-                                handleCancelFriendRequest(user.$id);
-                              } else {
-                                handleSendFriendRequest(user.$id);
-                              }
-                            }}
-                            className="px-4 py-2 rounded-full shadow-sm min-w-[80px]"
-                            style={{
-                              backgroundColor: requestedUsers.includes(user.$id) ? colors.surface : colors.primary
-                            }}
-                          >
-                            <Text
-                              className="font-rubik-medium text-sm text-center"
-                              style={{
-                                color: requestedUsers.includes(user.$id) ? colors.text : colors.background
-                              }}
-                            >
-                              {requestedUsers.includes(user.$id) ? 'Pending' : 'Add'}
+                          <View style={styles.userDetails}>
+                            <Text style={[styles.userName, { color: isFriend ? colors.primary : colors.text }]}>
+                              {userDisplayUtils.getFullName(user)}
                             </Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    );
-                  })
-                ) : (
-                  <Text className="mt-4 text-center font-rubik" style={{ color: colors.textSecondary }}>No users found</Text>
-                )
+                            <Text style={[styles.userBio, { color: colors.textSecondary }]} numberOfLines={1}>
+                              {user.bio || 'No bio available'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.userActions}>
+                          {isFriend ? (
+                            <TouchableOpacity
+                              onPress={() => handleDeleteFriend(user.$id)}
+                              style={[styles.actionButton, { backgroundColor: colors.textSecondary }]}
+                            >
+                              <MaterialIcons name="person-remove" size={16} color={colors.background} />
+                              <Text style={[styles.actionButtonText, { color: colors.background }]}>
+                                Remove
+                              </Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity
+                              onPress={() => {
+                                if (requestedUsers.includes(user.$id)) {
+                                  handleCancelFriendRequest(user.$id);
+                                } else {
+                                  handleSendFriendRequest(user.$id);
+                                }
+                              }}
+                              style={[
+                                styles.actionButton,
+                                {
+                                  backgroundColor: requestedUsers.includes(user.$id) ? colors.background : colors.primary,
+                                  borderWidth: requestedUsers.includes(user.$id) ? 1 : 0,
+                                  borderColor: colors.border,
+                                }
+                              ]}
+                            >
+                              <MaterialIcons
+                                name={requestedUsers.includes(user.$id) ? "hourglass-empty" : "person-add"}
+                                size={16}
+                                color={requestedUsers.includes(user.$id) ? colors.text : 'white'}
+                              />
+                              <Text
+                                style={[
+                                  styles.actionButtonText,
+                                  {
+                                    color: requestedUsers.includes(user.$id) ? colors.text : 'white'
+                                  }
+                                ]}
+                              >
+                                {requestedUsers.includes(user.$id) ? 'Pending' : 'Add'}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })
               ) : (
-                /* Default message when no search query */
-                <View className="items-center py-8">
-                  <Text className="text-lg font-rubik-semibold mb-4" style={{ color: colors.text }}>
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={styles.emptyState}>
+                    <MaterialIcons name="person-search" size={48} color={colors.textSecondary} />
+                    <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No users found</Text>
+                  </View>
+                </View>
+              )
+            ) : (
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="people" size={48} color={colors.primary} />
+                  <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>
                     Find Friends
                   </Text>
-                  <Text className="text-center font-rubik mb-6" style={{ color: colors.textSecondary }}>
+                  <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8 }]}>
                     Use the search bar above to discover and connect with other users in your community
                   </Text>
                 </View>
-              )
-            ) : mode === 'events' ? (
-              filteredEvents.length > 0 ? (
-                filteredEvents.map((event) => (
+              </View>
+            )
+          ) : mode === 'events' ? (
+            filteredEvents.length > 0 ? (
+              filteredEvents.map((event) => (
+                <View key={event.$id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <TouchableOpacity
-                    key={event.$id}
-                    className="p-4 rounded-lg shadow-sm mb-3 border"
-                    style={{ backgroundColor: colors.card, borderColor: colors.border }}
                     onPress={() => router.push(`/event/${event.$id}`)}
+                    style={styles.eventItem}
                   >
-                    <View className="flex-row justify-between items-center mb-1">
-                      <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>{event.title}</Text>
-                      <Text className="text-xs font-rubik" style={{ color: colors.textSecondary }}>{event.creatorName}</Text>
-                    </View>
-                    {event.groupName && (
-                      <View className="mb-1">
-                        <Text className="text-sm font-rubik" style={{ color: colors.primary }}>
-                          📋 {event.groupName}
+                    <Text style={[styles.eventTitle, { color: colors.text }]}>
+                      {event.title}
+                    </Text>
+                    <View style={styles.eventDetails}>
+                      <View style={styles.eventDetailRow}>
+                        <MaterialIcons name="person" size={16} color={colors.primary} />
+                        <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
+                          {event.creatorName}
                         </Text>
                       </View>
-                    )}
-                    <Text className="text-sm font-rubik" style={{ color: colors.textSecondary }}>
-                      <TouchableOpacity onPress={() => openInMaps(event.location)}>
-                        <Text className="underline" style={{ color: '#000000' }}>{event.location}</Text>
-                      </TouchableOpacity>
-                    </Text>
-                    <Text className="text-xs font-rubik mt-1" style={{ color: colors.textSecondary }}>
-                      {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
+                      {event.groupName && (
+                        <View style={styles.eventDetailRow}>
+                          <MaterialIcons name="group" size={16} color={colors.primary} />
+                          <Text style={[styles.eventDetailText, { color: colors.primary }]}>
+                            {event.groupName}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.eventDetailRow}>
+                        <MaterialIcons name="location-on" size={16} color={colors.primary} />
+                        <TouchableOpacity onPress={() => openInMaps(event.location)}>
+                          <Text style={[styles.eventDetailText, { color: '#000000', textDecorationLine: 'underline' }]}>
+                            {event.location}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                      <View style={styles.eventDetailRow}>
+                        <MaterialIcons name="access-time" size={16} color={colors.primary} />
+                        <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
+                          {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.eventDescription, { color: colors.text }]} numberOfLines={2}>
+                      {event.description}
                     </Text>
                   </TouchableOpacity>
-                ))
-              ) : (
-                <Text className="mt-4 text-center font-rubik" style={{ color: colors.textSecondary }}>No events found</Text>
-              )
+                </View>
+              ))
             ) : (
-              /* Groups mode */
-              <View className="items-center py-8">
-                <Text className="text-lg font-rubik-semibold mb-4" style={{ color: colors.text }}>
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="event" size={48} color={colors.textSecondary} />
+                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No events found</Text>
+                </View>
+              </View>
+            )
+          ) : (
+            // Groups mode
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.emptyState}>
+                <MaterialIcons name="group-add" size={48} color={colors.primary} />
+                <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>
                   Create Groups
                 </Text>
-                <Text className="text-center font-rubik mb-6" style={{ color: colors.textSecondary }}>
+                <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8, marginBottom: 16 }]}>
                   Start your own group and bring together people who share your interests and passions
                 </Text>
                 <TouchableOpacity
                   onPress={() => router.push('/CreateGroup')}
-                  className="bg-black px-6 py-3 rounded-lg"
+                  style={[styles.actionButton, { backgroundColor: '#000000' }]}
                 >
-                  <Text className="text-white font-rubik-medium">Create Group</Text>
+                  <MaterialIcons name="add" size={16} color="white" />
+                  <Text style={[styles.actionButtonText, { color: 'white' }]}>Create Group</Text>
                 </TouchableOpacity>
               </View>
-            )}
-          </ScrollView>
-        </View>
+            </View>
+          )}
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+  },
+  header: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+  },
+  headerGradient: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  profileSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  welcomeSection: {
+    marginLeft: 12,
+  },
+  welcomeText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#ffffff',
+    opacity: 0.8,
+  },
+  headerUserName: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  notificationButton: {
+    position: 'relative',
+    padding: 8,
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: '#FF3B30',
+    borderRadius: 6,
+    width: 12,
+    height: 12,
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  cardHeader: {
+    marginBottom: 16,
+  },
+  cardTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  modeToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 12,
+    padding: 4,
+  },
+  modeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginHorizontal: 2,
+    borderWidth: 1,
+  },
+  modeButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    marginLeft: 12,
+    fontFamily: 'Rubik-Regular',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    marginTop: 40,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 12,
+  },
+  userItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  userDetails: {
+    marginLeft: 16,
+    flex: 1,
+  },
+  userName: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  userBio: {
+    fontSize: 14,
+    marginTop: 2,
+  },
+  userActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  groupItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  groupInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  groupAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  groupAvatarText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: 'white',
+  },
+  groupDetails: {
+    flex: 1,
+  },
+  groupName: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  groupDescription: {
+    fontSize: 14,
+    marginTop: 2,
+  },
+  eventItem: {
+    paddingVertical: 4,
+  },
+  eventTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  eventDetails: {
+    marginBottom: 8,
+  },
+  eventDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  eventDetailText: {
+    fontSize: 14,
+    marginLeft: 8,
+  },
+  eventDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+});
 
 export default Explore;
