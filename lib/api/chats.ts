@@ -116,3 +116,18 @@ export const deleteChat = async (chatId: string): Promise<void> => {
         throw error;
     }
 };
+
+/**
+ * Get messages for a group chat with author details
+ */
+export const getGroupChatMessages = async (chatId: string) => {
+    try {
+        // Import here to avoid circular dependencies
+        const { getChatMessages } = await import('./messages');
+        const messageThread = await getChatMessages(chatId);
+        return messageThread.messages || [];
+    } catch (error) {
+        console.error('Error getting group chat messages:', error);
+        return [];
+    }
+};

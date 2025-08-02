@@ -4,6 +4,7 @@ import { setupGlobalErrorHandler } from "@/lib/debug/globalErrorHandler";
 import GlobalProvider from "@/lib/global-provider";
 import notificationService from "@/lib/notifications/notificationService";
 import { useFonts } from "expo-font";
+import * as Linking from 'expo-linking';
 import { SplashScreen, Stack, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { BackHandler } from "react-native";
@@ -80,6 +81,44 @@ export default function RootLayout() {
     }
   }, [fontsLoaded]);
 
+  // Handle deep links for email verification and password reset
+  useEffect(() => {
+    const handleDeepLink = (url: string) => {
+      const { hostname, path, queryParams } = Linking.parse(url);
+
+      if (hostname === 'verify' || path === '/verify') {
+        // Handle email verification
+        const { userId, secret } = queryParams as { userId?: string; secret?: string };
+        if (userId && secret) {
+          router.push(`/Verify?userId=${userId}&secret=${secret}`);
+        }
+      } else if (hostname === 'reset-password' || path === '/reset-password') {
+        // Handle password reset
+        const { userId, secret } = queryParams as { userId?: string; secret?: string };
+        if (userId && secret) {
+          router.push(`/ResetPassword?userId=${userId}&secret=${secret}`);
+        }
+      }
+    };
+
+    // Handle app being opened from a deep link
+    const getInitialURL = async () => {
+      const initialURL = await Linking.getInitialURL();
+      if (initialURL) {
+        handleDeepLink(initialURL);
+      }
+    };
+
+    // Handle deep links when app is already running
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleDeepLink(url);
+    });
+
+    getInitialURL();
+
+    return () => subscription?.remove();
+  }, [router]);
+
   // Set up notification listeners
   useEffect(() => {
     const setupNotifications = () => {
@@ -132,6 +171,8 @@ export default function RootLayout() {
             <Stack.Screen name="(root)" />
             <Stack.Screen name="SignIn" />
             <Stack.Screen name="SignUp" />
+            <Stack.Screen name="Verify" />
+            <Stack.Screen name="ResetPassword" />
           </Stack>
         </GlobalProvider>
       </ThemeProvider>

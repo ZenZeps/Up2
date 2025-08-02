@@ -8,13 +8,12 @@ import {
     account,
     config,
     databases,
-    loginWithEmail,
-    signupWithEmail,
+    signupWithEmail
 } from "@/lib/appwrite/appwrite";
 import { authDebug } from "@/lib/debug/authDebug";
 import { useGlobalContext } from "@/lib/global-provider";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
     Alert,
     FlatList,
@@ -45,6 +44,7 @@ const SignUp = () => {
 
     const [currentStep, setCurrentStep] = useState(1);
     const [loading, setLoading] = useState(false);
+    const [isCompletingProfile, setIsCompletingProfile] = useState(false);
     const [signUpData, setSignUpData] = useState<SignUpData>({
         firstName: "",
         lastName: "",
@@ -54,6 +54,29 @@ const SignUp = () => {
         preferences: [],
     });
     const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
+
+    // Check if user is already logged in (completing profile after email verification)
+    useEffect(() => {
+        const checkExistingUser = async () => {
+            try {
+                const user = await account.get();
+                if (user && user.emailVerification) {
+                    setIsCompletingProfile(true);
+                    setCurrentStep(2); // Skip to profile photo step
+                    // Pre-fill user data
+                    const names = user.name?.split(' ') || [];
+                    updateSignUpData('firstName', names[0] || '');
+                    updateSignUpData('lastName', names.slice(1).join(' ') || '');
+                    updateSignUpData('email', user.email);
+                }
+            } catch (error) {
+                // User not logged in, continue with normal signup
+                setIsCompletingProfile(false);
+            }
+        };
+
+        checkExistingUser();
+    }, []);
 
     const updateSignUpData = (field: keyof SignUpData, value: any) => {
         setSignUpData(prev => ({ ...prev, [field]: value }));
@@ -127,80 +150,76 @@ const SignUp = () => {
     const handleCompleteSignUp = async () => {
         try {
             setLoading(true);
-            const { firstName, lastName, email, password, preferences } = signUpData;
-            const fullName = `${firstName.trim()} ${lastName.trim()}`;
-            const trimmedEmail = email.trim().toLowerCase();
 
-            authDebug.info("Starting comprehensive signup process");
+            if (isCompletingProfile) {
+                // User is completing profile after verification
+                const user = await account.get();
 
-            // Step 1: Create user account
-            await signupWithEmail(trimmedEmail, password, fullName);
-            authDebug.info("User account created successfully");
+                // Create user profile
+                await createUserProfile({
+                    $id: user.$id,
+                    firstName: signUpData.firstName.trim(),
+                    lastName: signUpData.lastName.trim(),
+                    email: user.email,
+                    isPublic: true,
+                    preferences: signUpData.preferences,
+                    friends: [],
+                    photoId: undefined,
+                });
 
-            // Step 2: Login to create session
-            await loginWithEmail(trimmedEmail, password);
-            authDebug.info("User logged in successfully");
-
-            // Step 3: Get user details
-            const user = await account.get();
-            authDebug.info("Retrieved user details", { userId: user.$id });
-
-            // Step 4: Create email verification
-            try {
-                await account.createVerification(`myapp://auth/verify`);
-                authDebug.info("Email verification sent");
-            } catch (verifyError) {
-                authDebug.warn("Could not send verification email (not critical)", verifyError);
-            }
-
-            // Step 5: Create user profile first (before photo upload)
-            await createUserProfile({
-                $id: user.$id,
-                firstName: firstName.trim(),
-                lastName: lastName.trim(),
-                email: trimmedEmail,
-                isPublic: true,
-                preferences: preferences,
-                friends: [],
-                photoId: undefined, // Will be updated after photo upload
-            });
-            authDebug.info("User profile created initially");
-
-            // Step 6: Upload profile photo if provided (now that profile exists)
-            let photoId = null;
-            if (profilePhotoUri) {
-                try {
-                    photoId = await uploadProfilePhoto(user.$id, profilePhotoUri);
-                    authDebug.info("Profile photo uploaded", { photoId });
-
-                    // Update the profile with the photo ID
-                    await databases.updateDocument(
-                        config.databaseID!,
-                        config.usersCollectionID!,
-                        user.$id,
-                        { photoId: photoId }
-                    );
-                    authDebug.info("Profile updated with photo ID");
-                } catch (photoError) {
-                    authDebug.warn("Could not upload profile photo (not critical)", photoError);
+                // Upload profile photo if provided
+                if (profilePhotoUri) {
+                    try {
+                        const photoId = await uploadProfilePhoto(user.$id, profilePhotoUri);
+                        await databases.updateDocument(
+                            config.databaseID!,
+                            config.usersCollectionID!,
+                            user.$id,
+                            { photoId: photoId }
+                        );
+                    } catch (photoError) {
+                        authDebug.warn("Could not upload profile photo", photoError);
+                    }
                 }
-            }
 
-            // Step 7: Refresh global state and wait for it
-            try {
+                // Refresh global state and navigate
                 await refetch();
-                authDebug.info("Global state refreshed after signup");
-            } catch (error) {
-                authDebug.warn("Could not refresh global state (not critical)", error);
+                router.replace("/(root)/(tabs)/Home");
+
+            } else {
+                // New user signup
+                const { firstName, lastName, email, password, preferences } = signUpData;
+                const fullName = `${firstName.trim()} ${lastName.trim()}`;
+                const trimmedEmail = email.trim().toLowerCase();
+
+                authDebug.info("Starting comprehensive signup process");
+
+                // Create user account (this will send verification email automatically)
+                await signupWithEmail(trimmedEmail, password, fullName);
+                authDebug.info("User account created successfully");
+
+                // Show verification message and redirect to sign-in
+                Alert.alert(
+                    "Email Verification Required",
+                    "We've sent a verification email to your inbox. Please verify your email before signing in.",
+                    [
+                        {
+                            text: "OK",
+                            onPress: () => {
+                                authDebug.info("User directed to sign-in for verification");
+                                router.replace("/SignIn");
+                            }
+                        }
+                    ]
+                );
             }
 
-            // Step 8: Navigate to home after state refresh
-            authDebug.info("Signup completed successfully, navigating to home");
-            router.replace("/(root)/(tabs)/Home");
-
-        } catch (err: any) {
-            authDebug.error("Signup failed", err);
-            Alert.alert("Error", err?.message || "Failed to create account");
+        } catch (error: any) {
+            authDebug.error("Signup failed", error);
+            Alert.alert(
+                "Sign Up Failed",
+                error.message || "Could not create your account. Please try again."
+            );
         } finally {
             setLoading(false);
         }

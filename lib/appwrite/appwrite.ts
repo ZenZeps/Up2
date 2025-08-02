@@ -58,11 +58,15 @@ export const databases = new Databases(client);
 export const storage = new Storage(client);
 export const avatar = new Avatars(client);
 
-// ✅ Email/password signup
+// ✅ Email/password signup with verification
 export async function signupWithEmail(email: string, password: string, name: string) {
   try {
-    // Use ID.unique() instead of email for user ID
+    // Create the user account
     const user = await account.create(ID.unique(), email, password, name);
+
+    // Send verification email immediately after account creation
+    await sendVerificationEmail();
+
     return user;
   } catch (err) {
     console.error("Signup error:", err);
@@ -70,8 +74,31 @@ export async function signupWithEmail(email: string, password: string, name: str
   }
 }
 
+// ✅ Send email verification
+export async function sendVerificationEmail() {
+  try {
+    // Use localhost for testing - this should work without additional platform setup
+    const response = await account.createVerification('http://localhost:3000/verify');
+    return response;
+  } catch (err) {
+    console.error("Send verification error:", err);
+    throw err;
+  }
+}
+
+// ✅ Verify email with userId and secret
+export async function verifyEmail(userId: string, secret: string) {
+  try {
+    const response = await account.updateVerification(userId, secret);
+    return response;
+  } catch (err) {
+    console.error("Email verification error:", err);
+    throw err;
+  }
+}
+
 // Add rate limiting for auth attempts
-const MAX_LOGIN_ATTEMPTS = 5;
+const MAX_LOGIN_ATTEMPTS = 3;
 const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
 
 export async function loginWithEmail(email: string, password: string) {
@@ -79,14 +106,25 @@ export async function loginWithEmail(email: string, password: string) {
     // Start login process
     authDebug.info(`Login attempt for email: ${email.substring(0, 3)}****`);
 
-    // Create session directly without checking preferences first
+    // Create session first to check if credentials are valid
     authDebug.debug("Creating email password session");
     const session = await account.createEmailPasswordSession(email, password);
+
+    // Get user account info to check verification status
+    const user = await account.get();
+
+    // Check if email is verified
+    if (!user.emailVerification) {
+      // Delete the session since email is not verified
+      await account.deleteSession(session.$id);
+      throw new Error('UNVERIFIED_EMAIL');
+    }
+
     authDebug.info("Login successful, session created", { sessionId: session.$id });
 
-    // Reset attempts on successful login (optional, only if session exists)
+    // Reset attempts on successful login
     try {
-      await account.updatePrefs({ loginAttempts: 0 });
+      await account.updatePrefs({ loginAttempts: 0, lastAttemptTime: 0 });
       authDebug.debug("Reset login attempts counter");
     } catch (resetErr) {
       authDebug.debug("Could not reset login counter (not critical)");
@@ -94,6 +132,43 @@ export async function loginWithEmail(email: string, password: string) {
 
     return session;
   } catch (err: any) {
+    // Handle email verification error
+    if (err.message === 'UNVERIFIED_EMAIL') {
+      throw new Error('Please verify your email before signing in. Check your inbox for a verification link.');
+    }
+
+    // Track failed login attempts for password recovery
+    try {
+      // First try to get current user prefs to track attempts
+      const currentPrefs = await account.getPrefs();
+      const currentAttempts = currentPrefs.loginAttempts || 0;
+      const lastAttemptTime = currentPrefs.lastAttemptTime || 0;
+
+      // Check if user should be locked out
+      if (currentAttempts >= MAX_LOGIN_ATTEMPTS) {
+        const timeSinceLastAttempt = Date.now() - lastAttemptTime;
+        if (timeSinceLastAttempt < LOCKOUT_DURATION) {
+          throw new Error('Too many failed attempts. Please try again later or use password recovery.');
+        } else {
+          // Reset attempts after lockout period
+          await account.updatePrefs({ loginAttempts: 1, lastAttemptTime: Date.now() });
+        }
+      } else {
+        // Increment failed attempts
+        await account.updatePrefs({
+          loginAttempts: currentAttempts + 1,
+          lastAttemptTime: Date.now()
+        });
+
+        // Show password recovery option after 3 failed attempts
+        if (currentAttempts + 1 >= MAX_LOGIN_ATTEMPTS) {
+          throw new Error('SHOW_PASSWORD_RECOVERY');
+        }
+      }
+    } catch (prefError) {
+      authDebug.debug("Could not update preferences after failed login");
+    }
+
     // Format error for consistent handling
     let errorMessage = typeof err === 'string' ? err :
       err?.message ||
@@ -105,9 +180,6 @@ export async function loginWithEmail(email: string, password: string) {
     } else {
       authDebug.debug("Expected auth error during login", errorMessage);
     }
-
-    // Simple error logging without preference manipulation during failure
-    authDebug.debug("Could not update preferences after failed login (not critical)");
 
     throw err;
   }
@@ -135,10 +207,22 @@ export async function logout() {
 // ✅ Forgot password
 export async function forgotPassword(email: string) {
   try {
-    const response = await account.createRecovery(email, `http://localhost/reset-password`);
+    // Use localhost for testing - this should work without additional platform setup
+    const response = await account.createRecovery(email, 'http://localhost:3000/reset-password');
     return response;
   } catch (err) {
     console.error("Forgot password error:", err);
+    throw err;
+  }
+}
+
+// ✅ Reset password with secret
+export async function resetPassword(userId: string, secret: string, newPassword: string) {
+  try {
+    const response = await account.updateRecovery(userId, secret, newPassword);
+    return response;
+  } catch (err) {
+    console.error("Reset password error:", err);
     throw err;
   }
 }

@@ -123,35 +123,6 @@ export const createGroup = async (
 };
 
 /**
- * Add user to group
- */
-export const addUserToGroup = async (groupId: string, userId: string): Promise<boolean> => {
-    try {
-        // First get the current group to access existing users
-        const group = await getGroupById(groupId);
-        if (!group) return false;
-
-        const currentUsers = group.users || [];
-        if (currentUsers.includes(userId)) {
-            return true; // User already in group
-        }
-
-        await databases.updateDocument(
-            config.databaseID!,
-            config.groupsCollectionID!,
-            groupId,
-            {
-                users: [...currentUsers, userId]
-            }
-        );
-        return true;
-    } catch (error) {
-        console.error('Error adding user to group:', error);
-        return false;
-    }
-};
-
-/**
  * Remove user from group
  */
 export const removeUserFromGroup = async (groupId: string, userId: string): Promise<boolean> => {
@@ -485,5 +456,57 @@ export const getGroupEvents = async (groupId: string) => {
             console.error('Fallback events query failed:', fallbackError);
             return [];
         }
+    }
+};
+
+/**
+ * Add a user to a group
+ */
+export const addUserToGroup = async (groupId: string, userId: string): Promise<boolean> => {
+    try {
+        // Get current group data
+        const group = await databases.getDocument(
+            config.databaseID!,
+            config.groupsCollectionID!,
+            groupId
+        );
+
+        // Get current users array (handle different formats)
+        let currentUsers: string[] = [];
+        if (Array.isArray(group.users)) {
+            currentUsers = group.users.map((user: any) => {
+                if (typeof user === 'string') {
+                    return user;
+                } else if (user && user.$id) {
+                    return user.$id;
+                }
+                return null;
+            }).filter((id: any) => id && typeof id === 'string');
+        }
+
+        // Check if user is already in the group
+        if (currentUsers.includes(userId)) {
+            console.log('User is already a member of this group');
+            return true;
+        }
+
+        // Add user to the group
+        const updatedUsers = [...currentUsers, userId];
+
+        await databases.updateDocument(
+            config.databaseID!,
+            config.groupsCollectionID!,
+            groupId,
+            {
+                users: updatedUsers
+            }
+        );
+
+        console.log('User added to group successfully');
+        return true;
+
+    } catch (error) {
+        console.error('Error adding user to group:', error);
+        return false;
     }
 };

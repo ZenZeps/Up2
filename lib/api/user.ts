@@ -262,3 +262,25 @@ export const getFriends = async (userId: string): Promise<UserProfile[]> => {
     return [];
   }
 };
+
+/**
+ * Search for users by email address
+ */
+export const getUsersByEmail = async (email: string): Promise<UserProfile[]> => {
+  try {
+    authDebug.debug(`Searching for user by email: ${email.substring(0, 3)}****`);
+
+    const response = await databases.listDocuments(
+      config.databaseID!,
+      config.usersCollectionID!,
+      [
+        Query.equal('email', email.toLowerCase()),
+      ]
+    );
+
+    return response.documents as unknown as UserProfile[];
+  } catch (err) {
+    authDebug.error(`Error searching user by email:`, err);
+    return [];
+  }
+};

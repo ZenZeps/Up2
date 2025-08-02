@@ -24,6 +24,8 @@ import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
 import EventForm from '../components/EventForm';
+import GroupMessagesModal from '../components/GroupMessagesModal';
+import GroupSettingsModal from '../components/GroupSettingsModal';
 import UserAvatar from '../components/UserAvatar';
 
 // Define available calendar view modes
@@ -48,6 +50,8 @@ const GroupPage = () => {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<TabType>('calendar');
     const [formVisible, setFormVisible] = useState(false);
+    const [settingsVisible, setSettingsVisible] = useState(false);
+    const [messagesVisible, setMessagesVisible] = useState(false);
     const [membersModalVisible, setMembersModalVisible] = useState(false);
     const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
     const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
@@ -68,73 +72,64 @@ const GroupPage = () => {
     const [startHour] = useState(() => new Date().getHours() - 4); // Use function to initialize once
     const [endHour] = useState(() => new Date().getHours() + 4);   // Use function to initialize once
 
-    useEffect(() => {
-        const loadGroupData = async () => {
-            if (!groupId || typeof groupId !== 'string') return;
+    // Extracted loadGroupData function for reuse
+    const reloadGroupData = useCallback(async () => {
+        if (!groupId || typeof groupId !== 'string') return;
 
-            // Get current user ID inside the function to avoid dependency issues
-            const currentUserId = user?.$id;
+        const currentUserId = user?.$id;
 
-            try {
-                setLoading(true);
+        try {
+            setLoading(true);
 
-                // Load group details and events
-                const [groupData, groupEvents] = await Promise.all([
-                    getGroupById(groupId),
-                    getGroupEvents(groupId)
-                ]);
+            // Load group details and events
+            const [groupData, groupEvents] = await Promise.all([
+                getGroupById(groupId),
+                getGroupEvents(groupId)
+            ]);
 
-                if (groupData) {
-                    setGroup(groupData);
-                    console.log('Group data loaded:', groupData);
-                    console.log('Group users array:', groupData.users);
+            if (groupData) {
+                setGroup(groupData);
 
-                    // Format events for big calendar
-                    const formattedEvents = (groupEvents || []).map(event => ({
-                        ...event,
-                        start: new Date(event.startTime),
-                        end: new Date(event.endTime),
-                        title: event.title,
-                        color: getEventColor(event.tags || []), // Use tags instead of category
-                        isAttending: event.attendees?.includes(currentUserId || '') || false,
-                    }));
-                    setEvents(formattedEvents);
+                // Format events for big calendar
+                const formattedEvents = (groupEvents || []).map(event => ({
+                    ...event,
+                    start: new Date(event.startTime),
+                    end: new Date(event.endTime),
+                    title: event.title,
+                    color: getEventColor(event.tags || []),
+                    isAttending: event.attendees?.includes(currentUserId || '') || false,
+                }));
+                setEvents(formattedEvents);
 
-                    // Load member details
-                    if (groupData.users && groupData.users.length > 0) {
-                        console.log('Raw group users array:', JSON.stringify(groupData.users, null, 2));
-
-                        // Extract user IDs - handle both string IDs and user objects
-                        const userIds = groupData.users.map((user: any) => {
-                            if (typeof user === 'string') {
-                                return user;
-                            } else if (user && typeof user === 'object' && user.$id) {
-                                return user.$id;
-                            } else if (user && typeof user === 'object' && user.id) {
-                                return user.id;
-                            }
-                            console.warn('Invalid user in group.users:', user);
-                            return null;
-                        }).filter((id: any) => id && typeof id === 'string' && id.length <= 36);
-
-                        console.log('Extracted user IDs:', userIds);
-
-                        if (userIds.length > 0) {
-                            const memberProfiles = await getUsersByIds(userIds);
-                            setMembers(memberProfiles);
+                // Load member details
+                if (groupData.users && groupData.users.length > 0) {
+                    // Extract user IDs
+                    const userIds = groupData.users.map((user: any) => {
+                        if (typeof user === 'string') {
+                            return user;
+                        } else if (user && typeof user === 'object' && user.$id) {
+                            return user.$id;
                         }
+                        return null;
+                    }).filter((id: any) => id && typeof id === 'string');
+
+                    if (userIds.length > 0) {
+                        const memberProfiles = await getUsersByIds(userIds);
+                        setMembers(memberProfiles);
                     }
                 }
-            } catch (error) {
-                console.error('Error loading group data:', error);
-                Alert.alert('Error', 'Failed to load group information');
-            } finally {
-                setLoading(false);
             }
-        };
+        } catch (error) {
+            console.error('Error loading group data:', error);
+        } finally {
+            setLoading(false);
+        }
+    }, [groupId, user?.$id]);
 
-        loadGroupData();
-    }, [groupId]); // Remove userId dependency to prevent infinite loops
+    // Load data when component mounts or dependencies change
+    useEffect(() => {
+        reloadGroupData();
+    }, [reloadGroupData]);
 
     // Memoize event handlers to prevent re-renders
     const handleEventPress = useCallback((event: AppEvent) => {
@@ -342,15 +337,15 @@ const GroupPage = () => {
                     </View>
 
                     <View className="flex-row space-x-2">
-                        <TouchableOpacity
-                            onPress={handleCreateEvent}
-                            className="bg-blue-500 px-3 py-1 rounded-lg"
-                        >
-                            <Text className="text-white font-rubik-medium text-sm">+ Event</Text>
-                        </TouchableOpacity>
-
-                        {/* Only show Leave Group button if user is not the creator */}
-                        {group.creatorId !== user?.$id && (
+                        {/* Show Settings button for creator, Leave button for others */}
+                        {group.creatorId === user?.$id ? (
+                            <TouchableOpacity
+                                onPress={() => setSettingsVisible(true)}
+                                className="bg-gray-500 px-3 py-1 rounded-lg"
+                            >
+                                <Text className="text-white font-rubik-medium text-sm">Settings</Text>
+                            </TouchableOpacity>
+                        ) : (
                             <TouchableOpacity
                                 onPress={handleLeaveGroup}
                                 className="bg-red-500 px-3 py-1 rounded-lg"
@@ -374,7 +369,7 @@ const GroupPage = () => {
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                        onPress={() => Alert.alert('Coming Soon', 'Messaging functionality will be implemented soon!')}
+                        onPress={() => setMessagesVisible(true)}
                         className="flex-1 bg-gray-100 py-2 rounded-lg ml-2"
                         style={{ backgroundColor: colors.card }}
                     >
@@ -448,7 +443,7 @@ const GroupPage = () => {
                         </View>
 
                         {/* Big Calendar */}
-                        <View className="flex-1">
+                        <View className="flex-1 relative">
                             <BigCalendar
                                 events={events}
                                 height={600}
@@ -482,6 +477,22 @@ const GroupPage = () => {
                                     },
                                 }}
                             />
+
+                            {/* Floating Action Button for Add Event */}
+                            <TouchableOpacity
+                                onPress={handleCreateEvent}
+                                className="absolute bottom-6 right-6 w-14 h-14 rounded-full items-center justify-center shadow-lg"
+                                style={{
+                                    backgroundColor: colors.primary,
+                                    shadowColor: "#000",
+                                    shadowOffset: { width: 0, height: 2 },
+                                    shadowOpacity: 0.25,
+                                    shadowRadius: 3.84,
+                                    elevation: 5,
+                                }}
+                            >
+                                <Text className="text-white text-2xl font-bold">+</Text>
+                            </TouchableOpacity>
                         </View>
                     </View>
                 ) : (
@@ -602,6 +613,26 @@ const GroupPage = () => {
                     currentUserId={user?.$id || ''}
                     friends={friendIds} // Use memoized friends array
                     groupId={group?.$id} // Pass the group ID so events are assigned to this group
+                />
+            )}
+
+            {/* Group Settings Modal */}
+            {group && (
+                <GroupSettingsModal
+                    visible={settingsVisible}
+                    onClose={() => setSettingsVisible(false)}
+                    group={group}
+                    isCreator={group.creatorId === user?.$id}
+                    onUpdateGroup={reloadGroupData}
+                />
+            )}
+
+            {/* Group Messages Modal */}
+            {group && (
+                <GroupMessagesModal
+                    visible={messagesVisible}
+                    onClose={() => setMessagesVisible(false)}
+                    group={group}
                 />
             )}
         </SafeAreaView>
