@@ -473,16 +473,16 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View className="flex-1 bg-white">
+      <SafeAreaView className="flex-1 bg-white">
         {/* Header */}
-        <View className="flex-row items-center justify-between p-4 border-b border-gray-200">
+        <View className="flex-row items-center justify-between p-4 bg-black">
           <TouchableOpacity onPress={onClose} className="p-2">
-            <Text className="text-blue-500 text-lg">Cancel</Text>
+            <Text className="text-white text-lg">Cancel</Text>
           </TouchableOpacity>
-          <Text className="text-xl font-bold">{event ? 'Edit Event' : 'New Event'}</Text>
+          <Text className="text-xl font-bold text-white">{event ? 'Edit Event' : 'New Event'}</Text>
           {editable && (
             <TouchableOpacity onPress={handleSave} className="p-2" disabled={isProcessing}>
-              <Text className={`text-lg font-semibold ${isProcessing ? 'text-gray-400' : 'text-blue-500'}`}>
+              <Text className={`text-lg font-semibold ${isProcessing ? 'text-gray-400' : 'text-white'}`}>
                 {isProcessing ? 'Saving...' : 'Done'}
               </Text>
             </TouchableOpacity>
@@ -541,15 +541,19 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
           {/* Tags Section */}
           <View className="mb-4">
             <Text className="text-gray-600 text-base mb-2">Event Tags</Text>
-            <View className="flex-row flex-wrap">
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 4 }}
+            >
               {CATEGORIES.map((category) => (
                 <TouchableOpacity
                   key={category.value}
                   onPress={() => editable && handleTagToggle(category.value)}
-                  className={`px-3 py-2 rounded-full border mr-2 mb-2 flex-row items-center`}
+                  className={`px-3 py-2 rounded-full border mr-3 flex-row items-center`}
                   style={{
-                    backgroundColor: tags.includes(category.value) ? '#007AFF' : '#F5F5F5',
-                    borderColor: tags.includes(category.value) ? '#007AFF' : '#E0E0E0',
+                    backgroundColor: tags.includes(category.value) ? '#000000' : '#F5F5F5',
+                    borderColor: tags.includes(category.value) ? '#000000' : '#E0E0E0',
                   }}
                   disabled={!editable}
                 >
@@ -564,7 +568,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   </Text>
                 </TouchableOpacity>
               ))}
-            </View>
+            </ScrollView>
           </View>
 
           {/* Privacy Section */}
@@ -843,7 +847,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   alert("Failed to delete event.");
                 }
               }}
-              className="bg-red-500 p-3 rounded-lg items-center mb-4"
+              className="bg-black p-3 rounded-lg items-center mb-4"
             >
               <Text className="text-white text-lg font-semibold">Delete Event</Text>
             </TouchableOpacity>
@@ -905,7 +909,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
           {/* Join/Leave event functionality - REMOVED */}
           {/* Event participation management has been removed */}
         </ScrollView>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 
