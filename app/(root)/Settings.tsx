@@ -5,12 +5,14 @@ import { logout } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     Alert,
     Image,
     ScrollView,
+    StyleSheet,
     Switch,
     Text,
     TextInput,
@@ -156,152 +158,217 @@ const Settings = () => {
     };
 
     return (
-        <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
-            <ScrollView>
-                {/* Header */}
-                <View className="px-4 py-3 flex-row items-center justify-between border-b" style={{ borderBottomColor: colors.border }}>
-                    <TouchableOpacity onPress={() => router.back()}>
-                        <Text className="text-blue-500 font-rubik-medium">← Back</Text>
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+            {/* Enhanced Header */}
+            <View style={styles.header}>
+                <View style={styles.headerContent}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+                        <MaterialIcons name="arrow-back" size={24} color="white" />
                     </TouchableOpacity>
-                    <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>
-                        Settings
-                    </Text>
-                    <TouchableOpacity onPress={handleSave} disabled={isLoading}>
-                        <Text className={`font-rubik-medium ${isLoading ? 'text-gray-400' : 'text-blue-500'}`}>
+
+                    <View style={styles.headerCenter}>
+                        <View style={styles.settingsIconContainer}>
+                            <MaterialIcons name="settings" size={20} color="white" />
+                        </View>
+                        <Text style={styles.headerTitle}>Settings</Text>
+                    </View>
+
+                    <TouchableOpacity
+                        style={[
+                            styles.saveButton,
+                            { backgroundColor: isLoading ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.2)' }
+                        ]}
+                        onPress={handleSave}
+                        disabled={isLoading}
+                    >
+                        <MaterialIcons
+                            name={isLoading ? "hourglass-empty" : "check"}
+                            size={18}
+                            color="white"
+                        />
+                        <Text style={styles.saveButtonText}>
                             {isLoading ? 'Saving...' : 'Save'}
                         </Text>
                     </TouchableOpacity>
                 </View>
+            </View>
 
+            <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
                 {/* Profile Section */}
-                <View className="px-4 py-4">
-                    <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>Profile</Text>
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <View style={styles.cardHeader}>
+                        <MaterialIcons name="person" size={20} color={colors.primary} />
+                        <Text style={[styles.cardTitle, { color: colors.text }]}>Profile</Text>
+                    </View>
 
                     {/* Profile Photo */}
-                    <View className="items-center mb-6">
-                        <TouchableOpacity onPress={handlePhotoUpload} className="mb-2">
+                    <View style={styles.photoSection}>
+                        <TouchableOpacity style={styles.photoContainer} onPress={handlePhotoUpload}>
                             {profilePhotoUrl ? (
                                 <Image
                                     source={{ uri: profilePhotoUrl }}
-                                    className="w-24 h-24 rounded-full"
+                                    style={styles.profilePhoto}
                                 />
                             ) : (
-                                <View className="w-24 h-24 rounded-full bg-gray-200 items-center justify-center">
-                                    <Text className="text-4xl text-gray-400 font-rubik-medium">
+                                <View style={[styles.photoPlaceholder, { backgroundColor: colors.primary }]}>
+                                    <Text style={styles.photoPlaceholderText}>
                                         {userDisplayUtils.getInitials({ firstName, lastName })}
                                     </Text>
                                 </View>
                             )}
+                            <View style={styles.photoEditIndicator}>
+                                <MaterialIcons name="camera-alt" size={16} color="white" />
+                            </View>
                         </TouchableOpacity>
-                        <Text className="text-sm text-blue-500 font-rubik" onPress={handlePhotoUpload}>
-                            Change Photo
-                        </Text>
+                        <TouchableOpacity style={styles.changePhotoButton} onPress={handlePhotoUpload}>
+                            <MaterialIcons name="edit" size={16} color={colors.primary} />
+                            <Text style={[styles.changePhotoText, { color: colors.primary }]}>
+                                Change Photo
+                            </Text>
+                        </TouchableOpacity>
                     </View>
 
                     {/* Name Fields */}
-                    <View className="mb-4">
-                        <Text className="text-sm font-rubik-medium mb-2" style={{ color: colors.text }}>First Name</Text>
+                    <View style={styles.inputGroup}>
+                        <Text style={[styles.inputLabel, { color: colors.text }]}>First Name</Text>
                         <TextInput
                             value={firstName}
                             onChangeText={setFirstName}
                             placeholder="Enter first name"
-                            className="border border-gray-300 rounded-lg px-3 py-2 font-rubik"
-                            style={{ color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }}
+                            style={[
+                                styles.textInput,
+                                {
+                                    color: colors.text,
+                                    backgroundColor: colors.background,
+                                    borderColor: colors.border
+                                }
+                            ]}
                             placeholderTextColor={colors.textSecondary}
                         />
                     </View>
 
-                    <View className="mb-4">
-                        <Text className="text-sm font-rubik-medium mb-2" style={{ color: colors.text }}>Last Name</Text>
+                    <View style={styles.inputGroup}>
+                        <Text style={[styles.inputLabel, { color: colors.text }]}>Last Name</Text>
                         <TextInput
                             value={lastName}
                             onChangeText={setLastName}
                             placeholder="Enter last name"
-                            className="border border-gray-300 rounded-lg px-3 py-2 font-rubik"
-                            style={{ color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }}
+                            style={[
+                                styles.textInput,
+                                {
+                                    color: colors.text,
+                                    backgroundColor: colors.background,
+                                    borderColor: colors.border
+                                }
+                            ]}
                             placeholderTextColor={colors.textSecondary}
                         />
                     </View>
 
-                    <View className="mb-4">
-                        <Text className="text-sm font-rubik-medium mb-2" style={{ color: colors.text }}>Email</Text>
+                    <View style={styles.inputGroup}>
+                        <Text style={[styles.inputLabel, { color: colors.text }]}>Email</Text>
                         <TextInput
                             value={email}
                             onChangeText={setEmail}
                             placeholder="Enter email"
                             keyboardType="email-address"
                             autoCapitalize="none"
-                            className="border border-gray-300 rounded-lg px-3 py-2 font-rubik"
-                            style={{ color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }}
+                            style={[
+                                styles.textInput,
+                                {
+                                    color: colors.text,
+                                    backgroundColor: colors.background,
+                                    borderColor: colors.border
+                                }
+                            ]}
                             placeholderTextColor={colors.textSecondary}
                         />
                     </View>
                 </View>
 
                 {/* Privacy Section */}
-                <View className="px-4 py-4 border-t" style={{ borderTopColor: colors.border }}>
-                    <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>Privacy</Text>
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <View style={styles.cardHeader}>
+                        <MaterialIcons name="security" size={20} color={colors.primary} />
+                        <Text style={[styles.cardTitle, { color: colors.text }]}>Privacy</Text>
+                    </View>
 
-                    <View className="flex-row items-center justify-between mb-4">
-                        <View className="flex-1">
-                            <Text className="font-rubik-medium" style={{ color: colors.text }}>Private Profile</Text>
-                            <Text className="text-sm font-rubik" style={{ color: colors.textSecondary }}>
-                                Hide your profile from search results
-                            </Text>
+                    <View style={styles.settingRow}>
+                        <View style={styles.settingInfo}>
+                            <MaterialIcons name="visibility-off" size={18} color={colors.textSecondary} />
+                            <View style={styles.settingTextContainer}>
+                                <Text style={[styles.settingTitle, { color: colors.text }]}>Private Profile</Text>
+                                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                                    Hide your profile from search results
+                                </Text>
+                            </View>
                         </View>
                         <Switch
                             value={isPrivate}
                             onValueChange={setIsPrivate}
-                            trackColor={{ false: colors.border, true: '#007AFF' }}
+                            trackColor={{ false: colors.border, true: colors.primary }}
                             thumbColor={isPrivate ? '#FFFFFF' : '#f4f3f4'}
                         />
                     </View>
                 </View>
 
                 {/* App Settings Section */}
-                <View className="px-4 py-4 border-t" style={{ borderTopColor: colors.border }}>
-                    <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>App Settings</Text>
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <View style={styles.cardHeader}>
+                        <MaterialIcons name="tune" size={20} color={colors.primary} />
+                        <Text style={[styles.cardTitle, { color: colors.text }]}>App Settings</Text>
+                    </View>
 
-                    <View className="flex-row items-center justify-between mb-4">
-                        <View className="flex-1">
-                            <Text className="font-rubik-medium" style={{ color: colors.text }}>Dark Mode</Text>
-                            <Text className="text-sm font-rubik" style={{ color: colors.textSecondary }}>
-                                Use dark theme throughout the app
-                            </Text>
+                    <View style={styles.settingRow}>
+                        <View style={styles.settingInfo}>
+                            <MaterialIcons name="dark-mode" size={18} color={colors.textSecondary} />
+                            <View style={styles.settingTextContainer}>
+                                <Text style={[styles.settingTitle, { color: colors.text }]}>Dark Mode</Text>
+                                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                                    Use dark theme throughout the app
+                                </Text>
+                            </View>
                         </View>
                         <Switch
                             value={isDark}
                             onValueChange={toggleTheme}
-                            trackColor={{ false: colors.border, true: '#007AFF' }}
+                            trackColor={{ false: colors.border, true: colors.primary }}
                             thumbColor={isDark ? '#FFFFFF' : '#f4f3f4'}
                         />
                     </View>
                 </View>
 
                 {/* Interests Section */}
-                <View className="px-4 py-4 border-t" style={{ borderTopColor: colors.border }}>
-                    <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>Interests</Text>
-                    <Text className="text-sm font-rubik mb-4" style={{ color: colors.textSecondary }}>
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <View style={styles.cardHeader}>
+                        <MaterialIcons name="favorite" size={20} color={colors.primary} />
+                        <Text style={[styles.cardTitle, { color: colors.text }]}>Interests</Text>
+                    </View>
+
+                    <Text style={[styles.cardDescription, { color: colors.textSecondary }]}>
                         Select your interests to see relevant events
                     </Text>
 
-                    <View className="flex-row flex-wrap">
+                    <View style={styles.tagsContainer}>
                         {CATEGORIES.map((category) => {
                             const isSelected = selectedEventTypes.includes(category.value);
                             return (
                                 <TouchableOpacity
                                     key={category.value}
                                     onPress={() => toggleEventType(category.value)}
-                                    className={`mr-2 mb-2 px-3 py-2 rounded-full border ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'
-                                        }`}
-                                    style={{
-                                        backgroundColor: isSelected ? '#007AFF' : colors.surface,
-                                        borderColor: isSelected ? '#007AFF' : colors.border,
-                                    }}
+                                    style={[
+                                        styles.tag,
+                                        {
+                                            backgroundColor: isSelected ? colors.primary : colors.background,
+                                            borderColor: isSelected ? colors.primary : colors.border,
+                                        }
+                                    ]}
                                 >
                                     <Text
-                                        className={`text-sm font-rubik ${isSelected ? 'text-white' : ''}`}
-                                        style={{ color: isSelected ? 'white' : colors.text }}
+                                        style={[
+                                            styles.tagText,
+                                            { color: isSelected ? 'white' : colors.text }
+                                        ]}
                                     >
                                         {category.label}
                                     </Text>
@@ -312,12 +379,13 @@ const Settings = () => {
                 </View>
 
                 {/* Logout Section */}
-                <View className="px-4 py-6 border-t" style={{ borderTopColor: colors.border }}>
+                <View style={styles.logoutContainer}>
                     <TouchableOpacity
                         onPress={handleLogout}
-                        className="bg-red-500 py-3 rounded-lg"
+                        style={styles.logoutButton}
                     >
-                        <Text className="text-white text-center font-rubik-medium">
+                        <MaterialIcons name="logout" size={20} color="white" />
+                        <Text style={styles.logoutButtonText}>
                             Log Out
                         </Text>
                     </TouchableOpacity>
@@ -326,5 +394,219 @@ const Settings = () => {
         </SafeAreaView>
     );
 };
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+    },
+    header: {
+        backgroundColor: '#000',
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    backButton: {
+        padding: 4,
+        marginRight: 12,
+    },
+    headerCenter: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    settingsIconContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: 'white',
+    },
+    saveButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 20,
+    },
+    saveButtonText: {
+        color: 'white',
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 4,
+    },
+    scrollContainer: {
+        flex: 1,
+        paddingHorizontal: 16,
+        paddingTop: 16,
+    },
+    card: {
+        marginBottom: 16,
+        padding: 20,
+        borderRadius: 16,
+        borderWidth: 1,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    cardHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    cardTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        marginLeft: 8,
+    },
+    cardDescription: {
+        fontSize: 14,
+        lineHeight: 20,
+        marginBottom: 16,
+    },
+    photoSection: {
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    photoContainer: {
+        position: 'relative',
+        marginBottom: 12,
+    },
+    profilePhoto: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        borderWidth: 3,
+        borderColor: '#fff',
+    },
+    photoPlaceholder: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 3,
+        borderColor: '#fff',
+    },
+    photoPlaceholderText: {
+        fontSize: 24,
+        fontWeight: '700',
+        color: 'white',
+    },
+    photoEditIndicator: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        width: 28,
+        height: 28,
+        backgroundColor: '#000',
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
+    changePhotoButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        borderRadius: 20,
+    },
+    changePhotoText: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 4,
+    },
+    inputGroup: {
+        marginBottom: 16,
+    },
+    inputLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 8,
+    },
+    textInput: {
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        fontSize: 16,
+    },
+    settingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 4,
+    },
+    settingInfo: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    settingTextContainer: {
+        flex: 1,
+        marginLeft: 12,
+    },
+    settingTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 2,
+    },
+    settingDescription: {
+        fontSize: 14,
+        lineHeight: 18,
+    },
+    tagsContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginTop: 8,
+    },
+    tag: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        borderWidth: 1,
+        marginRight: 8,
+        marginBottom: 8,
+    },
+    tagText: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    logoutContainer: {
+        paddingVertical: 20,
+        paddingBottom: 40,
+    },
+    logoutButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#EF4444',
+        paddingVertical: 16,
+        borderRadius: 12,
+    },
+    logoutButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+        marginLeft: 8,
+    },
+});
 
 export default Settings;

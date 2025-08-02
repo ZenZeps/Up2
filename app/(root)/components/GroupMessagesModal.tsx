@@ -4,15 +4,18 @@ import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Group } from '@/lib/types/Groups';
 import { MessageWithAuthor } from '@/lib/types/Messages';
+import { MaterialIcons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
     FlatList,
     Modal,
+    StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
     View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface GroupMessagesModalProps {
     visible: boolean;
@@ -108,33 +111,29 @@ const GroupMessagesModal: React.FC<GroupMessagesModalProps> = ({
         const isCurrentUser = item.authorId === user?.$id;
 
         return (
-            <View className={`mb-3 ${isCurrentUser ? 'items-end' : 'items-start'}`}>
+            <View style={[styles.messageContainer, isCurrentUser ? styles.currentUserMessage : styles.otherUserMessage]}>
                 <View
-                    className={`max-w-xs px-4 py-2 rounded-lg ${isCurrentUser ? 'bg-blue-500' : 'bg-gray-200'
-                        }`}
-                    style={{
-                        backgroundColor: isCurrentUser ? colors.primary : colors.card
-                    }}
+                    style={[
+                        styles.messageBubble,
+                        {
+                            backgroundColor: isCurrentUser ? colors.primary : colors.card,
+                            borderColor: colors.border,
+                        }
+                    ]}
                 >
                     {!isCurrentUser && (
-                        <Text
-                            className="text-xs font-rubik-medium mb-1"
-                            style={{ color: colors.textSecondary }}
-                        >
+                        <Text style={[styles.authorName, { color: colors.textSecondary }]}>
                             {item.authorName}
                         </Text>
                     )}
-                    <Text
-                        className="font-rubik"
-                        style={{ color: isCurrentUser ? 'white' : colors.text }}
-                    >
+                    <Text style={[styles.messageText, { color: isCurrentUser ? 'white' : colors.text }]}>
                         {item.content}
                     </Text>
                     <Text
-                        className="text-xs mt-1"
-                        style={{
-                            color: isCurrentUser ? 'rgba(255,255,255,0.7)' : colors.textSecondary
-                        }}
+                        style={[
+                            styles.messageTime,
+                            { color: isCurrentUser ? 'rgba(255,255,255,0.7)' : colors.textSecondary }
+                        ]}
                     >
                         {formatTime(item.$createdAt)}
                     </Text>
@@ -150,42 +149,61 @@ const GroupMessagesModal: React.FC<GroupMessagesModalProps> = ({
             presentationStyle="pageSheet"
             onRequestClose={onClose}
         >
-            <View className="flex-1" style={{ backgroundColor: colors.background }}>
-                {/* Header */}
-                <View className="px-4 py-4 border-b flex-row items-center justify-between"
-                    style={{ borderBottomColor: colors.border }}>
-                    <TouchableOpacity onPress={onClose}>
-                        <Text className="text-lg font-rubik-medium" style={{ color: colors.primary }}>
-                            Back
-                        </Text>
-                    </TouchableOpacity>
-                    <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>
-                        {group.title}
-                    </Text>
-                    <View style={{ width: 60 }} />
+            <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+                {/* Stylish Header */}
+                <View style={styles.header}>
+                    <View style={styles.headerContent}>
+                        <TouchableOpacity style={styles.backButton} onPress={onClose}>
+                            <MaterialIcons name="arrow-back" size={24} color="white" />
+                        </TouchableOpacity>
+
+                        <View style={styles.headerCenter}>
+                            <View style={styles.chatIconContainer}>
+                                <MaterialIcons name="chat" size={20} color="white" />
+                            </View>
+                            <View style={styles.headerTextContainer}>
+                                <Text style={styles.headerTitle}>{group.title}</Text>
+                                <Text style={styles.headerSubtitle}>
+                                    {group.users?.length || 0} members
+                                </Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.headerRight}>
+                            <TouchableOpacity style={styles.headerActionButton}>
+                                <MaterialIcons name="more-vert" size={24} color="white" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
                 </View>
 
-                {/* Messages */}
-                <View className="flex-1">
+                {/* Messages Container */}
+                <View style={styles.messagesContainer}>
                     {loading ? (
-                        <View className="flex-1 justify-center items-center">
-                            <Text style={{ color: colors.textSecondary }}>Loading messages...</Text>
+                        <View style={styles.loadingContainer}>
+                            <MaterialIcons name="chat-bubble-outline" size={48} color={colors.textSecondary} />
+                            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+                                Loading messages...
+                            </Text>
                         </View>
                     ) : (
                         <FlatList
                             data={messages}
                             renderItem={renderMessage}
                             keyExtractor={(item) => item.$id}
-                            className="flex-1 px-4 py-4"
+                            style={styles.messagesList}
                             showsVerticalScrollIndicator={false}
                             inverted={false}
                             ListEmptyComponent={
-                                <View className="flex-1 justify-center items-center py-8">
-                                    <Text
-                                        className="text-center font-rubik"
-                                        style={{ color: colors.textSecondary }}
-                                    >
-                                        No messages yet. Start the conversation!
+                                <View style={styles.emptyContainer}>
+                                    <View style={[styles.emptyIconContainer, { backgroundColor: colors.card }]}>
+                                        <MaterialIcons name="chat-bubble-outline" size={32} color={colors.textSecondary} />
+                                    </View>
+                                    <Text style={[styles.emptyText, { color: colors.text }]}>
+                                        No messages yet
+                                    </Text>
+                                    <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
+                                        Start the conversation with your group!
                                     </Text>
                                 </View>
                             }
@@ -193,46 +211,188 @@ const GroupMessagesModal: React.FC<GroupMessagesModalProps> = ({
                     )}
                 </View>
 
-                {/* Message Input */}
-                <View
-                    className="px-4 py-3 border-t flex-row items-center"
-                    style={{ borderTopColor: colors.border }}
-                >
-                    <TextInput
-                        value={newMessage}
-                        onChangeText={setNewMessage}
-                        placeholder="Type a message..."
-                        className="flex-1 border rounded-full px-4 py-2 mr-3 font-rubik"
-                        style={{
-                            borderColor: colors.border,
-                            backgroundColor: colors.card,
-                            color: colors.text
-                        }}
-                        placeholderTextColor={colors.textSecondary}
-                        multiline
-                        maxLength={500}
-                    />
-                    <TouchableOpacity
-                        onPress={sendMessage}
-                        disabled={!newMessage.trim() || sending}
-                        className="px-4 py-2 rounded-full"
-                        style={{
-                            backgroundColor: newMessage.trim() ? colors.primary : colors.border
-                        }}
-                    >
-                        <Text
-                            className="text-white font-rubik-medium"
-                            style={{
-                                color: newMessage.trim() ? 'white' : colors.textSecondary
-                            }}
+                {/* Enhanced Message Input */}
+                <View style={[styles.inputContainer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
+                    <View style={[styles.inputWrapper, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                        <TextInput
+                            value={newMessage}
+                            onChangeText={setNewMessage}
+                            placeholder="Type a message..."
+                            style={[styles.textInput, { color: colors.text }]}
+                            placeholderTextColor={colors.textSecondary}
+                            multiline
+                            maxLength={500}
+                        />
+                        <TouchableOpacity
+                            onPress={sendMessage}
+                            disabled={!newMessage.trim() || sending}
+                            style={[
+                                styles.sendButton,
+                                {
+                                    backgroundColor: newMessage.trim() ? colors.primary : colors.border
+                                }
+                            ]}
                         >
-                            {sending ? '...' : 'Send'}
-                        </Text>
-                    </TouchableOpacity>
+                            <MaterialIcons
+                                name={sending ? "hourglass-empty" : "send"}
+                                size={20}
+                                color={newMessage.trim() ? 'white' : colors.textSecondary}
+                            />
+                        </TouchableOpacity>
+                    </View>
                 </View>
-            </View>
+            </SafeAreaView>
         </Modal>
     );
 };
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+    },
+    header: {
+        backgroundColor: '#000',
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    backButton: {
+        padding: 4,
+        marginRight: 12,
+    },
+    headerCenter: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    chatIconContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: {
+        flex: 1,
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: 'white',
+    },
+    headerSubtitle: {
+        fontSize: 12,
+        color: 'rgba(255, 255, 255, 0.7)',
+    },
+    headerRight: {
+        width: 40,
+        alignItems: 'flex-end',
+    },
+    headerActionButton: {
+        padding: 4,
+    },
+    messagesContainer: {
+        flex: 1,
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingText: {
+        fontSize: 16,
+        marginTop: 12,
+    },
+    messagesList: {
+        flex: 1,
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+    },
+    emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 32,
+    },
+    emptyIconContainer: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
+    },
+    emptyText: {
+        fontSize: 18,
+        fontWeight: '600',
+        marginBottom: 8,
+    },
+    emptySubtext: {
+        fontSize: 14,
+        textAlign: 'center',
+    },
+    messageContainer: {
+        marginBottom: 16,
+    },
+    currentUserMessage: {
+        alignItems: 'flex-end',
+    },
+    otherUserMessage: {
+        alignItems: 'flex-start',
+    },
+    messageBubble: {
+        maxWidth: '75%',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderRadius: 20,
+        borderWidth: 1,
+    },
+    authorName: {
+        fontSize: 12,
+        fontWeight: '600',
+        marginBottom: 4,
+    },
+    messageText: {
+        fontSize: 16,
+        lineHeight: 20,
+    },
+    messageTime: {
+        fontSize: 11,
+        marginTop: 4,
+    },
+    inputContainer: {
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderTopWidth: 1,
+    },
+    inputWrapper: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        borderRadius: 24,
+        borderWidth: 1,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        minHeight: 48,
+    },
+    textInput: {
+        flex: 1,
+        fontSize: 16,
+        maxHeight: 100,
+        paddingVertical: 8,
+    },
+    sendButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: 8,
+    },
+});
 
 export default GroupMessagesModal;

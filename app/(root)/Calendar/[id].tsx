@@ -5,9 +5,10 @@ import { account, config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, FlatList, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
@@ -305,52 +306,53 @@ export default function FriendCalendar() {
     };
 
     return (
-        <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
-            {/* Header */}
-            <View className="px-0 py-0 border-b" style={{ borderBottomColor: colors.border }}>
-                <View className="flex-row items-center justify-between px-4 py-3">
-                    <TouchableOpacity
-                        onPress={() => router.push('/(root)/(tabs)/Explore')}
-                        className="p-2 -ml-2"
-                    >
-                        <Text className="text-lg font-rubik-medium" style={{ color: '#3b82f6' }}>
-                            Back
-                        </Text>
-                    </TouchableOpacity>
-                    <Text className="text-xl font-rubik-semibold flex-1 text-center" style={{ color: colors.text }}>
-                        {friendName}'s Calendar
-                    </Text>
-                    {/* Spacer to balance the layout */}
-                    <View className="w-20" />
+        <SafeAreaView style={styles.container}>
+            {/* Black Header */}
+            <View style={styles.header}>
+                <TouchableOpacity
+                    onPress={() => router.push('/(root)/(tabs)/Explore')}
+                    style={styles.backButton}
+                >
+                    <MaterialIcons name="arrow-back" size={24} color="white" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>
+                    {friendName}'s Calendar
+                </Text>
+                <View style={styles.headerRight}>
+                    <MaterialIcons name="event" size={24} color="white" />
                 </View>
             </View>
 
             {/* Tab Navigation */}
-            <View className="flex-row px-4 py-2 border-b" style={{ borderBottomColor: colors.border }}>
+            <View style={[styles.tabContainer, { borderBottomColor: colors.border }]}>
                 <TouchableOpacity
                     onPress={() => setActiveTab('calendar')}
-                    className={`flex-1 py-2 ${activeTab === 'calendar' ? 'border-b-2' : ''}`}
-                    style={{ borderBottomColor: activeTab === 'calendar' ? colors.primary : 'transparent' }}
+                    style={[
+                        styles.tabButton,
+                        { borderBottomColor: activeTab === 'calendar' ? colors.primary : 'transparent' }
+                    ]}
                 >
                     <Text
-                        className="text-center font-rubik-medium"
-                        style={{
-                            color: activeTab === 'calendar' ? colors.primary : colors.textSecondary
-                        }}
+                        style={[
+                            styles.tabText,
+                            { color: activeTab === 'calendar' ? colors.primary : colors.textSecondary }
+                        ]}
                     >
                         Calendar
                     </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                     onPress={() => setActiveTab('agenda')}
-                    className={`flex-1 py-2 ${activeTab === 'agenda' ? 'border-b-2' : ''}`}
-                    style={{ borderBottomColor: activeTab === 'agenda' ? colors.primary : 'transparent' }}
+                    style={[
+                        styles.tabButton,
+                        { borderBottomColor: activeTab === 'agenda' ? colors.primary : 'transparent' }
+                    ]}
                 >
                     <Text
-                        className="text-center font-rubik-medium"
-                        style={{
-                            color: activeTab === 'agenda' ? colors.primary : colors.textSecondary
-                        }}
+                        style={[
+                            styles.tabText,
+                            { color: activeTab === 'agenda' ? colors.primary : colors.textSecondary }
+                        ]}
                     >
                         Agenda
                     </Text>
@@ -358,41 +360,48 @@ export default function FriendCalendar() {
             </View>
 
             {/* Content based on active tab */}
-            <View className="flex-1">
+            <View style={styles.contentContainer}>
                 {activeTab === 'calendar' ? (
-                    <View className="flex-1">
+                    <View style={styles.calendarContainer}>
                         {/* Calendar Controls */}
-                        <View className="flex-row justify-between items-center px-4 py-2" style={{ backgroundColor: colors.surface }}>
-                            <View className="flex-row">
+                        <View style={[styles.controlsContainer, { backgroundColor: colors.surface }]}>
+                            <View style={styles.viewModeContainer}>
                                 {viewModes.map((mode) => (
                                     <TouchableOpacity
                                         key={mode}
                                         onPress={() => setViewMode(mode)}
-                                        className={`px-3 py-1 mr-2 rounded ${viewMode === mode ? 'bg-blue-500' : ''}`}
-                                        style={{
-                                            backgroundColor: viewMode === mode ? colors.primary : colors.background,
-                                            borderWidth: viewMode === mode ? 0 : 1,
-                                            borderColor: colors.border,
-                                        }}
+                                        style={[
+                                            styles.viewModeButton,
+                                            {
+                                                backgroundColor: viewMode === mode ? colors.primary : colors.background,
+                                                borderColor: colors.border,
+                                                borderWidth: viewMode === mode ? 0 : 1,
+                                            }
+                                        ]}
                                     >
                                         <Text
-                                            className="font-rubik-medium capitalize"
-                                            style={{ color: viewMode === mode ? colors.background : colors.text }}
+                                            style={[
+                                                styles.viewModeText,
+                                                { color: viewMode === mode ? colors.background : colors.text }
+                                            ]}
                                         >
-                                            {mode}
+                                            {mode.charAt(0).toUpperCase() + mode.slice(1)}
                                         </Text>
                                     </TouchableOpacity>
                                 ))}
                             </View>
 
-                            <TouchableOpacity onPress={() => setDate(new Date())}>
-                                <Text className="font-rubik-medium" style={{ color: colors.primary }}>Today</Text>
+                            <TouchableOpacity
+                                onPress={() => setDate(new Date())}
+                                style={styles.todayButton}
+                            >
+                                <Text style={[styles.todayText, { color: colors.primary }]}>Today</Text>
                             </TouchableOpacity>
                         </View>
 
                         {/* Calendar component */}
                         <View
-                            className="flex-1 mb-16"
+                            style={styles.calendarWrapper}
                             onLayout={(event) => {
                                 const { height } = event.nativeEvent.layout;
                                 setCalendarHeight(height);
@@ -426,40 +435,41 @@ export default function FriendCalendar() {
                 ) : (
                     /* Agenda View */
                     <FlatList
-                        className="flex-1 px-4 pt-4"
+                        style={styles.agendaList}
                         data={events
                             .filter(event => new Date(event.startTime) > new Date()) // Only show upcoming events
                             .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())}
                         keyExtractor={(item) => item.$id}
                         renderItem={({ item }) => (
-                            <TouchableOpacity onPress={() => handlePressEvent({ rawEvent: item })} className="mb-3">
+                            <TouchableOpacity
+                                onPress={() => handlePressEvent({ rawEvent: item })}
+                                style={styles.agendaItemContainer}
+                            >
                                 <View
-                                    className="p-4 rounded-lg border"
-                                    style={{
-                                        backgroundColor: colors.surface, // Use surface color for better contrast
-                                        borderColor: colors.border,
-                                        shadowColor: colors.shadow,
-                                        shadowOffset: { width: 0, height: 1 },
-                                        shadowOpacity: 0.2,
-                                        shadowRadius: 2,
-                                        elevation: 2,
-                                    }}
+                                    style={[
+                                        styles.agendaItem,
+                                        {
+                                            backgroundColor: colors.surface,
+                                            borderColor: colors.border,
+                                            shadowColor: colors.shadow,
+                                        }
+                                    ]}
                                 >
-                                    <Text className="font-rubik-semibold text-lg mb-1" style={{ color: colors.text }}>
+                                    <Text style={[styles.agendaTitle, { color: colors.text }]}>
                                         {item.title}
                                     </Text>
-                                    <Text className="font-rubik text-sm mb-2" style={{ color: colors.textSecondary }}>
+                                    <Text style={[styles.agendaDetails, { color: colors.textSecondary }]}>
                                         {new Date(item.startTime).toLocaleDateString()} • {item.location}
                                     </Text>
-                                    <Text className="font-rubik text-xs" style={{ color: colors.textSecondary }}>
+                                    <Text style={[styles.agendaAttendees, { color: colors.textSecondary }]}>
                                         {item.attendees?.length || 0} attendee{(item.attendees?.length || 0) !== 1 ? 's' : ''}
                                     </Text>
                                 </View>
                             </TouchableOpacity>
                         )}
                         ListEmptyComponent={() => (
-                            <View className="flex-1 justify-center items-center py-8">
-                                <Text className="text-center font-rubik" style={{ color: colors.textSecondary }}>
+                            <View style={styles.emptyContainer}>
+                                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
                                     No upcoming events found for {friendName}
                                 </Text>
                             </View>
@@ -486,4 +496,128 @@ export default function FriendCalendar() {
             )}
         </SafeAreaView>
     );
-} 
+}
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: '#f8f9fa',
+    },
+    header: {
+        backgroundColor: '#000000',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+        paddingTop: 20,
+    },
+    backButton: {
+        padding: 4,
+    },
+    headerTitle: {
+        color: 'white',
+        fontSize: 18,
+        fontWeight: '600',
+        flex: 1,
+        textAlign: 'center',
+        marginHorizontal: 16,
+    },
+    headerRight: {
+        padding: 4,
+    },
+    tabContainer: {
+        flexDirection: 'row',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+    },
+    tabButton: {
+        flex: 1,
+        paddingVertical: 8,
+        borderBottomWidth: 2,
+    },
+    tabText: {
+        textAlign: 'center',
+        fontSize: 16,
+        fontWeight: '500',
+    },
+    contentContainer: {
+        flex: 1,
+    },
+    calendarContainer: {
+        flex: 1,
+    },
+    controlsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+    },
+    viewModeContainer: {
+        flexDirection: 'row',
+    },
+    viewModeButton: {
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        marginRight: 8,
+        borderRadius: 6,
+    },
+    viewModeText: {
+        fontSize: 14,
+        fontWeight: '500',
+        textTransform: 'capitalize',
+    },
+    todayButton: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    },
+    todayText: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    calendarWrapper: {
+        flex: 1,
+        marginBottom: 64,
+    },
+    agendaList: {
+        flex: 1,
+        paddingHorizontal: 16,
+        paddingTop: 16,
+    },
+    agendaItemContainer: {
+        marginBottom: 12,
+    },
+    agendaItem: {
+        padding: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    agendaTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        marginBottom: 4,
+    },
+    agendaDetails: {
+        fontSize: 14,
+        marginBottom: 8,
+    },
+    agendaAttendees: {
+        fontSize: 12,
+    },
+    emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 32,
+    },
+    emptyText: {
+        textAlign: 'center',
+        fontSize: 16,
+    },
+});

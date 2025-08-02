@@ -9,6 +9,7 @@ import { Event as AppEvent } from '@/lib/types/Events';
 import { Group } from '@/lib/types/Groups';
 import { UserProfile } from '@/lib/types/Users';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -16,6 +17,7 @@ import {
     Alert,
     FlatList,
     Modal,
+    StyleSheet,
     Text,
     TouchableOpacity,
     View
@@ -321,81 +323,91 @@ const GroupPage = () => {
     }
 
     return (
-        <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
-            {/* Header */}
-            <View className="px-4 py-4 border-b" style={{ borderBottomColor: colors.border }}>
-                <View className="flex-row items-center justify-between mb-3">
-                    <TouchableOpacity onPress={() => router.back()}>
-                        <Text className="text-black font-rubik-medium">Back</Text>
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+            {/* Enhanced Header */}
+            <View style={styles.header}>
+                <View style={styles.headerContent}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+                        <MaterialIcons name="arrow-back" size={24} color="white" />
                     </TouchableOpacity>
 
-                    <View className="flex-1 items-center mx-4">
-                        <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>
-                            {group.title}
-                        </Text>
-                        <TouchableOpacity onPress={() => setMembersModalVisible(true)}>
-                            <Text className="text-sm font-rubik" style={{ color: colors.textSecondary }}>
-                                {group.users?.length || 0} members
-                            </Text>
-                        </TouchableOpacity>
+                    <View style={styles.headerCenter}>
+                        <View style={[styles.groupIconContainer, { backgroundColor: colors.primary }]}>
+                            <MaterialIcons name="group" size={20} color="white" />
+                        </View>
+                        <View style={styles.headerTextContainer}>
+                            <Text style={styles.headerTitle}>{group.title}</Text>
+                            <TouchableOpacity onPress={() => setMembersModalVisible(true)}>
+                                <Text style={styles.headerSubtitle}>
+                                    {group.users?.length || 0} members
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
 
-                    <View className="flex-row space-x-2">
-                        {/* Show Settings button for creator, Leave button for others */}
+                    <View style={styles.headerActions}>
+                        {/* Settings/Leave button */}
                         {group.creatorId === user?.$id ? (
                             <TouchableOpacity
                                 onPress={() => setSettingsVisible(true)}
-                                className="bg-gray-500 px-3 py-1 rounded-lg"
+                                style={[styles.headerActionButton, { backgroundColor: 'rgba(255, 255, 255, 0.2)' }]}
                             >
-                                <Text className="text-white font-rubik-medium text-sm">Settings</Text>
+                                <MaterialIcons name="settings" size={18} color="white" />
                             </TouchableOpacity>
                         ) : (
                             <TouchableOpacity
                                 onPress={handleLeaveGroup}
-                                className="bg-red-500 px-3 py-1 rounded-lg"
+                                style={[styles.headerActionButton, { backgroundColor: '#EF4444' }]}
                             >
-                                <Text className="text-white font-rubik-medium text-sm">Leave</Text>
+                                <MaterialIcons name="exit-to-app" size={18} color="white" />
                             </TouchableOpacity>
                         )}
                     </View>
                 </View>
-
-                {/* Action Buttons */}
-                <View className="flex-row justify-center space-x-4">
-                    <TouchableOpacity
-                        onPress={() => setGroupInfoVisible(true)}
-                        className="flex-1 bg-gray-100 py-2 rounded-lg mr-2"
-                        style={{ backgroundColor: colors.card }}
-                    >
-                        <Text className="text-center font-rubik-medium" style={{ color: colors.text }}>
-                            Group Info
-                        </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        onPress={() => setMessagesVisible(true)}
-                        className="flex-1 bg-gray-100 py-2 rounded-lg ml-2"
-                        style={{ backgroundColor: colors.card }}
-                    >
-                        <Text className="text-center font-rubik-medium" style={{ color: colors.text }}>
-                            Messages
-                        </Text>
-                    </TouchableOpacity>
-                </View>
             </View>
 
-            {/* Tab Navigation */}
-            <View className="flex-row px-4 py-2 border-b" style={{ borderBottomColor: colors.border }}>
+            {/* Enhanced Action Buttons */}
+            <View style={[styles.actionButtonsContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+                <TouchableOpacity
+                    onPress={() => setGroupInfoVisible(true)}
+                    style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                    <MaterialIcons name="info" size={20} color={colors.primary} />
+                    <Text style={[styles.actionButtonText, { color: colors.text }]}>
+                        Group Info
+                    </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    onPress={() => setMessagesVisible(true)}
+                    style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                    <MaterialIcons name="chat" size={20} color={colors.primary} />
+                    <Text style={[styles.actionButtonText, { color: colors.text }]}>
+                        Messages
+                    </Text>
+                </TouchableOpacity>
+            </View>
+
+            {/* Enhanced Tab Navigation */}
+            <View style={[styles.tabContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
                 <TouchableOpacity
                     onPress={() => setActiveTab('calendar')}
-                    className={`flex-1 py-2 ${activeTab === 'calendar' ? 'border-b-2' : ''}`}
-                    style={{ borderBottomColor: activeTab === 'calendar' ? colors.primary : 'transparent' }}
+                    style={[
+                        styles.tabButton,
+                        activeTab === 'calendar' && [styles.activeTab, { borderBottomColor: colors.primary }]
+                    ]}
                 >
+                    <MaterialIcons
+                        name="calendar-today"
+                        size={18}
+                        color={activeTab === 'calendar' ? colors.primary : colors.textSecondary}
+                    />
                     <Text
-                        className="text-center font-rubik-medium"
-                        style={{
-                            color: activeTab === 'calendar' ? colors.primary : colors.textSecondary
-                        }}
+                        style={[
+                            styles.tabText,
+                            { color: activeTab === 'calendar' ? colors.primary : colors.textSecondary }
+                        ]}
                     >
                         Calendar
                     </Text>
@@ -403,16 +415,23 @@ const GroupPage = () => {
 
                 <TouchableOpacity
                     onPress={() => setActiveTab('agenda')}
-                    className={`flex-1 py-2 ${activeTab === 'agenda' ? 'border-b-2' : ''}`}
-                    style={{ borderBottomColor: activeTab === 'agenda' ? colors.primary : 'transparent' }}
+                    style={[
+                        styles.tabButton,
+                        activeTab === 'agenda' && [styles.activeTab, { borderBottomColor: colors.primary }]
+                    ]}
                 >
+                    <MaterialIcons
+                        name="list"
+                        size={18}
+                        color={activeTab === 'agenda' ? colors.primary : colors.textSecondary}
+                    />
                     <Text
-                        className="text-center font-rubik-medium"
-                        style={{
-                            color: activeTab === 'agenda' ? colors.primary : colors.textSecondary
-                        }}
+                        style={[
+                            styles.tabText,
+                            { color: activeTab === 'agenda' ? colors.primary : colors.textSecondary }
+                        ]}
                     >
-                        Agenda
+                        Events
                     </Text>
                 </TouchableOpacity>
             </View>
@@ -652,5 +671,104 @@ const GroupPage = () => {
         </SafeAreaView>
     );
 };
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+    },
+    header: {
+        backgroundColor: '#000',
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    backButton: {
+        padding: 4,
+        marginRight: 12,
+    },
+    headerCenter: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    groupIconContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: {
+        flex: 1,
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: 'white',
+    },
+    headerSubtitle: {
+        fontSize: 12,
+        color: 'rgba(255, 255, 255, 0.7)',
+        marginTop: 2,
+    },
+    headerActions: {
+        flexDirection: 'row',
+    },
+    headerActionButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    actionButtonsContainer: {
+        flexDirection: 'row',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+    },
+    actionButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+        marginHorizontal: 4,
+    },
+    actionButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 6,
+    },
+    tabContainer: {
+        flexDirection: 'row',
+        paddingHorizontal: 16,
+        borderBottomWidth: 1,
+    },
+    tabButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        borderBottomWidth: 2,
+        borderBottomColor: 'transparent',
+    },
+    activeTab: {
+        borderBottomWidth: 2,
+    },
+    tabText: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 6,
+    },
+});
 
 export default GroupPage;

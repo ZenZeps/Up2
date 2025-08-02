@@ -5,9 +5,10 @@ import { account, config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
@@ -231,43 +232,59 @@ export default function UserCalendar() {
     };
 
     return (
-        <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
-            <View className="flex-row items-center justify-between p-4">
-                <TouchableOpacity onPress={() => router.back()} className="p-2">
-                    <Text className="text-lg font-rubik-medium" style={{ color: '#3b82f6' }}>
-                        Back
-                    </Text>
+        <SafeAreaView style={styles.container}>
+            {/* Black Header */}
+            <View style={styles.header}>
+                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                    <MaterialIcons name="arrow-back" size={24} color="white" />
                 </TouchableOpacity>
-                <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>
+                <Text style={styles.headerTitle}>
                     {userName}'s Calendar
                 </Text>
-                {/* View mode switcher moved to top right */}
-                <View className="flex-row">
+                <View style={styles.headerRight}>
+                    <MaterialIcons name="person" size={24} color="white" />
+                </View>
+            </View>
+
+            {/* View Mode Switcher */}
+            <View style={[styles.controlsContainer, { backgroundColor: colors.surface }]}>
+                <View style={styles.viewModeContainer}>
                     {viewModes.map((mode) => (
                         <TouchableOpacity
                             key={mode}
                             onPress={() => setViewMode(mode)}
-                            className={`px-3 py-1 rounded-full mx-1`}
-                            style={{
-                                backgroundColor: viewMode === mode ? colors.primary : colors.surface
-                            }}
+                            style={[
+                                styles.viewModeButton,
+                                {
+                                    backgroundColor: viewMode === mode ? colors.primary : colors.background,
+                                    borderColor: colors.border,
+                                    borderWidth: viewMode === mode ? 0 : 1,
+                                }
+                            ]}
                         >
                             <Text
-                                className="font-rubik"
-                                style={{
-                                    color: viewMode === mode ? colors.background : colors.text
-                                }}
+                                style={[
+                                    styles.viewModeText,
+                                    { color: viewMode === mode ? colors.background : colors.text }
+                                ]}
                             >
                                 {mode.charAt(0).toUpperCase() + mode.slice(1)}
                             </Text>
                         </TouchableOpacity>
                     ))}
                 </View>
+
+                <TouchableOpacity
+                    onPress={() => setDate(new Date())}
+                    style={styles.todayButton}
+                >
+                    <Text style={[styles.todayText, { color: colors.primary }]}>Today</Text>
+                </TouchableOpacity>
             </View>
 
             {/* Calendar component */}
             <View
-                className="flex-1"
+                style={styles.calendarWrapper}
                 onLayout={(event) => {
                     const { height } = event.nativeEvent.layout;
                     setCalendarHeight(height);
@@ -310,3 +327,64 @@ export default function UserCalendar() {
         </SafeAreaView>
     );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: '#f8f9fa',
+    },
+    header: {
+        backgroundColor: '#000000',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+        paddingTop: 20,
+    },
+    backButton: {
+        padding: 4,
+    },
+    headerTitle: {
+        color: 'white',
+        fontSize: 18,
+        fontWeight: '600',
+        flex: 1,
+        textAlign: 'center',
+        marginHorizontal: 16,
+    },
+    headerRight: {
+        padding: 4,
+    },
+    controlsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+    },
+    viewModeContainer: {
+        flexDirection: 'row',
+    },
+    viewModeButton: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        marginRight: 8,
+        borderRadius: 6,
+    },
+    viewModeText: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    todayButton: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    },
+    todayText: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    calendarWrapper: {
+        flex: 1,
+    },
+});

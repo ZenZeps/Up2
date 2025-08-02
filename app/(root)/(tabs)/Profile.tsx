@@ -5,6 +5,7 @@ import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Group } from '@/lib/types/Groups';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -14,6 +15,7 @@ import {
   FlatList,
   Image,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -217,245 +219,621 @@ const Profile = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
-      {/* Header */}
-      <LinearGradient
-        colors={['#1a1a1a', '#4a4a4a']}
-        start={[0, 0]}
-        end={[1, 0]}
-        className="flex-row items-center justify-between p-4 border-b"
-        style={{ borderBottomColor: '#333333' }}
-      >
-        <View className="flex-row items-center">
-          <TouchableOpacity onPress={handleUpdateProfilePhoto} disabled={isUploadingPhoto}>
-            {profilePhotoUrl ? (
-              <Image
-                source={{ uri: profilePhotoUrl }}
-                className="w-16 h-16 rounded-full"
-              />
-            ) : (
-              <View className="w-16 h-16 rounded-full bg-gray-200 items-center justify-center">
-                <Text className="text-xl text-gray-400 font-rubik-medium">
-                  {userDisplayUtils.getInitials({ firstName, lastName })}
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Enhanced Header with Gradient */}
+      <View style={styles.header}>
+        <LinearGradient
+          colors={['#000000', '#1a1a1a', '#2d2d2d']}
+          start={[0, 0]}
+          end={[1, 1]}
+          style={styles.headerGradient}
+        >
+          <View style={styles.headerContent}>
+            {/* Profile Section */}
+            <View style={styles.profileSection}>
+              <TouchableOpacity
+                style={styles.avatarContainer}
+                onPress={handleUpdateProfilePhoto}
+                disabled={isUploadingPhoto}
+              >
+                {profilePhotoUrl ? (
+                  <Image
+                    source={{ uri: profilePhotoUrl }}
+                    style={styles.avatar}
+                  />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Text style={styles.avatarText}>
+                      {userDisplayUtils.getInitials({ firstName, lastName })}
+                    </Text>
+                  </View>
+                )}
+                {/* Edit indicator */}
+                <View style={styles.editIndicator}>
+                  <MaterialIcons
+                    name={isUploadingPhoto ? "hourglass-empty" : "camera-alt"}
+                    size={12}
+                    color="#000"
+                  />
+                </View>
+              </TouchableOpacity>
+
+              <View style={styles.nameSection}>
+                <Text style={styles.userName}>
+                  {userDisplayUtils.getFullName({ firstName, lastName })}
+                </Text>
+                <Text style={styles.userSubtitle}>
+                  {about ? about.slice(0, 50) + (about.length > 50 ? '...' : '') : 'No bio yet'}
                 </Text>
               </View>
-            )}
-            {/* Edit indicator */}
-            <View className="absolute -bottom-1 -right-1 w-5 h-5 bg-white rounded-full items-center justify-center border border-gray-300">
-              <Text className="text-black text-xs font-bold">
-                {isUploadingPhoto ? '...' : '✎'}
-              </Text>
             </View>
-          </TouchableOpacity>
-          <View className="ml-3">
-            <Text className="text-xl font-rubik-semibold" style={{ color: '#ffffff' }}>
-              {userDisplayUtils.getFullName({ firstName, lastName })}
-            </Text>
-          </View>
-        </View>
-        <View className="flex-row items-center">
-          <View className="flex-row items-center mr-8">
-            <View className="items-center mr-4">
-              <Text className="text-lg font-rubik-semibold" style={{ color: '#ffffff' }}>{stats.friends}</Text>
-              <Text className="text-xs" style={{ color: '#ffffff', opacity: 0.8 }}>Friends</Text>
-            </View>
-            <View className="items-center mr-6">
-              <Text className="text-lg font-rubik-semibold" style={{ color: '#ffffff' }}>{stats.groups}</Text>
-              <Text className="text-xs" style={{ color: '#ffffff', opacity: 0.8 }}>Groups</Text>
-            </View>
-          </View>
-          <TouchableOpacity onPress={() => router.push('/(root)/Settings')} className="p-2">
-            <View className="w-6 h-6 rounded-full border-2 border-white items-center justify-center">
-              <View className="w-2 h-2 bg-white rounded-full" />
-              <View className="absolute w-4 h-4 border border-white rounded-full" />
-            </View>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
 
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 70 + insets.bottom }} showsVerticalScrollIndicator={false}>
-        {/* Profile Info Section */}
-        <View className="px-4 py-4">
-          {/* About Section */}
-          <View className="mb-6">
-            <View className="flex-row items-center justify-between mb-3">
-              <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>About</Text>
-              <TouchableOpacity
-                onPress={() => setIsEditing(!isEditing)}
-                className="px-3 py-1 rounded-lg"
-                style={{ backgroundColor: isEditing ? colors.success : colors.primary }}
-              >
-                <Text className="text-white font-rubik-medium text-sm">
-                  {isEditing ? 'Cancel' : 'Edit'}
-                </Text>
+            {/* Stats Section */}
+            <View style={styles.statsSection}>
+              <TouchableOpacity style={styles.statItem}>
+                <Text style={styles.statNumber}>{stats.friends}</Text>
+                <Text style={styles.statLabel}>Friends</Text>
+              </TouchableOpacity>
+              <View style={styles.statDivider} />
+              <TouchableOpacity style={styles.statItem}>
+                <Text style={styles.statNumber}>{stats.groups}</Text>
+                <Text style={styles.statLabel}>Groups</Text>
               </TouchableOpacity>
             </View>
-            {isEditing ? (
-              <View>
-                <TextInput
-                  value={about}
-                  onChangeText={setAbout}
-                  placeholder="Tell us about yourself..."
-                  placeholderTextColor={colors.textSecondary}
-                  className="p-3 rounded-lg border text-base font-rubik"
-                  style={{
-                    backgroundColor: colors.surface,
-                    borderColor: colors.border,
-                    color: colors.text
-                  }}
-                  multiline
-                  numberOfLines={3}
-                />
-                <TouchableOpacity
-                  onPress={handleSaveProfile}
-                  className="mt-3 px-4 py-2 rounded-lg self-end"
-                  style={{ backgroundColor: colors.success }}
-                >
-                  <Text className="text-white font-rubik-medium">Save Changes</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View className="p-3 rounded-lg" style={{ backgroundColor: colors.surface }}>
-                <Text className="text-base font-rubik" style={{ color: colors.text }}>
-                  {about || "No about information set"}
-                </Text>
-              </View>
-            )}
+
+            {/* Settings Button */}
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => router.push('/(root)/Settings')}
+            >
+              <MaterialIcons name="settings" size={20} color="white" />
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      </View>
+
+      <ScrollView
+        style={styles.scrollContainer}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 70 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* About Section */}
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitleContainer}>
+              <MaterialIcons name="info" size={20} color={colors.primary} />
+              <Text style={[styles.cardTitle, { color: colors.text }]}>About</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setIsEditing(!isEditing)}
+              style={[
+                styles.editButton,
+                { backgroundColor: isEditing ? '#EF4444' : colors.primary }
+              ]}
+            >
+              <MaterialIcons
+                name={isEditing ? "close" : "edit"}
+                size={16}
+                color="white"
+              />
+              <Text style={styles.editButtonText}>
+                {isEditing ? 'Cancel' : 'Edit'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          {/* About Me Section */}
-          <View className="mb-6">
-            <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>About Me</Text>
-            {isEditing ? (
-              <View>
-                <View className="mb-3">
-                  <Text className="text-sm font-rubik-medium mb-2" style={{ color: colors.textSecondary }}>Nationality</Text>
-                  <TextInput
-                    value={nationality}
-                    onChangeText={setNationality}
-                    placeholder="Your nationality"
-                    placeholderTextColor={colors.textSecondary}
-                    className="p-3 rounded-lg border text-base font-rubik"
-                    style={{
-                      backgroundColor: colors.surface,
+          {isEditing ? (
+            <View style={styles.editContainer}>
+              <TextInput
+                value={about}
+                onChangeText={setAbout}
+                placeholder="Tell us about yourself..."
+                placeholderTextColor={colors.textSecondary}
+                style={[
+                  styles.textInput,
+                  {
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                    color: colors.text
+                  }
+                ]}
+                multiline
+                numberOfLines={3}
+              />
+              <TouchableOpacity
+                onPress={handleSaveProfile}
+                style={[styles.saveButton, { backgroundColor: colors.primary }]}
+              >
+                <MaterialIcons name="check" size={16} color="white" />
+                <Text style={styles.saveButtonText}>Save Changes</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={[styles.contentContainer, { backgroundColor: colors.background }]}>
+              <Text style={[styles.contentText, { color: colors.text }]}>
+                {about || "No about information set"}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Personal Details Section */}
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitleContainer}>
+              <MaterialIcons name="person" size={20} color={colors.primary} />
+              <Text style={[styles.cardTitle, { color: colors.text }]}>Personal Details</Text>
+            </View>
+          </View>
+
+          {isEditing ? (
+            <View style={styles.detailsEditContainer}>
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Nationality</Text>
+                <TextInput
+                  value={nationality}
+                  onChangeText={setNationality}
+                  placeholder="Your nationality"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[
+                    styles.detailInput,
+                    {
+                      backgroundColor: colors.background,
                       borderColor: colors.border,
                       color: colors.text
-                    }}
-                  />
-                </View>
-                <View className="mb-3">
-                  <Text className="text-sm font-rubik-medium mb-2" style={{ color: colors.textSecondary }}>Age</Text>
-                  <TextInput
-                    value={age.toString()}
-                    onChangeText={setAge}
-                    placeholder="Your age"
-                    placeholderTextColor={colors.textSecondary}
-                    className="p-3 rounded-lg border text-base font-rubik"
-                    style={{
-                      backgroundColor: colors.surface,
-                      borderColor: colors.border,
-                      color: colors.text
-                    }}
-                    keyboardType="numeric"
-                  />
-                </View>
+                    }
+                  ]}
+                />
               </View>
-            ) : (
-              <View className="p-3 rounded-lg" style={{ backgroundColor: colors.surface }}>
-                <View className="flex-row justify-between items-center mb-2">
-                  <Text className="text-sm font-rubik-medium" style={{ color: colors.textSecondary }}>Nationality:</Text>
-                  <Text className="text-base font-rubik" style={{ color: colors.text }}>
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Age</Text>
+                <TextInput
+                  value={age.toString()}
+                  onChangeText={setAge}
+                  placeholder="Your age"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[
+                    styles.detailInput,
+                    {
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                      color: colors.text
+                    }
+                  ]}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.detailsContainer}>
+              <View style={styles.detailRow}>
+                <MaterialIcons name="flag" size={18} color={colors.textSecondary} />
+                <View style={styles.detailContent}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Nationality</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
                     {nationality || "Not specified"}
                   </Text>
                 </View>
-                <View className="flex-row justify-between items-center">
-                  <Text className="text-sm font-rubik-medium" style={{ color: colors.textSecondary }}>Age:</Text>
-                  <Text className="text-base font-rubik" style={{ color: colors.text }}>
+              </View>
+              <View style={styles.detailRow}>
+                <MaterialIcons name="cake" size={18} color={colors.textSecondary} />
+                <View style={styles.detailContent}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Age</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
                     {age ? `${age} years old` : "Not specified"}
                   </Text>
                 </View>
               </View>
-            )}
-          </View>
+            </View>
+          )}
+        </View>
 
-          {/* Friends Section */}
-          <View className="mt-6">
-            <Text className="text-lg font-rubik-semibold mb-3" style={{ color: colors.text }}>Friends</Text>
-            <View style={{ height: 100 }}>
-              <FlatList
-                data={friends}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                keyExtractor={(item) => item.$id}
-                nestedScrollEnabled={true}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    className="mr-4 items-center"
-                    onPress={() => router.push(`/(root)/UserProfile/${item.$id}` as any)}
-                  >
-                    <UserAvatar
-                      photoUrl={item.photoId ? getProfilePhotoUrl(item.photoId) : null}
-                      firstName={item.firstName}
-                      lastName={item.lastName}
-                      size={64}
-                    />
-                    <Text className="text-sm font-rubik mt-1" style={{ color: colors.text }}>{userDisplayUtils.getFullName(item)}</Text>
-                  </TouchableOpacity>
-                )}
-                ListEmptyComponent={
-                  <Text className="text-gray-500 font-rubik" style={{ color: colors.textSecondary }}>No friends yet</Text>
-                }
-              />
+        {/* Friends Section */}
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitleContainer}>
+              <MaterialIcons name="people" size={20} color={colors.primary} />
+              <Text style={[styles.cardTitle, { color: colors.text }]}>
+                Friends ({stats.friends})
+              </Text>
             </View>
           </View>
 
-          {/* Groups Section */}
-          <View className="mt-6">
-            <View className="flex-row items-center justify-between mb-3">
-              <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>Groups</Text>
-              <TouchableOpacity
-                onPress={() => router.push('/(root)/CreateGroup')}
-                className="bg-black px-3 py-1 rounded-lg"
-              >
-                <Text className="text-white font-rubik-medium text-sm">+ New</Text>
-              </TouchableOpacity>
+          <View style={styles.horizontalList}>
+            <FlatList
+              data={friends}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.$id}
+              contentContainerStyle={styles.friendsList}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.friendItem}
+                  onPress={() => router.push(`/(root)/UserProfile/${item.$id}` as any)}
+                >
+                  <UserAvatar
+                    photoUrl={item.photoId ? getProfilePhotoUrl(item.photoId) : null}
+                    firstName={item.firstName}
+                    lastName={item.lastName}
+                    size={56}
+                  />
+                  <Text style={[styles.friendName, { color: colors.text }]} numberOfLines={1}>
+                    {userDisplayUtils.getFirstName(item)}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <MaterialIcons name="person-add" size={32} color={colors.textSecondary} />
+                  <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                    No friends yet
+                  </Text>
+                </View>
+              }
+            />
+          </View>
+        </View>
+
+        {/* Groups Section */}
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitleContainer}>
+              <MaterialIcons name="group" size={20} color={colors.primary} />
+              <Text style={[styles.cardTitle, { color: colors.text }]}>
+                Groups ({stats.groups})
+              </Text>
             </View>
-            <View style={{ height: 100 }}>
-              <FlatList
-                data={groups}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                keyExtractor={(item) => item.$id}
-                nestedScrollEnabled={true}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    className="mr-4 items-center"
-                    onPress={() => router.push(`/Group/${item.$id}`)}
-                  >
-                    <View className="w-16 h-16 rounded-full bg-black items-center justify-center mb-2">
-                      <Text className="text-white text-xl font-rubik-semibold">
-                        {item.title.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                    <Text
-                      className="text-sm font-rubik text-center"
-                      style={{ color: colors.text }}
-                      numberOfLines={1}
-                    >
-                      {item.title}
+            <TouchableOpacity
+              onPress={() => router.push('/(root)/CreateGroup')}
+              style={[styles.createButton, { backgroundColor: colors.primary }]}
+            >
+              <MaterialIcons name="add" size={16} color="white" />
+              <Text style={styles.createButtonText}>New</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.horizontalList}>
+            <FlatList
+              data={groups}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.$id}
+              contentContainerStyle={styles.groupsList}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.groupItem}
+                  onPress={() => router.push(`/Group/${item.$id}`)}
+                >
+                  <View style={[styles.groupAvatar, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.groupAvatarText}>
+                      {item.title.charAt(0).toUpperCase()}
                     </Text>
-                  </TouchableOpacity>
-                )}
-                ListEmptyComponent={
-                  <Text className="text-gray-500 font-rubik" style={{ color: colors.textSecondary }}>No groups yet</Text>
-                }
-              />
-            </View>
+                  </View>
+                  <Text style={[styles.groupName, { color: colors.text }]} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Text style={[styles.groupMembers, { color: colors.textSecondary }]}>
+                    {item.users?.length || 0} members
+                  </Text>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <MaterialIcons name="group-add" size={32} color={colors.textSecondary} />
+                  <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                    No groups yet
+                  </Text>
+                </View>
+              }
+            />
           </View>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    position: 'relative',
+  },
+  headerGradient: {
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  profileSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginRight: 16,
+  },
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 3,
+    borderColor: 'white',
+  },
+  avatarPlaceholder: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: 'white',
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: 'white',
+  },
+  editIndicator: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 20,
+    height: 20,
+    backgroundColor: 'white',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#000',
+  },
+  nameSection: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: 'white',
+    marginBottom: 4,
+  },
+  userSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '400',
+  },
+  statsSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 12,
+  },
+  statItem: {
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  statNumber: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: 'white',
+  },
+  statLabel: {
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '500',
+  },
+  statDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  settingsButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  card: {
+    marginBottom: 16,
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  cardTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  editButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  createButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  createButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  editContainer: {
+    gap: 12,
+  },
+  textInput: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    fontSize: 16,
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignSelf: 'flex-end',
+  },
+  saveButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  contentContainer: {
+    padding: 16,
+    borderRadius: 12,
+  },
+  contentText: {
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  detailsEditContainer: {
+    gap: 16,
+  },
+  inputGroup: {
+    gap: 8,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  detailInput: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    fontSize: 16,
+  },
+  detailsContainer: {
+    gap: 16,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  detailContent: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  detailLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  detailValue: {
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  horizontalList: {
+    height: 120,
+  },
+  friendsList: {
+    paddingHorizontal: 4,
+  },
+  friendItem: {
+    alignItems: 'center',
+    marginHorizontal: 8,
+    width: 64,
+  },
+  friendName: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  groupsList: {
+    paddingHorizontal: 4,
+  },
+  groupItem: {
+    alignItems: 'center',
+    marginHorizontal: 8,
+    width: 80,
+  },
+  groupAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupAvatarText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: 'white',
+  },
+  groupName: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  groupMembers: {
+    fontSize: 10,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  emptyText: {
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+});
 
 export default Profile;
