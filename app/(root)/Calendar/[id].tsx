@@ -6,6 +6,7 @@ import { useTheme } from '@/lib/context/ThemeContext';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -307,23 +308,32 @@ export default function FriendCalendar() {
 
     return (
         <SafeAreaView style={styles.container}>
-            {/* Black Header */}
-            <View style={styles.header}>
-                <TouchableOpacity
-                    onPress={() => router.push('/(root)/(tabs)/Explore')}
-                    style={styles.backButton}
+            {/* Modern Black Gradient Header */}
+            <View style={styles.headerContainer}>
+                <LinearGradient
+                    colors={['#000000', '#1a1a1a', '#2d2d2d']}
+                    start={[0, 0]}
+                    end={[1, 1]}
+                    style={styles.headerGradient}
                 >
-                    <MaterialIcons name="arrow-back" size={24} color="white" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>
-                    {friendName}'s Calendar
-                </Text>
-                <View style={styles.headerRight}>
-                    <MaterialIcons name="event" size={24} color="white" />
-                </View>
+                    <View style={styles.headerContent}>
+                        <TouchableOpacity
+                            onPress={() => router.push('/(root)/(tabs)/Explore')}
+                            style={styles.headerButton}
+                        >
+                            <MaterialIcons name="arrow-back" size={24} color="white" />
+                        </TouchableOpacity>
+                        <Text style={styles.headerTitle}>
+                            {friendName}'s Calendar
+                        </Text>
+                        <View style={styles.headerButton}>
+                            <MaterialIcons name="event" size={24} color="white" />
+                        </View>
+                    </View>
+                </LinearGradient>
             </View>
 
-            {/* Tab Navigation */}
+            {/* Modern Tab Navigation */}
             <View style={[styles.tabContainer, { borderBottomColor: colors.border }]}>
                 <TouchableOpacity
                     onPress={() => setActiveTab('calendar')}
@@ -332,6 +342,11 @@ export default function FriendCalendar() {
                         { borderBottomColor: activeTab === 'calendar' ? colors.primary : 'transparent' }
                     ]}
                 >
+                    <MaterialIcons
+                        name="calendar-today"
+                        size={20}
+                        color={activeTab === 'calendar' ? colors.primary : colors.textSecondary}
+                    />
                     <Text
                         style={[
                             styles.tabText,
@@ -348,6 +363,11 @@ export default function FriendCalendar() {
                         { borderBottomColor: activeTab === 'agenda' ? colors.primary : 'transparent' }
                     ]}
                 >
+                    <MaterialIcons
+                        name="view-list"
+                        size={20}
+                        color={activeTab === 'agenda' ? colors.primary : colors.textSecondary}
+                    />
                     <Text
                         style={[
                             styles.tabText,
@@ -503,44 +523,59 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#f8f9fa',
     },
-    header: {
-        backgroundColor: '#000000',
+    headerContainer: {
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        elevation: 5,
+    },
+    headerGradient: {
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+    },
+    headerContent: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 16,
-        paddingTop: 20,
-    },
-    backButton: {
-        padding: 4,
     },
     headerTitle: {
-        color: 'white',
-        fontSize: 18,
-        fontWeight: '600',
+        fontSize: 24,
+        fontWeight: '800',
+        color: '#ffffff',
         flex: 1,
         textAlign: 'center',
         marginHorizontal: 16,
     },
-    headerRight: {
-        padding: 4,
+    headerButton: {
+        padding: 8,
+        borderRadius: 8,
     },
     tabContainer: {
         flexDirection: 'row',
         paddingHorizontal: 16,
-        paddingVertical: 8,
+        paddingVertical: 12,
         borderBottomWidth: 1,
+        backgroundColor: '#ffffff',
     },
     tabButton: {
         flex: 1,
-        paddingVertical: 8,
-        borderBottomWidth: 2,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        borderBottomWidth: 3,
+        borderRadius: 8,
+        marginHorizontal: 4,
     },
     tabText: {
         textAlign: 'center',
         fontSize: 16,
-        fontWeight: '500',
+        fontWeight: '600',
+        marginLeft: 8,
     },
     contentContainer: {
         flex: 1,
@@ -553,29 +588,46 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 16,
-        paddingVertical: 8,
+        paddingVertical: 12,
+        marginHorizontal: 16,
+        marginTop: 12,
+        marginBottom: 8,
+        borderRadius: 12,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 3.84,
+        elevation: 5,
     },
     viewModeContainer: {
         flexDirection: 'row',
+        backgroundColor: '#f0f0f0',
+        borderRadius: 8,
+        padding: 2,
     },
     viewModeButton: {
-        paddingHorizontal: 12,
-        paddingVertical: 4,
-        marginRight: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
         borderRadius: 6,
+        marginHorizontal: 1,
     },
     viewModeText: {
         fontSize: 14,
-        fontWeight: '500',
+        fontWeight: '600',
         textTransform: 'capitalize',
     },
     todayButton: {
-        paddingHorizontal: 8,
-        paddingVertical: 4,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 8,
+        backgroundColor: '#f0f0f0',
     },
     todayText: {
         fontSize: 14,
-        fontWeight: '500',
+        fontWeight: '600',
     },
     calendarWrapper: {
         flex: 1,
