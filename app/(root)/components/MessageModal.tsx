@@ -271,18 +271,17 @@ export default function MessageModal({
         <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
             <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
                 {/* Header */}
-                <View
-                    className="flex-row items-center justify-between p-4 border-b"
-                    style={{ borderBottomColor: colors.border }}
-                >
-                    <Text className="text-lg font-rubik-bold" style={{ color: colors.text }}>
-                        {title}
-                    </Text>
+                <View className="px-4 py-4 border-b flex-row items-center justify-between"
+                    style={{ borderBottomColor: colors.border }}>
                     <TouchableOpacity onPress={onClose}>
-                        <Text className="text-base font-rubik-medium" style={{ color: colors.primary }}>
-                            Done
+                        <Text className="text-lg font-rubik-medium" style={{ color: colors.primary }}>
+                            Back
                         </Text>
                     </TouchableOpacity>
+                    <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>
+                        {title}
+                    </Text>
+                    <View style={{ width: 60 }} />
                 </View>
 
                 {/* Messages */}
@@ -320,46 +319,39 @@ export default function MessageModal({
 
                     {/* Message Input */}
                     <View
-                        className="flex-row items-end p-4 border-t"
-                        style={{
-                            borderTopColor: colors.border,
-                            paddingBottom: Math.max(insets.bottom, 16),
-                        }}
+                        className="px-4 py-3 border-t flex-row items-center"
+                        style={{ borderTopColor: colors.border }}
                     >
                         <TextInput
                             value={newMessage}
                             onChangeText={setNewMessage}
                             placeholder="Type a message..."
+                            className="flex-1 border rounded-full px-4 py-2 mr-3 font-rubik"
+                            style={{
+                                borderColor: colors.border,
+                                backgroundColor: colors.card,
+                                color: colors.text
+                            }}
                             placeholderTextColor={colors.textSecondary}
                             multiline
-                            maxLength={1000}
-                            className="flex-1 min-h-[40px] max-h-[100px] p-3 rounded-2xl mr-3"
-                            style={{
-                                backgroundColor: colors.surface,
-                                color: colors.text,
-                                textAlignVertical: 'top',
-                            }}
+                            maxLength={500}
                         />
                         <TouchableOpacity
                             onPress={handleSendMessage}
                             disabled={!newMessage.trim() || sending}
-                            className="w-10 h-10 rounded-full items-center justify-center"
+                            className="px-4 py-2 rounded-full"
                             style={{
-                                backgroundColor: newMessage.trim() && !sending ? colors.primary : colors.surface,
+                                backgroundColor: newMessage.trim() ? colors.primary : colors.border
                             }}
                         >
-                            {sending ? (
-                                <ActivityIndicator size="small" color={colors.background} />
-                            ) : (
-                                <Text
-                                    className="text-lg"
-                                    style={{
-                                        color: newMessage.trim() ? colors.background : colors.textSecondary,
-                                    }}
-                                >
-                                    →
-                                </Text>
-                            )}
+                            <Text
+                                className="text-white font-rubik-medium"
+                                style={{
+                                    color: newMessage.trim() ? 'white' : colors.textSecondary
+                                }}
+                            >
+                                {sending ? '...' : 'Send'}
+                            </Text>
                         </TouchableOpacity>
                     </View>
                 </KeyboardAvoidingView>

@@ -1,11 +1,10 @@
-import icons from '@/constants/icons';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Query } from 'react-native-appwrite';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import UserAvatar from './components/UserAvatar';
@@ -144,10 +143,10 @@ export default function Invites() {
         {/* Header */}
         <View className="flex-row items-center justify-between mb-6">
           <TouchableOpacity onPress={() => router.push('/(root)/(tabs)/Explore')}>
-            <Image source={icons.backArrow} className="w-6 h-6" resizeMode="contain" />
+            <Text className="text-lg font-rubik-medium text-blue-500">Back</Text>
           </TouchableOpacity>
           <Text className="text-xl font-rubik-semibold">Invites</Text>
-          <View className="w-6 h-6" />{/* Spacer to balance header */}
+          <View className="w-12 h-6" />{/* Spacer to balance header */}
         </View>
 
         <ScrollView className="flex-1">

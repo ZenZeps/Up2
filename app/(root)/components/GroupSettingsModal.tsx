@@ -1,5 +1,5 @@
 import { addUserToGroup } from '@/lib/api/group';
-import { getUsersByEmail } from '@/lib/api/user';
+import { getUsersByName } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { Group } from '@/lib/types/Groups';
 import React, { useState } from 'react';
@@ -29,27 +29,56 @@ const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
     onUpdateGroup
 }) => {
     const { colors } = useTheme();
-    const [addMemberEmail, setAddMemberEmail] = useState('');
+    const [addMemberName, setAddMemberName] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleAddMember = async () => {
-        if (!addMemberEmail.trim()) {
-            Alert.alert('Error', 'Please enter an email address');
+        if (!addMemberName.trim()) {
+            Alert.alert('Error', 'Please enter a name to search');
             return;
         }
 
         try {
             setLoading(true);
 
-            // Find user by email
-            const users = await getUsersByEmail(addMemberEmail.trim().toLowerCase());
+            // Find users by name
+            const users = await getUsersByName(addMemberName.trim());
             if (users.length === 0) {
-                Alert.alert('User Not Found', 'No user found with this email address');
+                Alert.alert('User Not Found', 'No users found with this name');
                 return;
             }
 
-            const userToAdd = users[0];
+            // If multiple users found, show selection dialog
+            if (users.length > 1) {
+                const userOptions = users.map(user => ({
+                    text: `${user.firstName} ${user.lastName} (${user.email})`,
+                    onPress: () => addSelectedUser(user)
+                }));
 
+                Alert.alert(
+                    'Multiple Users Found',
+                    'Please select a user:',
+                    [
+                        ...userOptions,
+                        { text: 'Cancel', style: 'cancel' }
+                    ]
+                );
+                return;
+            }
+
+            // Single user found, add them directly
+            await addSelectedUser(users[0]);
+
+        } catch (error) {
+            console.error('Add member error:', error);
+            Alert.alert('Error', 'Failed to search for users');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const addSelectedUser = async (userToAdd: any) => {
+        try {
             // Check if user is already a member
             if (group.users?.includes(userToAdd.$id)) {
                 Alert.alert('Already Member', 'This user is already a member of the group');
@@ -60,14 +89,12 @@ const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
             await addUserToGroup(group.$id, userToAdd.$id);
 
             Alert.alert('Success', `${userToAdd.firstName} ${userToAdd.lastName} has been added to the group`);
-            setAddMemberEmail('');
+            setAddMemberName('');
             onUpdateGroup();
 
         } catch (error) {
             console.error('Add member error:', error);
             Alert.alert('Error', 'Failed to add member to group');
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -132,9 +159,9 @@ const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
                                 Add Member
                             </Text>
                             <TextInput
-                                placeholder="Enter email address"
-                                value={addMemberEmail}
-                                onChangeText={setAddMemberEmail}
+                                placeholder="Enter user's name"
+                                value={addMemberName}
+                                onChangeText={setAddMemberName}
                                 className="border rounded-lg px-4 py-3 mb-3 font-rubik"
                                 style={{
                                     borderColor: colors.border,
@@ -142,8 +169,7 @@ const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
                                     color: colors.text
                                 }}
                                 placeholderTextColor={colors.textSecondary}
-                                autoCapitalize="none"
-                                keyboardType="email-address"
+                                autoCapitalize="words"
                             />
                             <TouchableOpacity
                                 onPress={handleAddMember}

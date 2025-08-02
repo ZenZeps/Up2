@@ -1,12 +1,13 @@
 import { getEventEmoji } from '@/constants/categories';
 import icons from '@/constants/icons';
-import { getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
+import { getFriends, getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import dayjs from 'dayjs';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, SafeAreaView, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Linking, Modal, SafeAreaView, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import UserAvatar from '../components/UserAvatar';
 import { useEvents } from '../context/EventContext';
 
@@ -19,8 +20,15 @@ const EventDetail = () => {
   const [userId, setUserId] = useState('');
   const [attending, setAttending] = useState(false);
   const [creatorName, setCreatorName] = useState('');
-  const [attendeeNames, setAttendeeNames] = useState<string[]>([]);
-  const [inviteeNames, setInviteeNames] = useState<string[]>([]);
+  const [creatorPhotoUrl, setCreatorPhotoUrl] = useState<string | null>(null);
+  const [attendeeProfiles, setAttendeeProfiles] = useState<any[]>([]);
+  const [inviteeProfiles, setInviteeProfiles] = useState<any[]>([]);
+  const [attendeePhotoUrls, setAttendeePhotoUrls] = useState<Record<string, string | null>>({});
+  const [inviteePhotoUrls, setInviteePhotoUrls] = useState<Record<string, string | null>>({});
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [friends, setFriends] = useState<any[]>([]);
+  const [friendPhotoUrls, setFriendPhotoUrls] = useState<Record<string, string | null>>({});
+  const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
     const fetchEventAndCreator = async () => {
@@ -36,20 +44,54 @@ const EventDetail = () => {
         setUserId(user?.$id || '');
         setAttending(res.attendees?.includes(user?.$id));
 
-        // Fetch creator's profile
+        // Fetch creator's profile and photo
         const creatorProfile = await getUserProfile(res.creatorId);
         setCreatorName(userDisplayUtils.getFullName(creatorProfile || {}) || 'Unknown');
 
-        // Fetch attendee names
-        if (res.attendees && res.attendees.length > 0) {
-          const attendees = await getUsersByIds(res.attendees);
-          setAttendeeNames(attendees.map(attendee => userDisplayUtils.getFullName(attendee)));
+        // Fetch creator photo
+        try {
+          const creatorPhoto = await getUserProfilePhotoUrl(res.creatorId);
+          setCreatorPhotoUrl(creatorPhoto);
+        } catch (error) {
+          console.error('Error fetching creator photo:', error);
         }
 
-        // Fetch invitee names
+        // Fetch attendee profiles and photos
+        if (res.attendees && res.attendees.length > 0) {
+          const attendees = await getUsersByIds(res.attendees);
+          setAttendeeProfiles(attendees);
+
+          // Fetch photos for attendees
+          const photoUrls: Record<string, string | null> = {};
+          for (const attendee of attendees) {
+            try {
+              const photoUrl = await getUserProfilePhotoUrl(attendee.$id);
+              photoUrls[attendee.$id] = photoUrl;
+            } catch (error) {
+              console.error('Error fetching attendee photo:', error);
+              photoUrls[attendee.$id] = null;
+            }
+          }
+          setAttendeePhotoUrls(photoUrls);
+        }
+
+        // Fetch invitee profiles and photos
         if (res.inviteeIds && res.inviteeIds.length > 0) {
           const invitees = await getUsersByIds(res.inviteeIds);
-          setInviteeNames(invitees.map(invitee => userDisplayUtils.getFullName(invitee)));
+          setInviteeProfiles(invitees);
+
+          // Fetch photos for invitees
+          const photoUrls: Record<string, string | null> = {};
+          for (const invitee of invitees) {
+            try {
+              const photoUrl = await getUserProfilePhotoUrl(invitee.$id);
+              photoUrls[invitee.$id] = photoUrl;
+            } catch (error) {
+              console.error('Error fetching invitee photo:', error);
+              photoUrls[invitee.$id] = null;
+            }
+          }
+          setInviteePhotoUrls(photoUrls);
         }
 
       } catch (err) {
@@ -111,9 +153,74 @@ const EventDetail = () => {
     }
   };
 
-  const handleInviteFriend = () => {
-    Alert.alert('Invite Friend', 'This feature is coming soon!');
-    // In a real app, you would navigate to an invite screen or share options
+  const handleInviteFriend = async () => {
+    try {
+      const friendsList = await getFriends(userId);
+      // Filter out friends who are already attendees or invitees
+      const availableFriends = friendsList.filter(friend =>
+        !event.attendees?.includes(friend.$id) &&
+        !event.inviteeIds?.includes(friend.$id)
+      );
+
+      if (availableFriends.length === 0) {
+        Alert.alert('No Friends Available', 'All your friends are already invited or attending this event.');
+        return;
+      }
+
+      setFriends(availableFriends);
+
+      // Fetch photos for friends
+      const photoUrls: Record<string, string | null> = {};
+      for (const friend of availableFriends) {
+        try {
+          const photoUrl = await getUserProfilePhotoUrl(friend.$id);
+          photoUrls[friend.$id] = photoUrl;
+        } catch (error) {
+          console.error('Error fetching friend photo:', error);
+          photoUrls[friend.$id] = null;
+        }
+      }
+      setFriendPhotoUrls(photoUrls);
+
+      setShowInviteModal(true);
+    } catch (error) {
+      console.error('Error loading friends:', error);
+      Alert.alert('Error', 'Failed to load friends list');
+    }
+  };
+
+  const inviteFreind = async (friendId: string) => {
+    try {
+      setInviting(true);
+
+      // Update the event's inviteeIds
+      const updatedInviteeIds = [...(event.inviteeIds || []), friendId];
+
+      await databases.updateDocument(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        event.$id,
+        {
+          inviteeIds: updatedInviteeIds,
+        }
+      );
+
+      // Update local state
+      setEvent({ ...event, inviteeIds: updatedInviteeIds });
+
+      // Reload invitee profiles
+      const invitees = await getUsersByIds(updatedInviteeIds);
+      setInviteeProfiles(invitees);
+
+      Alert.alert('Success', 'Friend invited to the event!');
+      setShowInviteModal(false);
+
+    } catch (error) {
+      console.error('Error inviting friend:', error);
+      Alert.alert('Error', 'Failed to invite friend');
+    } finally {
+      setInviting(false);
+    }
   };
 
   const openInMaps = (location: string) => {
@@ -143,7 +250,7 @@ const EventDetail = () => {
       {/* Header */}
       <View className="flex-row items-center justify-between p-4 bg-white border-b border-gray-200">
         <TouchableOpacity onPress={() => router.push('/(root)/(tabs)/Explore')}>
-          <Image source={icons.backArrow} className="w-6 h-6" resizeMode="contain" />
+          <Text className="text-lg font-rubik-medium text-black">Back</Text>
         </TouchableOpacity>
         <Text className="text-xl font-rubik-semibold">Event Details</Text>
         <TouchableOpacity onPress={handleInviteFriend}>
@@ -160,7 +267,7 @@ const EventDetail = () => {
         {/* Creator Info */}
         <View className="flex-row items-center p-4 bg-white border-b border-gray-200">
           <UserAvatar
-            photoUrl={null} // TODO: Get actual creator photo
+            photoUrl={creatorPhotoUrl}
             name={creatorName}
             size={40}
             className="mr-3"
@@ -184,22 +291,48 @@ const EventDetail = () => {
         {/* Attendees and Actions */}
         <View className="p-4 bg-white">
           <Text className="font-rubik-semibold text-lg mb-3">Attendees:</Text>
-          {attendeeNames.length > 0 ? (
+          {attendeeProfiles.length > 0 ? (
             <View className="mb-4">
-              {attendeeNames.map((name, index) => (
-                <Text key={index} className="text-gray-800 text-base">- {name}</Text>
-              ))}
+              <View className="flex-row flex-wrap items-center">
+                {attendeeProfiles.map((profile, index) => (
+                  <View key={profile.$id} className="items-center mr-3 mb-3">
+                    <UserAvatar
+                      photoUrl={attendeePhotoUrls[profile.$id]}
+                      firstName={profile.firstName}
+                      lastName={profile.lastName}
+                      size={40}
+                      className="mb-1"
+                    />
+                    <Text className="text-xs text-gray-600 text-center" numberOfLines={1}>
+                      {userDisplayUtils.getFirstName(profile)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             </View>
           ) : (
             <Text className="text-gray-600 mb-4">No attendees yet.</Text>
           )}
 
           <Text className="font-rubik-semibold text-lg mb-3">Invitees:</Text>
-          {inviteeNames.length > 0 ? (
+          {inviteeProfiles.length > 0 ? (
             <View className="mb-4">
-              {inviteeNames.map((name, index) => (
-                <Text key={index} className="text-gray-800 text-base">- {name}</Text>
-              ))}
+              <View className="flex-row flex-wrap items-center">
+                {inviteeProfiles.map((profile, index) => (
+                  <View key={profile.$id} className="items-center mr-3 mb-3">
+                    <UserAvatar
+                      photoUrl={inviteePhotoUrls[profile.$id]}
+                      firstName={profile.firstName}
+                      lastName={profile.lastName}
+                      size={40}
+                      className="mb-1"
+                    />
+                    <Text className="text-xs text-gray-600 text-center" numberOfLines={1}>
+                      {userDisplayUtils.getFirstName(profile)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             </View>
           ) : (
             <Text className="text-gray-600 mb-4">No invitees yet.</Text>
@@ -220,7 +353,7 @@ const EventDetail = () => {
               </View>
               <TouchableOpacity
                 onPress={handleNotAttend}
-                className="bg-red-500 py-3 rounded-lg items-center"
+                className="bg-gray-500 py-3 rounded-lg items-center"
               >
                 <Text className="text-white font-rubik-semibold text-lg">Not Attending</Text>
               </TouchableOpacity>
@@ -230,6 +363,59 @@ const EventDetail = () => {
 
         </View>
       </ScrollView>
+
+      {/* Invite Friends Modal */}
+      <Modal
+        visible={showInviteModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowInviteModal(false)}
+      >
+        <SafeAreaView className="flex-1 bg-white">
+          <View className="flex-row items-center justify-between p-4 border-b border-gray-200">
+            <TouchableOpacity onPress={() => setShowInviteModal(false)}>
+              <Text className="text-lg font-rubik-medium text-black">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="text-xl font-rubik-semibold">Invite Friends</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          <FlatList
+            data={friends}
+            keyExtractor={(item) => item.$id}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => inviteFreind(item.$id)}
+                disabled={inviting}
+                className="flex-row items-center p-4 border-b border-gray-100"
+              >
+                <UserAvatar
+                  photoUrl={friendPhotoUrls[item.$id]}
+                  firstName={item.firstName}
+                  lastName={item.lastName}
+                  size={40}
+                  className="mr-3"
+                />
+                <View className="flex-1">
+                  <Text className="font-rubik-semibold text-base">
+                    {userDisplayUtils.getFullName(item)}
+                  </Text>
+                </View>
+                <Text className="text-blue-500 font-rubik-medium">
+                  {inviting ? 'Inviting...' : 'Invite'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={
+              <View className="flex-1 justify-center items-center p-8">
+                <Text className="text-gray-500 text-center">
+                  No friends available to invite
+                </Text>
+              </View>
+            }
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 };

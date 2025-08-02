@@ -1,5 +1,4 @@
 import { getEventColor } from '@/constants/categories';
-import icons from '@/constants/icons';
 import { getAllEvents } from '@/lib/api/event';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { account, config, databases } from '@/lib/appwrite/appwrite';
@@ -8,7 +7,7 @@ import { Event as AppEvent } from '@/lib/types/Events';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
@@ -235,7 +234,9 @@ export default function UserCalendar() {
         <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
             <View className="flex-row items-center justify-between p-4">
                 <TouchableOpacity onPress={() => router.back()} className="p-2">
-                    <Image source={icons.backArrow} className="w-6 h-6" resizeMode="contain" />
+                    <Text className="text-lg font-rubik-medium" style={{ color: '#3b82f6' }}>
+                        Back
+                    </Text>
                 </TouchableOpacity>
                 <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>
                     {userName}'s Calendar

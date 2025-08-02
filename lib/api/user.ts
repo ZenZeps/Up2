@@ -284,3 +284,32 @@ export const getUsersByEmail = async (email: string): Promise<UserProfile[]> => 
     return [];
   }
 };
+
+/**
+ * Search for users by name (firstName or lastName)
+ */
+export const getUsersByName = async (name: string): Promise<UserProfile[]> => {
+  try {
+    authDebug.debug(`Searching for users by name: ${name}`);
+
+    const searchTerm = name.toLowerCase().trim();
+
+    // Search by firstName or lastName containing the search term
+    const response = await databases.listDocuments(
+      config.databaseID!,
+      config.usersCollectionID!,
+      [
+        Query.or([
+          Query.search('firstName', searchTerm),
+          Query.search('lastName', searchTerm)
+        ]),
+        Query.limit(10) // Limit results to prevent too many matches
+      ]
+    );
+
+    return response.documents as unknown as UserProfile[];
+  } catch (err) {
+    authDebug.error(`Error searching users by name:`, err);
+    return [];
+  }
+};

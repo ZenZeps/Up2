@@ -1,12 +1,13 @@
 import { getEventEmoji } from '@/constants/categories';
 import icons from '@/constants/icons';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
-import { getUsersByIds } from '@/lib/api/user';
+import { getFriends, getUsersByIds } from '@/lib/api/user';
+import { config, databases } from '@/lib/appwrite/appwrite';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import React, { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import UserAvatar from './UserAvatar';
 
 import { Event } from '@/lib/types/Events';
@@ -34,8 +35,12 @@ const EventDetailsModal = ({
 }: EventDetailsModalProps) => {
   const [attendeeProfiles, setAttendeeProfiles] = useState<any[]>([]);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const [creatorPhotoUrl, setCreatorPhotoUrl] = useState<string | null>(null);
   const [attendeePhotoUrls, setAttendeePhotoUrls] = useState<Record<string, string | null>>({});
+  const [friends, setFriends] = useState<any[]>([]);
+  const [friendPhotoUrls, setFriendPhotoUrls] = useState<Record<string, string | null>>({});
+  const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
     const fetchAttendeeProfiles = async () => {
@@ -84,6 +89,69 @@ const EventDetailsModal = ({
   if (!event) return null;
 
   const isAttending = event.attendees?.includes(currentUserId);
+
+  const handleInviteFriend = async () => {
+    try {
+      const friendsList = await getFriends(currentUserId);
+      // Filter out friends who are already attendees or invitees
+      const availableFriends = friendsList.filter(friend =>
+        !event.attendees?.includes(friend.$id) &&
+        !event.inviteeIds?.includes(friend.$id)
+      );
+
+      if (availableFriends.length === 0) {
+        Alert.alert('No Friends Available', 'All your friends are already invited or attending this event.');
+        return;
+      }
+
+      setFriends(availableFriends);
+
+      // Fetch photos for friends
+      const photoUrls: Record<string, string | null> = {};
+      for (const friend of availableFriends) {
+        try {
+          const photoUrl = await getUserProfilePhotoUrl(friend.$id);
+          photoUrls[friend.$id] = photoUrl;
+        } catch (error) {
+          console.error('Error fetching friend photo:', error);
+          photoUrls[friend.$id] = null;
+        }
+      }
+      setFriendPhotoUrls(photoUrls);
+
+      setShowInviteModal(true);
+    } catch (error) {
+      console.error('Error loading friends:', error);
+      Alert.alert('Error', 'Failed to load friends list');
+    }
+  };
+
+  const inviteFriend = async (friendId: string) => {
+    try {
+      setInviting(true);
+
+      // Update the event's inviteeIds
+      const updatedInviteeIds = [...(event.inviteeIds || []), friendId];
+
+      await databases.updateDocument(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        event.$id,
+        {
+          inviteeIds: updatedInviteeIds,
+        }
+      );
+
+      Alert.alert('Success', 'Friend invited to the event!');
+      setShowInviteModal(false);
+
+    } catch (error) {
+      console.error('Error inviting friend:', error);
+      Alert.alert('Error', 'Failed to invite friend');
+    } finally {
+      setInviting(false);
+    }
+  };
 
   interface AttendeeProfile {
     $id: string;
@@ -203,27 +271,43 @@ const EventDetailsModal = ({
             {/* Action Buttons */}
             <View style={styles.actionButtons}>
               {isCreator ? (
-                <TouchableOpacity
-                  style={[styles.button, styles.editButton]}
-                  onPress={() => onEdit(event)}
-                >
-                  <Text style={styles.buttonText}>Edit Event</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity
+                    style={[styles.button, styles.editButton]}
+                    onPress={() => onEdit(event)}
+                  >
+                    <Text style={styles.buttonText}>Edit Event</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.button, { backgroundColor: '#8B5CF6' }]}
+                    onPress={handleInviteFriend}
+                  >
+                    <Text style={styles.buttonText}>Invite Friends</Text>
+                  </TouchableOpacity>
+                </View>
               ) : (
-                <TouchableOpacity
-                  style={[
-                    styles.button,
-                    isAttending ? styles.notAttendingButton : styles.attendingButton
-                  ]}
-                  onPress={isAttending ? onNotAttend : onAttend}
-                >
-                  <Text style={[
-                    styles.buttonText,
-                    isAttending ? styles.notAttendingText : styles.attendingText
-                  ]}>
-                    {isAttending ? 'Not Attending' : 'Attend Event'}
-                  </Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.button,
+                      isAttending ? styles.notAttendingButton : styles.attendingButton
+                    ]}
+                    onPress={isAttending ? onNotAttend : onAttend}
+                  >
+                    <Text style={[
+                      styles.buttonText,
+                      isAttending ? styles.notAttendingText : styles.attendingText
+                    ]}>
+                      {isAttending ? 'Not Attending' : 'Attend Event'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.button, { backgroundColor: '#8B5CF6' }]}
+                    onPress={handleInviteFriend}
+                  >
+                    <Text style={styles.buttonText}>Invite Friends</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           </ScrollView>
@@ -251,6 +335,100 @@ const EventDetailsModal = ({
             <ScrollView style={styles.attendeesModalList}>
               <AttendeesList profiles={attendeeProfiles} />
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Invite Friends Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showInviteModal}
+        onRequestClose={() => setShowInviteModal(false)}
+      >
+        <View style={styles.centeredView}>
+          <View style={[styles.modalView, styles.attendeesModalView]}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowInviteModal(false)}
+            >
+              <MaterialIcons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+
+            <Text style={styles.attendeesModalTitle}>Invite Friends</Text>
+
+            <FlatList
+              data={friends}
+              keyExtractor={(item) => item.$id}
+              renderItem={({ item }) => (
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
+                  marginVertical: 4,
+                  backgroundColor: '#f5f5f5',
+                  borderRadius: 8,
+                }}>
+                  {friendPhotoUrls[item.$id] ? (
+                    <Image
+                      source={{ uri: friendPhotoUrls[item.$id]! }}
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        marginRight: 12,
+                      }}
+                    />
+                  ) : (
+                    <View style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: '#ddd',
+                      marginRight: 12,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}>
+                      <Text style={{
+                        color: '#666',
+                        fontSize: 16,
+                        fontWeight: 'bold',
+                      }}>
+                        {item.name ? item.name.charAt(0).toUpperCase() : '?'}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{
+                      fontSize: 16,
+                      fontWeight: '500',
+                      color: '#333',
+                    }}>
+                      {item.name}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#8B5CF6',
+                      paddingHorizontal: 16,
+                      paddingVertical: 8,
+                      borderRadius: 6,
+                    }}
+                    onPress={() => inviteFriend(item.$id)}
+                    disabled={inviting}
+                  >
+                    <Text style={{
+                      color: 'white',
+                      fontWeight: '500',
+                    }}>
+                      {inviting ? 'Inviting...' : 'Invite'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              style={{ maxHeight: 400 }}
+            />
           </View>
         </View>
       </Modal>
