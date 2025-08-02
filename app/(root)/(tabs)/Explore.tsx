@@ -34,7 +34,7 @@ const Explore = () => {
   // State variables
   const [query, setQuery] = useState(''); // Search query
   const [users, setUsers] = useState<any[]>([]); // All users except current
-  const [mode, setMode] = useState<'events' | 'users' | 'groups'>('users'); // 'events', 'users', or 'groups'
+  const [mode, setMode] = useState<'events' | 'users' | 'groups'>('events'); // 'events', 'users', or 'groups' - default to events
 
   const [loading, setLoading] = useState(true); // Loading state
   const [userId, setUserId] = useState(''); // Current user ID
@@ -336,22 +336,6 @@ const Explore = () => {
           {/* Toggle Buttons */}
           <View className="flex-row mb-6">
             <TouchableOpacity
-              onPress={() => setMode('users')}
-              className="flex-1 items-center py-3 rounded-lg mx-1"
-              style={{
-                backgroundColor: mode === 'users' ? '#000000' : colors.surface
-              }}
-            >
-              <Text
-                className="text-lg font-rubik-medium"
-                style={{
-                  color: mode === 'users' ? colors.background : colors.text
-                }}
-              >
-                Users
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
               onPress={() => setMode('events')}
               className="flex-1 items-center py-3 rounded-lg mx-1"
               style={{
@@ -365,6 +349,22 @@ const Explore = () => {
                 }}
               >
                 Events
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setMode('users')}
+              className="flex-1 items-center py-3 rounded-lg mx-1"
+              style={{
+                backgroundColor: mode === 'users' ? '#000000' : colors.surface
+              }}
+            >
+              <Text
+                className="text-lg font-rubik-medium"
+                style={{
+                  color: mode === 'users' ? colors.background : colors.text
+                }}
+              >
+                Users
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -403,71 +403,83 @@ const Explore = () => {
             {loading ? (
               <ActivityIndicator size="large" color="#0061FF" className="mt-10" />
             ) : mode === 'users' ? (
-              filteredUsers.length > 0 ? (
-                filteredUsers.map((user) => {
-                  const isFriend = friends.includes(user.$id);
-                  return (
-                    <View
-                      key={user.$id}
-                      className="flex-row items-center justify-between p-4 rounded-lg shadow-sm mb-3 border"
-                      style={{ backgroundColor: colors.card, borderColor: colors.border }}
-                    >
-                      <TouchableOpacity
-                        className="flex-row items-center flex-1 mr-2"
-                        onPress={() => router.push(`/(root)/UserProfile/${user.$id}` as any)}
+              query.trim() ? (
+                filteredUsers.length > 0 ? (
+                  filteredUsers.map((user) => {
+                    const isFriend = friends.includes(user.$id);
+                    return (
+                      <View
+                        key={user.$id}
+                        className="flex-row items-center justify-between p-4 rounded-lg shadow-sm mb-3 border"
+                        style={{ backgroundColor: colors.card, borderColor: colors.border }}
                       >
-                        <UserAvatar
-                          photoUrl={userPhotoUrls[user.$id]}
-                          firstName={user.firstName}
-                          lastName={user.lastName}
-                          name={userDisplayUtils.getFullName(user)}
-                          size={40}
-                          className="mr-3"
-                        />
-                        <Text
-                          className="text-lg font-rubik-medium"
-                          style={{ color: isFriend ? colors.primary : colors.text }}
-                        >
-                          {userDisplayUtils.getFullName(user)}
-                        </Text>
-                      </TouchableOpacity>
-                      {isFriend ? (
                         <TouchableOpacity
-                          onPress={() => handleDeleteFriend(user.$id)}
-                          className="px-4 py-2 rounded-full shadow-sm min-w-[80px]"
-                          style={{ backgroundColor: colors.textSecondary }}
+                          className="flex-row items-center flex-1 mr-2"
+                          onPress={() => router.push(`/(root)/UserProfile/${user.$id}` as any)}
                         >
-                          <Text className="font-rubik-medium text-sm text-center" style={{ color: colors.background }}>Remove</Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity
-                          onPress={() => {
-                            if (requestedUsers.includes(user.$id)) {
-                              handleCancelFriendRequest(user.$id);
-                            } else {
-                              handleSendFriendRequest(user.$id);
-                            }
-                          }}
-                          className="px-4 py-2 rounded-full shadow-sm min-w-[80px]"
-                          style={{
-                            backgroundColor: requestedUsers.includes(user.$id) ? colors.surface : colors.primary
-                          }}
-                        >
+                          <UserAvatar
+                            photoUrl={userPhotoUrls[user.$id]}
+                            firstName={user.firstName}
+                            lastName={user.lastName}
+                            name={userDisplayUtils.getFullName(user)}
+                            size={40}
+                            className="mr-3"
+                          />
                           <Text
-                            className="font-rubik-medium text-sm text-center"
-                            style={{
-                              color: requestedUsers.includes(user.$id) ? colors.text : colors.background
-                            }}
+                            className="text-lg font-rubik-medium"
+                            style={{ color: isFriend ? colors.primary : colors.text }}
                           >
-                            {requestedUsers.includes(user.$id) ? 'Pending' : 'Add'}
+                            {userDisplayUtils.getFullName(user)}
                           </Text>
                         </TouchableOpacity>
-                      )}
-                    </View>
-                  );
-                })
+                        {isFriend ? (
+                          <TouchableOpacity
+                            onPress={() => handleDeleteFriend(user.$id)}
+                            className="px-4 py-2 rounded-full shadow-sm min-w-[80px]"
+                            style={{ backgroundColor: colors.textSecondary }}
+                          >
+                            <Text className="font-rubik-medium text-sm text-center" style={{ color: colors.background }}>Remove</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            onPress={() => {
+                              if (requestedUsers.includes(user.$id)) {
+                                handleCancelFriendRequest(user.$id);
+                              } else {
+                                handleSendFriendRequest(user.$id);
+                              }
+                            }}
+                            className="px-4 py-2 rounded-full shadow-sm min-w-[80px]"
+                            style={{
+                              backgroundColor: requestedUsers.includes(user.$id) ? colors.surface : colors.primary
+                            }}
+                          >
+                            <Text
+                              className="font-rubik-medium text-sm text-center"
+                              style={{
+                                color: requestedUsers.includes(user.$id) ? colors.text : colors.background
+                              }}
+                            >
+                              {requestedUsers.includes(user.$id) ? 'Pending' : 'Add'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    );
+                  })
+                ) : (
+                  <Text className="mt-4 text-center font-rubik" style={{ color: colors.textSecondary }}>No users found</Text>
+                )
               ) : (
-                <Text className="mt-4 text-center font-rubik" style={{ color: colors.textSecondary }}>No users found</Text>
+                /* Default message when no search query */
+                <View className="items-center py-8">
+                  <Text className="text-lg font-rubik-semibold mb-4" style={{ color: colors.text }}>
+                    Find Friends
+                  </Text>
+                  <Text className="text-center font-rubik mb-6" style={{ color: colors.textSecondary }}>
+                    Use the search bar above to discover and connect with other users in your community
+                  </Text>
+                </View>
               )
             ) : mode === 'events' ? (
               filteredEvents.length > 0 ? (
@@ -506,16 +518,16 @@ const Explore = () => {
               /* Groups mode */
               <View className="items-center py-8">
                 <Text className="text-lg font-rubik-semibold mb-4" style={{ color: colors.text }}>
-                  Discover Groups
+                  Create Groups
                 </Text>
                 <Text className="text-center font-rubik mb-6" style={{ color: colors.textSecondary }}>
-                  Find and join public groups to connect with people who share your interests
+                  Start your own group and bring together people who share your interests and passions
                 </Text>
                 <TouchableOpacity
-                  onPress={() => router.push('/GroupsExplore')}
+                  onPress={() => router.push('/CreateGroup')}
                   className="bg-black px-6 py-3 rounded-lg"
                 >
-                  <Text className="text-white font-rubik-medium">Explore Groups</Text>
+                  <Text className="text-white font-rubik-medium">Create Group</Text>
                 </TouchableOpacity>
               </View>
             )}

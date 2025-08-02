@@ -24,6 +24,7 @@ import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
 import EventForm from '../components/EventForm';
+import GroupInfoModal from '../components/GroupInfoModal';
 import GroupMessagesModal from '../components/GroupMessagesModal';
 import GroupSettingsModal from '../components/GroupSettingsModal';
 import UserAvatar from '../components/UserAvatar';
@@ -51,6 +52,7 @@ const GroupPage = () => {
     const [activeTab, setActiveTab] = useState<TabType>('calendar');
     const [formVisible, setFormVisible] = useState(false);
     const [settingsVisible, setSettingsVisible] = useState(false);
+    const [groupInfoVisible, setGroupInfoVisible] = useState(false);
     const [messagesVisible, setMessagesVisible] = useState(false);
     const [membersModalVisible, setMembersModalVisible] = useState(false);
     const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
@@ -324,16 +326,18 @@ const GroupPage = () => {
             <View className="px-4 py-4 border-b" style={{ borderBottomColor: colors.border }}>
                 <View className="flex-row items-center justify-between mb-3">
                     <TouchableOpacity onPress={() => router.back()}>
-                        <Text className="text-blue-500 font-rubik-medium">← Back</Text>
+                        <Text className="text-black font-rubik-medium">Back</Text>
                     </TouchableOpacity>
 
                     <View className="flex-1 items-center mx-4">
                         <Text className="text-xl font-rubik-semibold" style={{ color: colors.text }}>
                             {group.title}
                         </Text>
-                        <Text className="text-sm font-rubik" style={{ color: colors.textSecondary }}>
-                            {group.users?.length || 0} members
-                        </Text>
+                        <TouchableOpacity onPress={() => setMembersModalVisible(true)}>
+                            <Text className="text-sm font-rubik" style={{ color: colors.textSecondary }}>
+                                {group.users?.length || 0} members
+                            </Text>
+                        </TouchableOpacity>
                     </View>
 
                     <View className="flex-row space-x-2">
@@ -359,12 +363,12 @@ const GroupPage = () => {
                 {/* Action Buttons */}
                 <View className="flex-row justify-center space-x-4">
                     <TouchableOpacity
-                        onPress={() => setMembersModalVisible(true)}
+                        onPress={() => setGroupInfoVisible(true)}
                         className="flex-1 bg-gray-100 py-2 rounded-lg mr-2"
                         style={{ backgroundColor: colors.card }}
                     >
                         <Text className="text-center font-rubik-medium" style={{ color: colors.text }}>
-                            Members ({members?.length || 0})
+                            Group Info
                         </Text>
                     </TouchableOpacity>
 
@@ -613,6 +617,16 @@ const GroupPage = () => {
                     currentUserId={user?.$id || ''}
                     friends={friendIds} // Use memoized friends array
                     groupId={group?.$id} // Pass the group ID so events are assigned to this group
+                />
+            )}
+
+            {/* Group Info Modal */}
+            {group && (
+                <GroupInfoModal
+                    visible={groupInfoVisible}
+                    onClose={() => setGroupInfoVisible(false)}
+                    group={group}
+                    onUpdateGroup={reloadGroupData}
                 />
             )}
 
