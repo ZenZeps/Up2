@@ -8,7 +8,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import UserAvatar from './UserAvatar';
 
 import { Event } from '@/lib/types/Events';
@@ -330,96 +330,55 @@ const EventDetailsModal = ({
 
       {/* Invite Friends Modal */}
       <Modal
-        animationType="slide"
-        transparent={true}
         visible={showInviteModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
         onRequestClose={() => setShowInviteModal(false)}
       >
-        <View style={styles.centeredView}>
-          <View style={[styles.modalView, styles.attendeesModalView]}>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setShowInviteModal(false)}
-            >
-              <MaterialIcons name="close" size={24} color="#666" />
+        <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
+          <View style={styles.inviteModalHeader}>
+            <TouchableOpacity onPress={() => setShowInviteModal(false)}>
+              <Text style={styles.inviteModalCancel}>Cancel</Text>
             </TouchableOpacity>
-
-            <Text style={styles.attendeesModalTitle}>Invite Friends</Text>
-
-            <FlatList
-              data={friends}
-              keyExtractor={(item) => item.$id}
-              renderItem={({ item }) => (
-                <View style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingVertical: 8,
-                  paddingHorizontal: 12,
-                  marginVertical: 4,
-                  backgroundColor: '#f5f5f5',
-                  borderRadius: 8,
-                }}>
-                  {friendPhotoUrls[item.$id] ? (
-                    <Image
-                      source={{ uri: friendPhotoUrls[item.$id]! }}
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 20,
-                        marginRight: 12,
-                      }}
-                    />
-                  ) : (
-                    <View style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 20,
-                      backgroundColor: '#ddd',
-                      marginRight: 12,
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                    }}>
-                      <Text style={{
-                        color: '#666',
-                        fontSize: 16,
-                        fontWeight: 'bold',
-                      }}>
-                        {item.name ? item.name.charAt(0).toUpperCase() : '?'}
-                      </Text>
-                    </View>
-                  )}
-                  <View style={{ flex: 1 }}>
-                    <Text style={{
-                      fontSize: 16,
-                      fontWeight: '500',
-                      color: '#333',
-                    }}>
-                      {item.name}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={{
-                      backgroundColor: '#8B5CF6',
-                      paddingHorizontal: 16,
-                      paddingVertical: 8,
-                      borderRadius: 6,
-                    }}
-                    onPress={() => inviteFriend(item.$id)}
-                    disabled={inviting}
-                  >
-                    <Text style={{
-                      color: 'white',
-                      fontWeight: '500',
-                    }}>
-                      {inviting ? 'Inviting...' : 'Invite'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-              style={{ maxHeight: 400 }}
-            />
+            <Text style={styles.inviteModalTitle}>Invite Friends</Text>
+            <View style={{ width: 60 }} />
           </View>
-        </View>
+
+          <FlatList
+            data={friends}
+            keyExtractor={(item) => item.$id}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => inviteFriend(item.$id)}
+                disabled={inviting}
+                style={styles.inviteFriendItem}
+              >
+                <UserAvatar
+                  photoUrl={friendPhotoUrls[item.$id]}
+                  firstName={item.firstName}
+                  lastName={item.lastName}
+                  name={item.name}
+                  size={40}
+                />
+                <View style={styles.inviteFriendInfo}>
+                  <Text style={styles.inviteFriendName}>
+                    {userDisplayUtils.getFullName(item) || item.name}
+                  </Text>
+                </View>
+                <Text style={styles.inviteButtonText}>
+                  {inviting ? 'Inviting...' : 'Invite'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={
+              <View style={styles.emptyInviteList}>
+                <Text style={styles.emptyInviteText}>
+                  No friends available to invite
+                </Text>
+              </View>
+            }
+          />
+        </SafeAreaView>
       </Modal>
     </Modal>
   );
@@ -648,6 +607,56 @@ const styles = StyleSheet.create({
   contentContainer: {
     backgroundColor: 'white',
     padding: 20,
+  },
+  inviteModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  inviteModalCancel: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#000',
+  },
+  inviteModalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#000',
+  },
+  inviteFriendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  inviteFriendInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  inviteFriendName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+  },
+  inviteButtonText: {
+    color: '#3B82F6',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  emptyInviteList: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  emptyInviteText: {
+    color: '#6B7280',
+    textAlign: 'center',
+    fontSize: 16,
   },
 });
 

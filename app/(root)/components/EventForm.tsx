@@ -1,11 +1,15 @@
 import { CATEGORIES } from '@/constants/categories';
 import { addEventToGroup } from '@/lib/api/group';
+import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
+import { getFriends } from '@/lib/api/user';
 import { config, databases } from '@/lib/appwrite/appwrite';
 import { Event } from '@/lib/types/Events';
+import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import dayjs from 'dayjs';
 import React, { useEffect, useState } from 'react';
-import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Modal, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useEvents } from '../context/EventContext';
+import UserAvatar from './UserAvatar';
 
 // Conditional imports for third-party libraries
 let DateTimePickerModal: any;
@@ -13,8 +17,7 @@ let DateTimePickerModal: any;
 try {
   DateTimePickerModal = require("react-native-modal-datetime-picker").default;
 } catch (error) {
-  console.error('Error importing third-party libraries:', error);
-  // Fallback components will be used
+  console.error('Failed to load DateTimePickerModal:', error);
 }
 
 // Fallback components for when third-party libraries fail
@@ -62,9 +65,12 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
 
-  // Friend invitation state - simplified approach
+  // Friend invitation state - enhanced approach
   const [inviteeIds, setInviteeIds] = useState<string[]>([]);
   const [showFriendPicker, setShowFriendPicker] = useState(false);
+  const [friendProfiles, setFriendProfiles] = useState<any[]>([]);
+  const [friendPhotoUrls, setFriendPhotoUrls] = useState<Record<string, string | null>>({});
+  const [loadingFriends, setLoadingFriends] = useState(false);
 
   // Safely parse date with validation and proper time information
   const safeParseDate = (dateString: string): Date => {
@@ -244,6 +250,44 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       console.error('Diagnostic test crashed:', error);
       console.log(`Diagnostic test crashed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  };
+
+  // Load friend profiles when friend picker is opened
+  const loadFriendProfiles = async () => {
+    try {
+      setLoadingFriends(true);
+      const friendsList = await getFriends(currentUserId);
+
+      // Filter out friends who are already invited
+      const availableFriends = friendsList.filter(friend =>
+        !inviteeIds.includes(friend.$id) && friend.$id !== currentUserId
+      );
+
+      setFriendProfiles(availableFriends);
+
+      // Fetch photos for friends
+      const photoUrls: Record<string, string | null> = {};
+      for (const friend of availableFriends) {
+        try {
+          const photoUrl = await getUserProfilePhotoUrl(friend.$id);
+          photoUrls[friend.$id] = photoUrl;
+        } catch (error) {
+          console.error('Error fetching friend photo:', error);
+          photoUrls[friend.$id] = null;
+        }
+      }
+      setFriendPhotoUrls(photoUrls);
+    } catch (error) {
+      console.error('Error loading friends:', error);
+      Alert.alert('Error', 'Failed to load friends list');
+    } finally {
+      setLoadingFriends(false);
+    }
+  };
+
+  const handleOpenFriendPicker = () => {
+    loadFriendProfiles();
+    setShowFriendPicker(true);
   };
 
 
@@ -643,14 +687,12 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
             )}
           </View>
 
-          {/* Invite Friends Section - Simplified */}
+          {/* Invite Friends Section - Enhanced */}
           <View className="mb-4">
             <Text className="text-gray-600 text-base mb-2">Invite Friends</Text>
-            {friends.length === 0 ? (
-              <Text className="text-gray-400 p-3">You have no friends to invite.</Text>
-            ) : editable ? (
+            {editable ? (
               <TouchableOpacity
-                onPress={() => setShowFriendPicker(true)}
+                onPress={handleOpenFriendPicker}
                 className="border border-gray-300 p-3 rounded-lg"
               >
                 <Text className="text-lg">Select friends to invite...</Text>
@@ -685,43 +727,104 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
             </View>
           )}
 
-          {/* Simple Friend Picker Modal */}
-          <Modal visible={showFriendPicker} transparent animationType="slide">
-            <View className="flex-1 justify-center items-center bg-black bg-opacity-50">
-              <View className="bg-white w-4/5 max-h-96 rounded-lg">
-                <View className="p-4 border-b border-gray-200">
-                  <Text className="text-xl font-bold text-center">Select Friends</Text>
-                </View>
-                <ScrollView className="max-h-80 p-4">
-                  {friends
-                    .filter(friendId => !inviteeIds.includes(friendId) && friendId !== currentUserId)
-                    .map(friendId => (
-                      <TouchableOpacity
-                        key={friendId}
-                        onPress={() => {
-                          setInviteeIds([...inviteeIds, friendId]);
-                        }}
-                        className="p-3 border-b border-gray-100"
-                      >
-                        <Text className="text-lg">Friend ({friendId.slice(-4)})</Text>
-                      </TouchableOpacity>
-                    ))}
-                  {friends.filter(friendId => !inviteeIds.includes(friendId) && friendId !== currentUserId).length === 0 && (
-                    <Text className="text-gray-400 text-center p-4">All friends have been invited</Text>
-                  )}
-                </ScrollView>
-                <TouchableOpacity
-                  onPress={() => setShowFriendPicker(false)}
-                  className="p-4 border-t border-gray-200"
-                >
-                  <Text className="text-blue-500 text-center text-lg font-semibold">Done</Text>
+          {/* Enhanced Friend Picker Modal */}
+          <Modal
+            visible={showFriendPicker}
+            animationType="slide"
+            presentationStyle="pageSheet"
+            onRequestClose={() => setShowFriendPicker(false)}
+          >
+            <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: 16,
+                borderBottomWidth: 1,
+                borderBottomColor: '#E5E7EB',
+              }}>
+                <TouchableOpacity onPress={() => setShowFriendPicker(false)}>
+                  <Text style={{
+                    fontSize: 18,
+                    fontWeight: '500',
+                    color: '#000',
+                  }}>Cancel</Text>
                 </TouchableOpacity>
+                <Text style={{
+                  fontSize: 20,
+                  fontWeight: '600',
+                  color: '#000',
+                }}>Invite Friends</Text>
+                <View style={{ width: 60 }} />
               </View>
-            </View>
-          </Modal>
 
-          {/* Invite Friends section - REMOVED */}
-          {/* Friend invitation functionality has been removed */}
+              {loadingFriends ? (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                  <Text>Loading friends...</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={friendProfiles}
+                  keyExtractor={(item) => item.$id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setInviteeIds([...inviteeIds, item.$id]);
+                        setShowFriendPicker(false);
+                      }}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        padding: 16,
+                        borderBottomWidth: 1,
+                        borderBottomColor: '#F3F4F6',
+                      }}
+                    >
+                      <UserAvatar
+                        photoUrl={friendPhotoUrls[item.$id]}
+                        firstName={item.firstName}
+                        lastName={item.lastName}
+                        name={item.name}
+                        size={40}
+                      />
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={{
+                          fontSize: 16,
+                          fontWeight: '600',
+                          color: '#000',
+                        }}>
+                          {userDisplayUtils.getFullName(item) || item.name}
+                        </Text>
+                      </View>
+                      <Text style={{
+                        color: '#3B82F6',
+                        fontSize: 16,
+                        fontWeight: '500',
+                      }}>
+                        Invite
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={
+                    <View style={{
+                      flex: 1,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      padding: 32,
+                    }}>
+                      <Text style={{
+                        color: '#6B7280',
+                        textAlign: 'center',
+                        fontSize: 16,
+                      }}>
+                        No friends available to invite
+                      </Text>
+                    </View>
+                  }
+                />
+              )}
+            </SafeAreaView>
+          </Modal>
 
           {/* Delete button only for creator */}
           {event && isCreator && (
