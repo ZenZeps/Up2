@@ -12,7 +12,7 @@ import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
@@ -33,6 +33,7 @@ const creatorNameCache = new Map<string, string>();
 export default function Home() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   // Safely access the context values
   const eventsContext = React.useContext(EventsContext);
@@ -197,6 +198,18 @@ export default function Home() {
       e.creatorId === currentUser.$id ||
       (e.inviteeIds && Array.isArray(e.inviteeIds) && e.inviteeIds.includes(currentUser.$id)) ||
       (e.attendees && Array.isArray(e.attendees) && e.attendees.includes(currentUser.$id))
+    );
+  }, [events, currentUser]);
+
+  // Check for pending invites
+  const hasInvites = useMemo(() => {
+    if (!currentUser?.$id || !events || events.length === 0) return false;
+
+    return events.some(event =>
+      event.creatorId !== currentUser.$id &&
+      event.inviteeIds &&
+      Array.isArray(event.inviteeIds) &&
+      event.inviteeIds.includes(currentUser.$id)
     );
   }, [events, currentUser]);
 
@@ -599,12 +612,30 @@ export default function Home() {
         >
           <View style={styles.headerContent}>
             <Text style={styles.headerTitle}>UP2</Text>
-            <TouchableOpacity
-              onPress={handleCreateEventPress}
-              style={styles.headerButton}
-            >
-              <MaterialIcons name="add" size={24} color="white" />
-            </TouchableOpacity>
+            <View style={styles.headerButtonsContainer}>
+              <TouchableOpacity
+                onPress={() => router.push('/(root)/Invites')}
+                style={[
+                  styles.headerButton,
+                  { marginRight: 12 }
+                ]}
+              >
+                <MaterialIcons
+                  name="notifications"
+                  size={24}
+                  color={hasInvites ? '#FF3B30' : 'white'}
+                />
+                {hasInvites && (
+                  <View style={styles.notificationDot} />
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleCreateEventPress}
+                style={styles.headerButton}
+              >
+                <MaterialIcons name="add" size={24} color="white" />
+              </TouchableOpacity>
+            </View>
           </View>
         </LinearGradient>
       </View>
@@ -907,6 +938,20 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     borderRadius: 8,
+    position: 'relative',
+  },
+  headerButtonsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF3B30',
   },
   tabContainer: {
     flexDirection: 'row',

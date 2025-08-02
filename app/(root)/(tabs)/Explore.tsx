@@ -262,14 +262,6 @@ const Explore = () => {
     );
   }, [query, eventsWithCreatorNames]);
 
-  // Check if the user has any pending event invites
-  const hasInvites = events.some(
-    (event) =>
-      userId &&
-      event.inviteeIds.includes(userId) &&
-      event.creatorId !== userId
-  );
-
   // Handler for attending an event (not used in UI here, but available)
   const handleAttendEvent = async (event: any) => {
     if (!event.inviteeIds?.includes(userId)) {
@@ -319,19 +311,6 @@ const Explore = () => {
                   <Text style={styles.headerUserName}>{userDisplayUtils.getFullName(profile, 'User')}</Text>
                 </View>
               </View>
-              <TouchableOpacity
-                onPress={() => router.push('/Invites')}
-                style={styles.notificationButton}
-              >
-                <MaterialIcons
-                  name="notifications"
-                  size={24}
-                  color={hasInvites ? '#FF3B30' : 'white'}
-                />
-                {hasInvites && (
-                  <View style={styles.notificationDot} />
-                )}
-              </TouchableOpacity>
             </View>
           </LinearGradient>
         </View>
@@ -664,19 +643,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: '#ffffff',
-  },
-  notificationButton: {
-    position: 'relative',
-    padding: 8,
-  },
-  notificationDot: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    backgroundColor: '#FF3B30',
-    borderRadius: 6,
-    width: 12,
-    height: 12,
   },
   scrollContainer: {
     flex: 1,
