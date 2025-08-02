@@ -6,6 +6,7 @@ import { config, databases } from '@/lib/appwrite/appwrite';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import UserAvatar from './UserAvatar';
@@ -33,6 +34,7 @@ const EventDetailsModal = ({
   onChat,
   currentUserId
 }: EventDetailsModalProps) => {
+  const router = useRouter();
   const [attendeeProfiles, setAttendeeProfiles] = useState<any[]>([]);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -153,6 +155,9 @@ const EventDetailsModal = ({
     }
   };
 
+  if (!event) return null;
+
+  // AttendeesList component
   interface AttendeeProfile {
     $id: string;
     firstName?: string;
@@ -201,43 +206,41 @@ const EventDetailsModal = ({
     >
       <View style={styles.centeredView}>
         <View style={styles.modalView}>
-          {/* Close Button */}
-          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-            <MaterialIcons name="close" size={24} color="#666" />
-          </TouchableOpacity>
-
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Creator Info */}
-            <View style={styles.creatorInfo}>
-              <UserAvatar
-                photoUrl={creatorPhotoUrl}
-                name={(event as any).creatorName || 'Unknown Creator'}
-                size={40}
-              />
-              <Text style={styles.creatorName}>
-                {/* TypeScript workaround for extended Event with creatorName */}
-                {(event as any).creatorName || 'Unknown Creator'}
-              </Text>
+          {/* Header with black background and invite button */}
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>{event.title}</Text>
+            <View style={styles.headerButtons}>
+              {isAttending && onChat && (
+                <TouchableOpacity style={styles.headerButton} onPress={() => onChat(event)}>
+                  <Image source={icons.chat} style={styles.headerChatIcon} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.headerButton} onPress={handleInviteFriend}>
+                <MaterialIcons name="person-add" size={24} color="white" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.headerButton} onPress={onClose}>
+                <MaterialIcons name="close" size={24} color="white" />
+              </TouchableOpacity>
             </View>
+          </View>
 
+          <ScrollView showsVerticalScrollIndicator={false} style={styles.contentContainer} contentContainerStyle={{ minHeight: 300 }}>
             {/* Event Emoji */}
             <View style={styles.eventEmojiContainer}>
               <Text style={styles.eventEmoji}>{getEventEmoji(event.tags || [])}</Text>
             </View>
 
-            {/* Event Title */}
-            <Text style={styles.eventTitle}>{event.title}</Text>
-
-            {/* Chat Button - Only show if user is attending and onChat is provided */}
-            {isAttending && onChat && (
-              <TouchableOpacity
-                style={styles.chatButton}
-                onPress={() => onChat(event)}
-              >
-                <Image source={icons.chat} style={styles.chatIcon} />
-                <Text style={styles.chatButtonText}>Join Event Chat</Text>
-              </TouchableOpacity>
-            )}
+            {/* Creator Info */}
+            <View style={styles.creatorInfo}>
+              <UserAvatar
+                photoUrl={creatorPhotoUrl}
+                name={(event as any).creatorName || 'Unknown Creator'}
+                size={20}
+              />
+              <Text style={styles.creatorName}>
+                {(event as any).creatorName || 'Unknown Creator'}
+              </Text>
+            </View>
 
             {/* Event Details */}
             <View style={styles.detailRow}>
@@ -248,7 +251,7 @@ const EventDetailsModal = ({
               <Image source={icons.calendar} style={styles.detailIcon} />
               <Text style={styles.detailText}>
                 {event.startTime && dayjs(event.startTime).isValid() ? dayjs(event.startTime).format('MMM D, YYYY h:mm A') : 'Invalid date'}
-                -
+                {' - '}
                 {event.endTime && dayjs(event.endTime).isValid() ? dayjs(event.endTime).format('h:mm A') : 'Invalid date'}
               </Text>
             </View>
@@ -270,44 +273,30 @@ const EventDetailsModal = ({
 
             {/* Action Buttons */}
             <View style={styles.actionButtons}>
-              {isCreator ? (
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <TouchableOpacity
-                    style={[styles.button, styles.editButton]}
-                    onPress={() => onEdit(event)}
-                  >
-                    <Text style={styles.buttonText}>Edit Event</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#8B5CF6' }]}
-                    onPress={handleInviteFriend}
-                  >
-                    <Text style={styles.buttonText}>Invite Friends</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <TouchableOpacity
-                    style={[
-                      styles.button,
-                      isAttending ? styles.notAttendingButton : styles.attendingButton
-                    ]}
-                    onPress={isAttending ? onNotAttend : onAttend}
-                  >
-                    <Text style={[
-                      styles.buttonText,
-                      isAttending ? styles.notAttendingText : styles.attendingText
-                    ]}>
-                      {isAttending ? 'Not Attending' : 'Attend Event'}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#8B5CF6' }]}
-                    onPress={handleInviteFriend}
-                  >
-                    <Text style={styles.buttonText}>Invite Friends</Text>
-                  </TouchableOpacity>
-                </View>
+              {!isCreator && (
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    isAttending ? styles.notAttendingButton : styles.attendingButton
+                  ]}
+                  onPress={isAttending ? onNotAttend : onAttend}
+                >
+                  <Text style={[
+                    styles.buttonText,
+                    isAttending ? styles.notAttendingText : styles.attendingText
+                  ]}>
+                    {isAttending ? 'Not Attending' : 'Attend Event'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {isCreator && (
+                <TouchableOpacity
+                  style={[styles.button, styles.editButtonBottom]}
+                  onPress={() => onEdit(event)}
+                >
+                  <Text style={styles.buttonText}>Edit Event</Text>
+                </TouchableOpacity>
               )}
             </View>
           </ScrollView>
@@ -448,7 +437,6 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
     backgroundColor: 'white',
     borderRadius: 20,
-    padding: 20,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -457,6 +445,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+    overflow: 'hidden',
   },
   closeButton: {
     position: 'absolute',
@@ -467,19 +456,13 @@ const styles = StyleSheet.create({
   creatorInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
-    paddingHorizontal: 5, // Add padding for better spacing
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 16, // Increase margin further for better spacing
+    marginBottom: 10,
+    paddingHorizontal: 0,
   },
   creatorName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    color: '#666',
+    marginLeft: 12,
   },
   eventEmojiContainer: {
     alignItems: 'center',
@@ -578,11 +561,14 @@ const styles = StyleSheet.create({
   editButton: {
     backgroundColor: '#4A90E2',
   },
+  editButtonBottom: {
+    backgroundColor: '#000',
+  },
   attendingButton: {
     backgroundColor: '#4CAF50',
   },
   notAttendingButton: {
-    backgroundColor: '#FF5252',
+    backgroundColor: '#888888',
   },
   buttonText: {
     color: 'white',
@@ -630,6 +616,38 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  header: {
+    backgroundColor: '#000',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  headerTitle: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 5,
+  },
+  headerButton: {
+    padding: 5,
+  },
+  headerChatIcon: {
+    width: 20,
+    height: 20,
+    tintColor: 'white',
+  },
+  contentContainer: {
+    backgroundColor: 'white',
+    padding: 20,
   },
 });
 
