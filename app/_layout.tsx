@@ -81,7 +81,7 @@ export default function RootLayout() {
     }
   }, [fontsLoaded]);
 
-  // Handle deep links for email verification and password reset
+  // Handle deep links for email verification, password reset, and invites
   useEffect(() => {
     const handleDeepLink = (url: string) => {
       const { hostname, path, queryParams } = Linking.parse(url);
@@ -97,6 +97,16 @@ export default function RootLayout() {
         const { userId, secret } = queryParams as { userId?: string; secret?: string };
         if (userId && secret) {
           router.push(`/ResetPassword?userId=${userId}&secret=${secret}`);
+        }
+      } else if (hostname === 'invite' || path === '/invite') {
+        // Handle event invites
+        const { eventId, inviter, type } = queryParams as {
+          eventId?: string;
+          inviter?: string;
+          type?: string;
+        };
+        if (type === 'event-invite' && eventId) {
+          router.push(`/(root)/InviteLanding?eventId=${eventId}&inviter=${inviter || ''}`);
         }
       }
     };

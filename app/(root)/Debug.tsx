@@ -1,5 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import DeepLinkTester from '../../components/DeepLinkTester';
 // Import but don't use OptimizationTester until we fix the context nesting issue
 // import OptimizationTester from './components/OptimizationTester';
 
@@ -44,6 +45,7 @@ export default function DebugPage() {
 
             <View style={styles.debugTools}>
                 <Text style={styles.infoTitle}>Debug Tools</Text>
+                <DeepLinkTester />
                 <TouchableOpacity style={[styles.debugButton, { opacity: 0.5 }]} disabled>
                     <MaterialIcons name="build" size={20} color="white" />
                     <Text style={styles.debugButtonText}>Additional Debug Tools Coming Soon</Text>

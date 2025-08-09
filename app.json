@@ -11,6 +11,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nikolajszeps.up2",
+      "associatedDomains": [
+        "applinks:up2.app"
+      ],
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "We need access to your photo library to allow you to select a profile photo.",
         "NSCameraUsageDescription": "We need access to your camera to allow you to take profile photos.",
@@ -20,6 +23,22 @@
     },
     "android": {
       "package": "com.nikolajszeps.up2",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "up2.app"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/Up2-Logo.png",
         "backgroundColor": "#ffffff"

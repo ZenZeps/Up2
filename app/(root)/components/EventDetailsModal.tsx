@@ -9,6 +9,7 @@ import dayjs from 'dayjs';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import ShareInviteModal from '../../../components/ShareInviteModal';
 import UserAvatar from './UserAvatar';
 
 import { Event } from '@/lib/types/Events';
@@ -38,6 +39,7 @@ const EventDetailsModal = ({
   const [attendeeProfiles, setAttendeeProfiles] = useState<any[]>([]);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [creatorPhotoUrl, setCreatorPhotoUrl] = useState<string | null>(null);
   const [attendeePhotoUrls, setAttendeePhotoUrls] = useState<Record<string, string | null>>({});
   const [friends, setFriends] = useState<any[]>([]);
@@ -215,6 +217,9 @@ const EventDetailsModal = ({
                   <Image source={icons.chat} style={styles.headerChatIcon} />
                 </TouchableOpacity>
               )}
+              <TouchableOpacity style={styles.headerButton} onPress={() => setShowShareModal(true)}>
+                <MaterialIcons name="share" size={24} color="white" />
+              </TouchableOpacity>
               <TouchableOpacity style={styles.headerButton} onPress={handleInviteFriend}>
                 <MaterialIcons name="person-add" size={24} color="white" />
               </TouchableOpacity>
@@ -380,6 +385,13 @@ const EventDetailsModal = ({
           />
         </SafeAreaView>
       </Modal>
+
+      {/* Share Invite Modal */}
+      <ShareInviteModal
+        visible={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        eventId={event.$id}
+      />
     </Modal>
   );
 };

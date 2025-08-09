@@ -8,6 +8,7 @@ import dayjs from 'dayjs';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Linking, Modal, SafeAreaView, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import ShareInviteModal from '../../../components/ShareInviteModal';
 import UserAvatar from '../components/UserAvatar';
 import { useEvents } from '../context/EventContext';
 
@@ -26,6 +27,7 @@ const EventDetail = () => {
   const [attendeePhotoUrls, setAttendeePhotoUrls] = useState<Record<string, string | null>>({});
   const [inviteePhotoUrls, setInviteePhotoUrls] = useState<Record<string, string | null>>({});
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [friends, setFriends] = useState<any[]>([]);
   const [friendPhotoUrls, setFriendPhotoUrls] = useState<Record<string, string | null>>({});
   const [inviting, setInviting] = useState(false);
@@ -253,9 +255,14 @@ const EventDetail = () => {
           <Text className="text-lg font-rubik-medium text-black">Back</Text>
         </TouchableOpacity>
         <Text className="text-xl font-rubik-semibold">Event Details</Text>
-        <TouchableOpacity onPress={handleInviteFriend}>
-          <Image source={icons.send} className="w-6 h-6" resizeMode="contain" />
-        </TouchableOpacity>
+        <View className="flex-row items-center space-x-3">
+          <TouchableOpacity onPress={() => setShowShareModal(true)} className="p-1">
+            <Image source={icons.send} className="w-6 h-6" resizeMode="contain" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleInviteFriend} className="p-1">
+            <Image source={icons.people} className="w-6 h-6" resizeMode="contain" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView className="flex-1">
@@ -416,6 +423,13 @@ const EventDetail = () => {
           />
         </SafeAreaView>
       </Modal>
+
+      {/* Share Invite Modal */}
+      <ShareInviteModal
+        visible={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        eventId={String(eventId)}
+      />
     </SafeAreaView>
   );
 };

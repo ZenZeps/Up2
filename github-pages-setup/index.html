@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Up2 Event Invite</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 350px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        h1 {
+            margin-bottom: 15px;
+        }
+
+        .event-info {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+        }
+
+        .btn {
+            display: block;
+            padding: 12px 20px;
+            margin: 10px 0;
+            background: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+
+        .btn:hover {
+            background: #45a049;
+        }
+
+        .secondary {
+            background: #2196F3;
+        }
+
+        .loading {
+            margin: 15px 0;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🎉 Event Invite</h1>
+        <div class="event-info">
+            <h3 id="eventTitle">Loading...</h3>
+            <p id="eventDetails"></p>
+        </div>
+        <div class="loading">Opening Up2 app...</div>
+        <a href="#" id="openApp" class="btn">Open Up2 App</a>
+        <a href="https://apps.apple.com/search?term=up2" class="btn secondary">Download Up2</a>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const eventId = params.get('eventId');
+        const inviter = params.get('inviter');
+        const event = params.get('event') || 'an event';
+        const inviterName = params.get('inviter') || 'someone';
+
+        document.getElementById('eventTitle').textContent = event;
+        document.getElementById('eventDetails').textContent = `Invited by ${inviterName}`;
+
+        const appUrl = `up2://invite?eventId=${eventId}&inviter=${inviter}&type=event-invite`;
+        document.getElementById('openApp').href = appUrl;
+
+        // Try to open app automatically
+        setTimeout(() => {
+            window.location.href = appUrl;
+        }, 1500);
+    </script>
+</body>
+
+</html>
