@@ -1,5 +1,6 @@
 import { CATEGORIES } from "@/constants/categories";
 import images from "@/constants/images";
+import { LegalDocumentModal } from "@/components/legal/LegalDocumentModal";
 import { pickProfilePhoto, uploadProfilePhoto } from "@/lib/api/profilePhoto";
 import {
     createUserProfile
@@ -12,6 +13,8 @@ import {
 } from "@/lib/appwrite/appwrite";
 import { authDebug } from "@/lib/debug/authDebug";
 import { useGlobalContext } from "@/lib/global-provider";
+import { MaterialIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -21,6 +24,7 @@ import {
     KeyboardAvoidingView,
     Platform,
     ScrollView,
+    StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
@@ -34,8 +38,11 @@ interface SignUpData {
     email: string;
     password: string;
     confirmPassword: string;
+    birthYear: string;
     profilePhoto?: string;
     preferences: string[];
+    agreeToTerms: boolean;
+    agreeToPrivacy: boolean;
 }
 
 const SignUp = () => {
@@ -51,9 +58,14 @@ const SignUp = () => {
         email: "",
         password: "",
         confirmPassword: "",
+        birthYear: "",
         preferences: [],
+        agreeToTerms: false,
+        agreeToPrivacy: false,
     });
     const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
+    const [legalModalVisible, setLegalModalVisible] = useState(false);
+    const [legalDocument, setLegalDocument] = useState<'terms' | 'privacy'>('terms');
 
     // Check if user is already logged in (completing profile after email verification)
     useEffect(() => {
@@ -83,10 +95,25 @@ const SignUp = () => {
     };
 
     const validateStep1 = () => {
-        const { firstName, lastName, email, password, confirmPassword } = signUpData;
+        const { firstName, lastName, email, password, confirmPassword, birthYear, agreeToTerms, agreeToPrivacy } = signUpData;
 
-        if (!firstName.trim() || !lastName.trim() || !email.trim() || !password || !confirmPassword) {
+        if (!firstName.trim() || !lastName.trim() || !email.trim() || !password || !confirmPassword || !birthYear.trim()) {
             Alert.alert("Error", "Please fill in all required fields.");
+            return false;
+        }
+
+        // Validate birth year
+        const currentYear = new Date().getFullYear();
+        const birthYearNum = parseInt(birthYear);
+        if (isNaN(birthYearNum) || birthYearNum < 1900 || birthYearNum > currentYear) {
+            Alert.alert("Invalid Birth Year", "Please enter a valid birth year.");
+            return false;
+        }
+
+        // Check minimum age (13 years old)
+        const age = currentYear - birthYearNum;
+        if (age < 13) {
+            Alert.alert("Age Requirement", "You must be at least 13 years old to use Up2.");
             return false;
         }
 
@@ -106,6 +133,16 @@ const SignUp = () => {
             return false;
         }
 
+        if (!agreeToTerms) {
+            Alert.alert("Terms Required", "Please agree to the Terms of Service to continue.");
+            return false;
+        }
+
+        if (!agreeToPrivacy) {
+            Alert.alert("Privacy Required", "Please agree to the Privacy Policy to continue.");
+            return false;
+        }
+
         return true;
     };
 
@@ -118,6 +155,11 @@ const SignUp = () => {
 
     const handleBack = () => {
         setCurrentStep(prev => prev - 1);
+    };
+
+    const openLegalDocument = (document: 'terms' | 'privacy') => {
+        setLegalDocument(document);
+        setLegalModalVisible(true);
     };
 
     const handlePhotoUpload = async () => {
@@ -156,6 +198,9 @@ const SignUp = () => {
                 const user = await account.get();
 
                 // Create user profile
+                const currentYear = new Date().getFullYear();
+                const age = currentYear - parseInt(signUpData.birthYear);
+                
                 await createUserProfile({
                     $id: user.$id,
                     firstName: signUpData.firstName.trim(),
@@ -164,6 +209,7 @@ const SignUp = () => {
                     isPublic: true,
                     preferences: signUpData.preferences,
                     friends: [],
+                    age: age,
                     photoId: undefined,
                 });
 
@@ -216,84 +262,183 @@ const SignUp = () => {
 
         } catch (error: any) {
             authDebug.error("Signup failed", error);
-            Alert.alert(
-                "Sign Up Failed",
-                error.message || "Could not create your account. Please try again."
-            );
+            
+            // Handle specific error cases
+            if (error.message && error.message.includes("already exists")) {
+                Alert.alert(
+                    "Account Already Exists",
+                    "An account with this email already exists. Would you like to sign in instead or try resetting your password?",
+                    [
+                        {
+                            text: "Sign In",
+                            onPress: () => router.replace("/SignIn")
+                        },
+                        {
+                            text: "Cancel",
+                            style: "cancel"
+                        }
+                    ]
+                );
+            } else {
+                Alert.alert(
+                    "Sign Up Failed",
+                    error.message || "Could not create your account. Please try again."
+                );
+            }
         } finally {
             setLoading(false);
         }
     };
 
     const renderStep1 = () => (
-        <View className="px-10 mt-6 pb-12">
-            <Text className="text-3xl font-rubik-semibold text-black-300 text-center mb-6">
-                Create Your Account
-            </Text>
+        <View style={styles.stepContent}>
+            {/* Account Details Card */}
+            <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                    <MaterialIcons name="person-add" size={24} color="#007AFF" />
+                    <Text style={styles.cardTitle}>Account Details</Text>
+                </View>
 
-            <TextInput
-                placeholder="First Name"
-                value={signUpData.firstName}
-                onChangeText={(value) => updateSignUpData('firstName', value)}
-                className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
-                autoCapitalize="words"
-                placeholderTextColor="#aaa"
-            />
+                <View style={styles.inputContainer}>
+                    <MaterialIcons name="person" size={20} color="#666" style={styles.inputIcon} />
+                    <TextInput
+                        placeholder="First Name"
+                        value={signUpData.firstName}
+                        onChangeText={(value) => updateSignUpData('firstName', value)}
+                        style={styles.textInput}
+                        autoCapitalize="words"
+                        placeholderTextColor="#aaa"
+                    />
+                </View>
 
-            <TextInput
-                placeholder="Last Name"
-                value={signUpData.lastName}
-                onChangeText={(value) => updateSignUpData('lastName', value)}
-                className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
-                autoCapitalize="words"
-                placeholderTextColor="#aaa"
-            />
+                <View style={styles.inputContainer}>
+                    <MaterialIcons name="person-outline" size={20} color="#666" style={styles.inputIcon} />
+                    <TextInput
+                        placeholder="Last Name"
+                        value={signUpData.lastName}
+                        onChangeText={(value) => updateSignUpData('lastName', value)}
+                        style={styles.textInput}
+                        autoCapitalize="words"
+                        placeholderTextColor="#aaa"
+                    />
+                </View>
 
-            <TextInput
-                placeholder="Email"
-                value={signUpData.email}
-                onChangeText={(value) => updateSignUpData('email', value)}
-                className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
-                autoCapitalize="none"
-                keyboardType="email-address"
-                placeholderTextColor="#aaa"
-            />
+                <View style={styles.inputContainer}>
+                    <MaterialIcons name="email" size={20} color="#666" style={styles.inputIcon} />
+                    <TextInput
+                        placeholder="Email"
+                        value={signUpData.email}
+                        onChangeText={(value) => updateSignUpData('email', value)}
+                        style={styles.textInput}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        placeholderTextColor="#aaa"
+                    />
+                </View>
 
-            <TextInput
-                placeholder="Password"
-                value={signUpData.password}
-                onChangeText={(value) => updateSignUpData('password', value)}
-                className="border border-gray-300 rounded-lg px-4 py-3 mb-4 font-rubik text-black-300"
-                secureTextEntry
-                placeholderTextColor="#aaa"
-            />
+                <View style={styles.inputContainer}>
+                    <MaterialIcons name="lock" size={20} color="#666" style={styles.inputIcon} />
+                    <TextInput
+                        placeholder="Password"
+                        value={signUpData.password}
+                        onChangeText={(value) => updateSignUpData('password', value)}
+                        style={styles.textInput}
+                        secureTextEntry
+                        placeholderTextColor="#aaa"
+                    />
+                </View>
 
-            <TextInput
-                placeholder="Confirm Password"
-                value={signUpData.confirmPassword}
-                onChangeText={(value) => updateSignUpData('confirmPassword', value)}
-                className="border border-gray-300 rounded-lg px-4 py-3 mb-6 font-rubik text-black-300"
-                secureTextEntry
-                placeholderTextColor="#aaa"
-            />
+                <View style={styles.inputContainer}>
+                    <MaterialIcons name="lock-outline" size={20} color="#666" style={styles.inputIcon} />
+                    <TextInput
+                        placeholder="Confirm Password"
+                        value={signUpData.confirmPassword}
+                        onChangeText={(value) => updateSignUpData('confirmPassword', value)}
+                        style={styles.textInput}
+                        secureTextEntry
+                        placeholderTextColor="#aaa"
+                    />
+                </View>
 
-            <TouchableOpacity
-                onPress={handleNext}
-                className="rounded-full py-4 bg-primary-300 mb-6"
-            >
-                <Text className="text-white text-lg font-rubik-medium text-center">
-                    Next
-                </Text>
-            </TouchableOpacity>
+                <View style={styles.inputContainer}>
+                    <MaterialIcons name="cake" size={20} color="#666" style={styles.inputIcon} />
+                    <TextInput
+                        placeholder="Birth Year (e.g., 1995)"
+                        value={signUpData.birthYear}
+                        onChangeText={(value) => updateSignUpData('birthYear', value)}
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        maxLength={4}
+                        placeholderTextColor="#aaa"
+                    />
+                </View>
+            </View>
 
-            <TouchableOpacity
-                onPress={() => router.replace('/SignIn')}
-                className="mb-8"
-            >
-                <Text className="text-center text-black-200 font-rubik">
-                    Already have an account? Sign In
-                </Text>
-            </TouchableOpacity>
+            {/* Legal Agreements Card */}
+            <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                    <MaterialIcons name="gavel" size={24} color="#007AFF" />
+                    <Text style={styles.cardTitle}>Legal Agreements</Text>
+                </View>
+
+                <View style={styles.checkboxContainer}>
+                    <TouchableOpacity
+                        onPress={() => updateSignUpData('agreeToTerms', !signUpData.agreeToTerms)}
+                        style={styles.checkboxRow}
+                    >
+                        <MaterialIcons
+                            name={signUpData.agreeToTerms ? "check-box" : "check-box-outline-blank"}
+                            size={24}
+                            color={signUpData.agreeToTerms ? "#007AFF" : "#666"}
+                        />
+                        <View style={styles.checkboxTextContainer}>
+                            <Text style={styles.checkboxText}>I agree to the </Text>
+                            <TouchableOpacity onPress={() => openLegalDocument('terms')}>
+                                <Text style={styles.linkText}>Terms of Service</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </TouchableOpacity>
+                </View>
+
+                <View style={styles.checkboxContainer}>
+                    <TouchableOpacity
+                        onPress={() => updateSignUpData('agreeToPrivacy', !signUpData.agreeToPrivacy)}
+                        style={styles.checkboxRow}
+                    >
+                        <MaterialIcons
+                            name={signUpData.agreeToPrivacy ? "check-box" : "check-box-outline-blank"}
+                            size={24}
+                            color={signUpData.agreeToPrivacy ? "#007AFF" : "#666"}
+                        />
+                        <View style={styles.checkboxTextContainer}>
+                            <Text style={styles.checkboxText}>I agree to the </Text>
+                            <TouchableOpacity onPress={() => openLegalDocument('privacy')}>
+                                <Text style={styles.linkText}>Privacy Policy</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                    onPress={handleNext}
+                    style={styles.nextButton}
+                >
+                    <Text style={styles.nextButtonText}>Next</Text>
+                    <MaterialIcons name="arrow-forward" size={20} color="white" />
+                </TouchableOpacity>
+            </View>
+
+            {/* Sign In Link */}
+            <View style={styles.signInSection}>
+                <Text style={styles.signInText}>Already have an account?</Text>
+                <TouchableOpacity
+                    onPress={() => router.replace('/SignIn')}
+                    style={styles.signInButton}
+                >
+                    <MaterialIcons name="login" size={18} color="#007AFF" />
+                    <Text style={styles.signInButtonText}>Sign In</Text>
+                </TouchableOpacity>
+            </View>
         </View>
     );
 
@@ -448,38 +593,63 @@ const SignUp = () => {
     );
 
     return (
-        <SafeAreaView className="bg-white flex-1">
+        <SafeAreaView style={styles.container}>
+            {/* Modern Black Gradient Header */}
+            <View style={styles.headerContainer}>
+                <LinearGradient
+                    colors={['#000000', '#1a1a1a', '#2d2d2d']}
+                    start={[0, 0]}
+                    end={[1, 1]}
+                    style={styles.headerGradient}
+                >
+                    <View style={styles.headerContent}>
+                        <TouchableOpacity
+                            onPress={() => currentStep > 1 ? setCurrentStep(currentStep - 1) : router.back()}
+                            style={styles.headerButton}
+                        >
+                            <MaterialIcons name="arrow-back" size={24} color="white" />
+                        </TouchableOpacity>
+                        <Text style={styles.headerTitle}>Create Account</Text>
+                        <View style={styles.headerSpacer} />
+                    </View>
+                </LinearGradient>
+            </View>
+
             <KeyboardAvoidingView
                 behavior={Platform.OS === "ios" ? "padding" : "height"}
-                style={{ flex: 1 }}
+                style={styles.keyboardView}
                 keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
             >
                 {currentStep === 3 ? (
                     // Step 3 needs different layout for the FlatList
-                    <View className="flex-1">
-                        <Image
-                            source={images.logo}
-                            className="w-full h-1/4"
-                            resizeMode="contain"
-                        />
+                    <View style={styles.stepContainer}>
+                        <View style={styles.logoContainer}>
+                            <Image
+                                source={images.logo}
+                                style={styles.logoSmall}
+                                resizeMode="contain"
+                            />
+                        </View>
 
                         {renderProgressIndicator()}
-
                         {renderStep3()}
                     </View>
                 ) : (
                     // Steps 1 and 2 use ScrollView with proper spacing
                     <ScrollView
-                        contentContainerStyle={{ paddingVertical: 20 }}
+                        style={styles.scrollView}
+                        contentContainerStyle={styles.scrollContent}
                         showsVerticalScrollIndicator={false}
                         keyboardShouldPersistTaps="handled"
                         bounces={false}
                     >
-                        <Image
-                            source={images.logo}
-                            className="w-full h-64"
-                            resizeMode="contain"
-                        />
+                        <View style={styles.logoContainer}>
+                            <Image
+                                source={images.logo}
+                                style={styles.logo}
+                                resizeMode="contain"
+                            />
+                        </View>
 
                         {renderProgressIndicator()}
 
@@ -488,8 +658,191 @@ const SignUp = () => {
                     </ScrollView>
                 )}
             </KeyboardAvoidingView>
+            
+            <LegalDocumentModal
+                visible={legalModalVisible}
+                onClose={() => setLegalModalVisible(false)}
+                document={legalDocument}
+            />
         </SafeAreaView>
     );
 };
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: '#f8f9fa',
+    },
+    headerContainer: {
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        elevation: 5,
+    },
+    headerGradient: {
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    headerTitle: {
+        fontSize: 24,
+        fontWeight: '800',
+        color: '#ffffff',
+        flex: 1,
+        textAlign: 'center',
+        marginHorizontal: 16,
+    },
+    headerButton: {
+        padding: 8,
+        borderRadius: 8,
+    },
+    headerSpacer: {
+        width: 40,
+    },
+    keyboardView: {
+        flex: 1,
+    },
+    stepContainer: {
+        flex: 1,
+    },
+    scrollView: {
+        flex: 1,
+    },
+    scrollContent: {
+        flexGrow: 1,
+        paddingHorizontal: 16,
+        paddingVertical: 20,
+    },
+    logoContainer: {
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    logo: {
+        width: 120,
+        height: 120,
+    },
+    logoSmall: {
+        width: 80,
+        height: 80,
+    },
+    stepContent: {
+        paddingHorizontal: 16,
+        paddingBottom: 32,
+    },
+    card: {
+        backgroundColor: '#ffffff',
+        borderRadius: 16,
+        padding: 24,
+        marginBottom: 24,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 3.84,
+        elevation: 5,
+    },
+    cardHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    cardTitle: {
+        fontSize: 20,
+        fontWeight: '600',
+        color: '#333',
+        marginLeft: 12,
+    },
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#e1e5e9',
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 4,
+        marginBottom: 16,
+        backgroundColor: '#ffffff',
+    },
+    inputIcon: {
+        marginRight: 12,
+    },
+    textInput: {
+        flex: 1,
+        fontSize: 16,
+        color: '#333',
+        paddingVertical: 12,
+    },
+    nextButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#007AFF',
+        borderRadius: 12,
+        paddingVertical: 16,
+        marginTop: 8,
+    },
+    nextButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#ffffff',
+        marginRight: 8,
+    },
+    signInSection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 16,
+    },
+    signInText: {
+        fontSize: 16,
+        color: '#666',
+        marginRight: 8,
+    },
+    signInButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+    },
+    signInButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#007AFF',
+        marginLeft: 4,
+    },
+    checkboxContainer: {
+        marginBottom: 16,
+    },
+    checkboxRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    checkboxTextContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginLeft: 12,
+        flex: 1,
+    },
+    checkboxText: {
+        fontSize: 16,
+        color: '#333',
+    },
+    linkText: {
+        fontSize: 16,
+        color: '#007AFF',
+        fontWeight: '600',
+        textDecorationLine: 'underline',
+    },
+});
 
 export default SignUp;

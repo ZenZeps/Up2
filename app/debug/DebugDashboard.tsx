@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { dbUsageMonitor } from '@/lib/debug/dbUsageMonitor';
 import { cacheManager } from '@/lib/debug/cacheManager';
+import { EmailDebugger } from '@/lib/debug/emailDebugger';
 import { Link } from 'expo-router';
 
 /**
@@ -139,6 +140,31 @@ export default function DebugDashboard() {
             onPress={() => cacheManager.clear()}
           >
             <Text style={styles.buttonText}>Clear Cache</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.emailTestContainer}>
+          <Text style={styles.sectionTitle}>Email Testing</Text>
+          
+          <TouchableOpacity 
+            style={styles.emailButton} 
+            onPress={() => EmailDebugger.testEmailVerification()}
+          >
+            <Text style={styles.buttonText}>Test Email Verification</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.emailButton} 
+            onPress={() => EmailDebugger.checkEmailConfiguration()}
+          >
+            <Text style={styles.buttonText}>Check Email Config</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.emailButton} 
+            onPress={() => EmailDebugger.testDifferentVerificationURL()}
+          >
+            <Text style={styles.buttonText}>Test Alt URL</Text>
           </TouchableOpacity>
         </View>
         
@@ -312,6 +338,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     borderRadius: 5,
     marginTop: 10,
+    alignItems: 'center',
+  },
+  emailTestContainer: {
+    marginTop: 15,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#444',
+  },
+  emailButton: {
+    backgroundColor: '#e74c3c',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 5,
+    marginVertical: 3,
     alignItems: 'center',
   },
 });

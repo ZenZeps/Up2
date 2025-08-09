@@ -49,7 +49,9 @@ export const config = {
   groupInvitesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_GROUP_INVITES_ID || "temp_group_invites_id",
   chatsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_CHATS_ID || "temp_chats_id",
   messagesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_MESSAGES_ID || "temp_messages_id",
-}; const client = new Client()
+};
+
+const client = new Client()
   .setEndpoint(config.endpoint)
   .setProject(config.projectID)
   .setPlatform(config.platform);
@@ -65,8 +67,20 @@ export async function signupWithEmail(email: string, password: string, name: str
     // Create the user account
     const user = await account.create(ID.unique(), email, password, name);
 
-    // Send verification email immediately after account creation
-    await sendVerificationEmail();
+    // Try to send verification email by creating a temporary session
+    try {
+      const session = await account.createEmailPasswordSession(email, password);
+      
+      // Send verification email now that user is authenticated
+      await account.createVerification('up2://verify');
+      
+      // Delete the session since we want user to verify email first
+      await account.deleteSession(session.$id);
+    } catch (verificationError) {
+      // If verification email fails, log it but don't fail the entire signup
+      console.warn("Could not send verification email during signup:", verificationError);
+      // User can still sign in and request verification email later
+    }
 
     return user;
   } catch (err) {
@@ -75,14 +89,39 @@ export async function signupWithEmail(email: string, password: string, name: str
   }
 }
 
-// ✅ Send email verification
+// ✅ Send email verification (requires authenticated user)
 export async function sendVerificationEmail() {
   try {
-    // Use localhost for testing - this should work without additional platform setup
-    const response = await account.createVerification('http://localhost:3000/verify');
+    // Check if user is authenticated
+    const user = await account.get();
+    if (!user) {
+      throw new Error('User must be authenticated to send verification email');
+    }
+    
+    // Use the proper mobile app verification URL
+    const response = await account.createVerification('up2://verify');
     return response;
   } catch (err) {
     console.error("Send verification error:", err);
+    throw err;
+  }
+}
+
+// ✅ Resend verification email for existing users
+export async function resendVerificationEmail(email: string, password: string) {
+  try {
+    // First, create a temporary session to send verification
+    const session = await account.createEmailPasswordSession(email, password);
+    
+    // Send verification email
+    const response = await account.createVerification('up2://verify');
+    
+    // Delete the temporary session
+    await account.deleteSession(session.$id);
+    
+    return response;
+  } catch (err) {
+    console.error("Resend verification error:", err);
     throw err;
   }
 }
@@ -135,7 +174,7 @@ export async function loginWithEmail(email: string, password: string) {
   } catch (err: any) {
     // Handle email verification error
     if (err.message === 'UNVERIFIED_EMAIL') {
-      throw new Error('Please verify your email before signing in. Check your inbox for a verification link.');
+      throw new Error('Please verify your email before signing in. If you did not receive a verification email, try signing in again and we can resend it.');
     }
 
     // Track failed login attempts for password recovery

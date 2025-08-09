@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 // Import but don't use OptimizationTester until we fix the context nesting issue
 // import OptimizationTester from './components/OptimizationTester';
 
@@ -39,6 +40,15 @@ export default function DebugPage() {
                 <Text style={styles.infoText}>
                     5. Use the "Reset Counters" and "Clear Cache" buttons to test different scenarios
                 </Text>
+            </View>
+
+            <View style={styles.debugTools}>
+                <Text style={styles.infoTitle}>Debug Tools</Text>
+                <TouchableOpacity style={[styles.debugButton, { opacity: 0.5 }]} disabled>
+                    <MaterialIcons name="build" size={20} color="white" />
+                    <Text style={styles.debugButtonText}>Additional Debug Tools Coming Soon</Text>
+                    <MaterialIcons name="more-horiz" size={16} color="white" />
+                </TouchableOpacity>
             </View>
 
             <View style={styles.infoSection}>
@@ -103,5 +113,29 @@ const styles = StyleSheet.create({
     bold: {
         fontWeight: 'bold',
         color: '#2d3436',
+    },
+    debugTools: {
+        margin: 20,
+        padding: 15,
+        backgroundColor: '#f8f9fa',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#e9ecef',
+    },
+    debugButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#007AFF',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+        marginTop: 8,
+    },
+    debugButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+        marginLeft: 8,
+        flex: 1,
     },
 });

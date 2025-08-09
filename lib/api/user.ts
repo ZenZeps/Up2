@@ -33,6 +33,7 @@ export async function createUserProfile(profile: UserProfile) {
         preferences: profile.preferences,
         friends: profile.friends ?? [],
         photoId: profile.photoId,
+        age: profile.age,
       },
       [
         Permission.read(Role.any()), // or Role.user(profile.$id) for private

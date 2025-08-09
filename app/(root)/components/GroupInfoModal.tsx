@@ -1,4 +1,4 @@
-import { sendGroupInvite } from '@/lib/api/group';
+import { leaveGroup, sendGroupInvite } from '@/lib/api/group';
 import { getUserProfile } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
@@ -88,6 +88,12 @@ const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
             }
 
             const friendToInvite = matchingFriends[0];
+
+            // Ensure we have a valid friend profile
+            if (!friendToInvite) {
+                Alert.alert('Error', 'Unable to get friend profile information');
+                return;
+            }
 
             // Check if friend is already in the group
             if (group.users?.includes(friendToInvite.$id)) {

@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import OptimizationTester from '../../app/debug/OptimizationTester';
 
 /**
  * Debug page for testing our database optimizations
@@ -15,6 +16,9 @@ export default function DebugPage() {
                 <Text style={styles.title}>Debug & Testing Page</Text>
                 <Text style={styles.subtitle}>Database Optimization Test Suite</Text>
             </View>
+
+            {/* Database Optimization Tester */}
+            <OptimizationTester />
 
             <TouchableOpacity
                 onPress={() => router.push('/debug/group-event-test')}
