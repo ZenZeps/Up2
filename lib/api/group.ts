@@ -557,6 +557,12 @@ export const sendGroupInvite = async (groupId: string, fromUserId: string, toUse
  */
 export const getUserGroupInvites = async (userId: string) => {
     try {
+        // Safety check: If collection ID is the temporary fallback, return empty array
+        if (config.groupInvitesCollectionID === 'temp_group_invites_id') {
+            console.warn('Group invites collection not configured. Please add EXPO_PUBLIC_APPWRITE_GROUP_INVITES_ID to your .env.local file');
+            return [];
+        }
+
         const invites = await databases.listDocuments(
             config.databaseID!,
             config.groupInvitesCollectionID!,

@@ -137,50 +137,44 @@ const UserProfile = () => {
                     style={styles.headerGradient}
                 >
                     <View style={styles.headerContent}>
-                        {/* Back Button */}
-                        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                            <MaterialIcons name="arrow-back" size={20} color="white" />
-                        </TouchableOpacity>
-
                         {/* Profile Section */}
                         <View style={styles.profileSection}>
-                            <View style={styles.avatarContainer}>
-                                {profilePhotoUrl ? (
-                                    <Image
-                                        source={{ uri: profilePhotoUrl }}
-                                        style={styles.avatar}
-                                    />
-                                ) : (
-                                    <View style={styles.avatarPlaceholder}>
-                                        <Text style={styles.avatarText}>
-                                            {userDisplayUtils.getInitials({ firstName, lastName })}
-                                        </Text>
-                                    </View>
-                                )}
+                            <View style={styles.leftProfileSection}>
+                                <View style={styles.avatarContainer}>
+                                    {profilePhotoUrl ? (
+                                        <Image
+                                            source={{ uri: profilePhotoUrl }}
+                                            style={styles.avatar}
+                                        />
+                                    ) : (
+                                        <View style={styles.avatarPlaceholder}>
+                                            <Text style={styles.avatarText}>
+                                                {userDisplayUtils.getInitials({ firstName, lastName })}
+                                            </Text>
+                                        </View>
+                                    )}
+                                </View>
+
+                                <View style={styles.nameSection}>
+                                    <Text style={styles.userName}>
+                                        {userDisplayUtils.getFullName({ firstName, lastName })}
+                                    </Text>
+                                </View>
                             </View>
 
-                            <View style={styles.nameSection}>
-                                <Text style={styles.userName}>
-                                    {userDisplayUtils.getFullName({ firstName, lastName })}
-                                </Text>
-                                <Text style={styles.userSubtitle}>
-                                    {userProfile.about ? userProfile.about.slice(0, 50) + (userProfile.about.length > 50 ? '...' : '') : 'No bio yet'}
-                                </Text>
+                            {/* Stats positioned to the right */}
+                            <View style={styles.rightStatsSection}>
+                                <View style={styles.statItem}>
+                                    <Text style={styles.statNumber}>{stats.friends}</Text>
+                                    <Text style={styles.statLabel}>Friends</Text>
+                                </View>
+                                <View style={styles.statDivider} />
+                                <View style={styles.statItem}>
+                                    <Text style={styles.statNumber}>{stats.groups}</Text>
+                                    <Text style={styles.statLabel}>Groups</Text>
+                                </View>
                             </View>
                         </View>
-                    </View>
-
-                    {/* Stats Section */}
-                    <View style={styles.statsSection}>
-                        <TouchableOpacity style={styles.statItem}>
-                            <Text style={styles.statNumber}>{stats.friends}</Text>
-                            <Text style={styles.statLabel}>Friends</Text>
-                        </TouchableOpacity>
-                        <View style={styles.statDivider} />
-                        <TouchableOpacity style={styles.statItem}>
-                            <Text style={styles.statNumber}>{stats.groups}</Text>
-                            <Text style={styles.statLabel}>Groups</Text>
-                        </TouchableOpacity>
                     </View>
                 </LinearGradient>
             </View>
@@ -377,11 +371,13 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         marginBottom: 16,
     },
-    backButton: {
-        padding: 4,
-        marginRight: 12,
-    },
     profileSection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flex: 1,
+    },
+    leftProfileSection: {
         flexDirection: 'row',
         alignItems: 'center',
         flex: 1,
@@ -420,34 +416,29 @@ const styles = StyleSheet.create({
         color: 'white',
         marginBottom: 4,
     },
-    userSubtitle: {
-        fontSize: 14,
-        color: 'rgba(255, 255, 255, 0.8)',
-        fontWeight: '400',
-    },
-    statsSection: {
+    rightStatsSection: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: 24,
+        gap: 16,
+        paddingLeft: 16,
     },
     statItem: {
         alignItems: 'center',
     },
     statNumber: {
-        fontSize: 18,
+        fontSize: 16,
         fontWeight: '700',
         color: 'white',
         marginBottom: 2,
     },
     statLabel: {
-        fontSize: 12,
-        color: 'rgba(255, 255, 255, 0.8)',
+        fontSize: 11,
+        color: 'rgba(255, 255, 255, 0.7)',
         fontWeight: '500',
     },
     statDivider: {
         width: 1,
-        height: 20,
+        height: 24,
         backgroundColor: 'rgba(255, 255, 255, 0.3)',
     },
     scrollContainer: {

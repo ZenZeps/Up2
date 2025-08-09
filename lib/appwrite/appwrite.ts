@@ -70,10 +70,10 @@ export async function signupWithEmail(email: string, password: string, name: str
     // Try to send verification email by creating a temporary session
     try {
       const session = await account.createEmailPasswordSession(email, password);
-      
+
       // Send verification email now that user is authenticated
       await account.createVerification('up2://verify');
-      
+
       // Delete the session since we want user to verify email first
       await account.deleteSession(session.$id);
     } catch (verificationError) {
@@ -97,7 +97,7 @@ export async function sendVerificationEmail() {
     if (!user) {
       throw new Error('User must be authenticated to send verification email');
     }
-    
+
     // Use the proper mobile app verification URL
     const response = await account.createVerification('up2://verify');
     return response;
@@ -112,13 +112,13 @@ export async function resendVerificationEmail(email: string, password: string) {
   try {
     // First, create a temporary session to send verification
     const session = await account.createEmailPasswordSession(email, password);
-    
+
     // Send verification email
     const response = await account.createVerification('up2://verify');
-    
+
     // Delete the temporary session
     await account.deleteSession(session.$id);
-    
+
     return response;
   } catch (err) {
     console.error("Resend verification error:", err);

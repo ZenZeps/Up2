@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { dbUsageMonitor } from '@/lib/debug/dbUsageMonitor';
 import { cacheManager } from '@/lib/debug/cacheManager';
+import { dbUsageMonitor } from '@/lib/debug/dbUsageMonitor';
 import { EmailDebugger } from '@/lib/debug/emailDebugger';
 import { Link } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 /**
  * A debug component to monitor database usage and cache performance
@@ -18,15 +18,15 @@ export default function DebugDashboard() {
     cacheHitRate: 0,
     cacheSize: 0
   });
-  
+
   // Update stats periodically
   useEffect(() => {
     if (!visible) return;
-    
+
     const updateStats = () => {
       const dbStats = dbUsageMonitor.getUsageStats();
       const cacheStats = cacheManager.getStats();
-      
+
       setStats({
         reads: dbStats.reads,
         writes: dbStats.writes,
@@ -35,20 +35,20 @@ export default function DebugDashboard() {
         cacheSize: cacheStats.size
       });
     };
-    
+
     // Update immediately
     updateStats();
-    
+
     // Then update periodically
     const intervalId = setInterval(updateStats, 1000);
-    
+
     return () => clearInterval(intervalId);
   }, [visible]);
-  
+
   if (!visible) {
     // Just show a small indicator button
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.indicatorButton}
         onPress={() => setVisible(true)}
       >
@@ -56,44 +56,44 @@ export default function DebugDashboard() {
       </TouchableOpacity>
     );
   }
-  
+
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <Text style={styles.title}>Database Usage Monitor</Text>
-          <TouchableOpacity 
-            style={styles.closeButton} 
+          <TouchableOpacity
+            style={styles.closeButton}
             onPress={() => setVisible(false)}
           >
             <Text style={styles.closeButtonText}>X</Text>
           </TouchableOpacity>
         </View>
-        
+
         <View style={styles.statsContainer}>
           <Text style={styles.sectionTitle}>Database Operations</Text>
-          
+
           <View style={styles.statRow}>
             <Text style={styles.statLabel}>Read Operations:</Text>
             <Text style={styles.statValue}>{stats.reads}</Text>
           </View>
-          
+
           <View style={styles.statRow}>
             <Text style={styles.statLabel}>Write Operations:</Text>
             <Text style={styles.statValue}>{stats.writes}</Text>
           </View>
-          
+
           <View style={styles.statRow}>
             <Text style={styles.statLabel}>Daily Usage:</Text>
             <View style={styles.progressBarContainer}>
-              <View 
+              <View
                 style={[
-                  styles.progressBar, 
+                  styles.progressBar,
                   { width: `${stats.readPercentage}%` },
-                  stats.readPercentage > 90 ? styles.dangerBar : 
-                  stats.readPercentage > 70 ? styles.warningBar : 
-                  styles.normalBar
-                ]} 
+                  stats.readPercentage > 90 ? styles.dangerBar :
+                    stats.readPercentage > 70 ? styles.warningBar :
+                      styles.normalBar
+                ]}
               />
               <Text style={styles.progressText}>
                 {stats.readPercentage.toFixed(1)}%
@@ -101,24 +101,24 @@ export default function DebugDashboard() {
             </View>
           </View>
         </View>
-        
+
         <View style={styles.statsContainer}>
           <Text style={styles.sectionTitle}>Cache Performance</Text>
-          
+
           <View style={styles.statRow}>
             <Text style={styles.statLabel}>Cache Size:</Text>
             <Text style={styles.statValue}>{stats.cacheSize} items</Text>
           </View>
-          
+
           <View style={styles.statRow}>
             <Text style={styles.statLabel}>Hit Rate:</Text>
             <View style={styles.progressBarContainer}>
-              <View 
+              <View
                 style={[
-                  styles.progressBar, 
+                  styles.progressBar,
                   { width: `${stats.cacheHitRate}%` },
                   styles.normalBar
-                ]} 
+                ]}
               />
               <Text style={styles.progressText}>
                 {stats.cacheHitRate.toFixed(1)}%
@@ -126,17 +126,17 @@ export default function DebugDashboard() {
             </View>
           </View>
         </View>
-        
+
         <View style={styles.buttonContainer}>
-          <TouchableOpacity 
-            style={styles.actionButton} 
+          <TouchableOpacity
+            style={styles.actionButton}
             onPress={() => dbUsageMonitor.resetCounters()}
           >
             <Text style={styles.buttonText}>Reset Counters</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionButton} 
+
+          <TouchableOpacity
+            style={styles.actionButton}
             onPress={() => cacheManager.clear()}
           >
             <Text style={styles.buttonText}>Clear Cache</Text>
@@ -145,35 +145,35 @@ export default function DebugDashboard() {
 
         <View style={styles.emailTestContainer}>
           <Text style={styles.sectionTitle}>Email Testing</Text>
-          
-          <TouchableOpacity 
-            style={styles.emailButton} 
+
+          <TouchableOpacity
+            style={styles.emailButton}
             onPress={() => EmailDebugger.testEmailVerification()}
           >
             <Text style={styles.buttonText}>Test Email Verification</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.emailButton} 
+
+          <TouchableOpacity
+            style={styles.emailButton}
             onPress={() => EmailDebugger.checkEmailConfiguration()}
           >
             <Text style={styles.buttonText}>Check Email Config</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.emailButton} 
+
+          <TouchableOpacity
+            style={styles.emailButton}
             onPress={() => EmailDebugger.testDifferentVerificationURL()}
           >
             <Text style={styles.buttonText}>Test Alt URL</Text>
           </TouchableOpacity>
         </View>
-        
+
         <Link href="/(root)/Debug" asChild>
           <TouchableOpacity style={styles.debugPageButton}>
             <Text style={styles.buttonText}>Open Debug Page</Text>
           </TouchableOpacity>
         </Link>
-        
+
         <View style={styles.tips}>
           <Text style={styles.tipsTitle}>Optimization Tips:</Text>
           <Text style={styles.tip}>• Use caching for frequently accessed data</Text>

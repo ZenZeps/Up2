@@ -1,6 +1,6 @@
+import { LegalDocumentModal } from "@/components/legal/LegalDocumentModal";
 import { CATEGORIES } from "@/constants/categories";
 import images from "@/constants/images";
-import { LegalDocumentModal } from "@/components/legal/LegalDocumentModal";
 import { pickProfilePhoto, uploadProfilePhoto } from "@/lib/api/profilePhoto";
 import {
     createUserProfile
@@ -200,7 +200,7 @@ const SignUp = () => {
                 // Create user profile
                 const currentYear = new Date().getFullYear();
                 const age = currentYear - parseInt(signUpData.birthYear);
-                
+
                 await createUserProfile({
                     $id: user.$id,
                     firstName: signUpData.firstName.trim(),
@@ -262,7 +262,7 @@ const SignUp = () => {
 
         } catch (error: any) {
             authDebug.error("Signup failed", error);
-            
+
             // Handle specific error cases
             if (error.message && error.message.includes("already exists")) {
                 Alert.alert(
@@ -658,7 +658,7 @@ const SignUp = () => {
                     </ScrollView>
                 )}
             </KeyboardAvoidingView>
-            
+
             <LegalDocumentModal
                 visible={legalModalVisible}
                 onClose={() => setLegalModalVisible(false)}

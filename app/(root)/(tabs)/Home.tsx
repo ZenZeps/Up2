@@ -94,7 +94,7 @@ export default function Home() {
   const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
   const [viewMode, setViewMode] = useState<Mode>('week');
   const [date, setDate] = useState(() => new Date()); // Use function to initialize once
-  const [displayedMonth, setDisplayedMonth] = useState(() => new Date()); // Track the month being displayed
+  const [displayedMonth, setDisplayedMonth] = useState(() => new Date()); // Track the month being displayed separately
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<AppEvent | null>(null);
   const [startHour] = useState(() => new Date().getHours() - 4); // Initialize once, no setter
@@ -405,23 +405,29 @@ export default function Home() {
         <TouchableOpacity
           {...touchableOpacityProps}
           style={[
-            touchableOpacityProps.style, // Preserve original calendar positioning styles
+            // Only apply custom positioning for month view, preserve original positioning for week/day
+            ...(isMonthView ? [] : [touchableOpacityProps.style]),
             {
               backgroundColor,
-              padding: isMonthView ? 0 : 1, // Reduced padding for week/day view
-              borderRadius: isMonthView ? 2 : 4,
+              padding: 0, // Remove all padding to eliminate spacing
+              borderRadius: isMonthView ? 1 : 4, // Minimal border radius for month view
               margin: 0,
+              marginVertical: 0, // Ensure no vertical margin
+              marginHorizontal: 0, // Ensure no horizontal margin
               flex: 0,
-              // For month view, position events below the date number with more spacing
+              // For month view ONLY, completely override positioning to eliminate gaps
               ...(isMonthView && {
                 position: 'absolute',
-                bottom: 1,
-                left: 1,
-                right: 1,
-                height: 12,
-                minHeight: 12,
-                maxHeight: 12,
-                top: 20, // Reduced from 24 to bring events closer to date
+                bottom: 0, // Stick to bottom
+                left: 0, // Full width
+                right: 0, // Full width
+                height: 14, // Slightly increased height for better readability
+                minHeight: 14,
+                maxHeight: 14,
+                // Calculate top position based on event index to stack tightly
+                top: touchableOpacityProps.style?.top || 24,
+                // Override any spacing from the library
+                transform: [{ translateY: -2 }], // Move up slightly to eliminate gaps
               }),
             }
           ]}
@@ -433,9 +439,11 @@ export default function Home() {
             numberOfLines={1}
             style={{
               textAlign: 'center',
-              fontSize: isMonthView ? 9 : 12,
+              fontSize: isMonthView ? 10 : 12, // Slightly increased from 9 to 10 for better readability
               color: isMonthView ? colors.background : colors.background, // Use background color (white in dark mode)
-              marginBottom: isMonthView ? 0 : -2, // Reduce space below title in week/day view
+              margin: 0, // Remove all margins
+              padding: isMonthView ? 1 : 0, // Minimal padding for month view text
+              lineHeight: isMonthView ? 10 : 12, // Match font size for tight fit
             }}
           >
             {event.title || 'Untitled'}
@@ -508,10 +516,27 @@ export default function Home() {
       newDate = new Date(range);
     }
     setDate(newDate);
-    setDisplayedMonth(newDate); // Update the displayed month when date changes
+    setDisplayedMonth(new Date(newDate)); // Update the displayed month when date changes
   }, []);
 
-  // Handler for editing event
+  // Monitor displayed month changes for swipe navigation
+  useEffect(() => {
+    if (viewMode !== 'month') return;
+
+    const interval = setInterval(() => {
+      // Check if the month or year has changed from what we're displaying
+      const currentMonth = date.getMonth();
+      const currentYear = date.getFullYear();
+      const displayedMonthValue = displayedMonth.getMonth();
+      const displayedYearValue = displayedMonth.getFullYear();
+
+      if (currentMonth !== displayedMonthValue || currentYear !== displayedYearValue) {
+        setDisplayedMonth(new Date(date));
+      }
+    }, 100); // Check every 100ms for responsive updates
+
+    return () => clearInterval(interval);
+  }, [viewMode, date, displayedMonth]);  // Handler for editing event
   const handleEditEvent = useCallback((event: AppEvent) => {
     setEditingEvent(event);
     setDetailsModalVisible(false);
@@ -563,7 +588,7 @@ export default function Home() {
   const handleTodayPress = useCallback(() => {
     const today = new Date();
     setDate(today);
-    setDisplayedMonth(today); // Also update the displayed month
+    setDisplayedMonth(new Date(today)); // Also update the displayed month
   }, []);
 
   const handleCreateEventPress = useCallback(() => {
@@ -743,7 +768,7 @@ export default function Home() {
 
                 {/* Month Display */}
                 <Text style={[styles.monthDisplay, { color: colors.text }]}>
-                  {date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  {displayedMonth.toLocaleDateString('en-US', { month: 'long' })}
                 </Text>
               </View>
 
@@ -775,10 +800,16 @@ export default function Home() {
                   renderEvent={renderEvent}
                   renderCustomDateForMonth={renderCustomDateForMonth}
                   swipeEnabled={true}
-                  overlapOffset={-6}
+                  overlapOffset={-12} // More negative to force events closer together
                   ampm={false}
-                  scrollOffsetMinutes={0}
+                  scrollOffsetMinutes={new Date().getHours() * 60 + new Date().getMinutes() - 60} // Default to current time
                   showTime={false}
+                  eventCellStyle={{ // Add custom event cell styling to minimize spacing
+                    marginVertical: -2, // Negative margins to overlap
+                    marginHorizontal: 0, // Remove horizontal margins
+                    paddingVertical: 0, // Remove vertical padding
+                    paddingHorizontal: 0, // Remove horizontal padding
+                  }}
                   theme={{
                     palette: {
                       gray: {
@@ -877,20 +908,6 @@ export default function Home() {
           />
         )}
       </View>
-
-      {/* Modern Add Event FAB */}
-      <TouchableOpacity
-        style={[
-          styles.fab,
-          {
-            bottom: 100 + insets.bottom,
-            backgroundColor: colors.primary,
-          }
-        ]}
-        onPress={handleCreateEventPress}
-      >
-        <MaterialIcons name="add" size={28} color="white" />
-      </TouchableOpacity>
 
       {/* Event Form Modal */}
       {formVisible && (
@@ -1142,22 +1159,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'white',
     marginLeft: 8,
-  },
-  fab: {
-    position: 'absolute',
-    right: 24,
-    width: 64,
-    height: 64,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
   },
 });

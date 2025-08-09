@@ -1,5 +1,5 @@
-import { ScrollView, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 // Import but don't use OptimizationTester until we fix the context nesting issue
 // import OptimizationTester from './components/OptimizationTester';
 

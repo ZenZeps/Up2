@@ -73,9 +73,9 @@ const SignIn = () => {
       if (!user.emailVerification) {
         authDebug.warn("Email not verified, ending session");
         await account.deleteSession("current");
-        
+
         Alert.alert(
-          "Email Not Verified", 
+          "Email Not Verified",
           "Please verify your email first. Would you like us to resend the verification email?",
           [
             {
@@ -161,7 +161,7 @@ const SignIn = () => {
         style={styles.keyboardView}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        <ScrollView 
+        <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
