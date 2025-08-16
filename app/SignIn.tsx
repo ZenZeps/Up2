@@ -98,8 +98,8 @@ const SignIn = () => {
         authDebug.warn("Could not refresh global state (not critical)", error);
       }
 
-      // Navigate after state refresh
-      router.replace("/(root)/(tabs)/Home");
+      // Navigate to index to let it handle proper routing based on profile status
+      router.replace("/");
 
     } catch (err: any) {
       authDebug.error("Authentication failed", err);

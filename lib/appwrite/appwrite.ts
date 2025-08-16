@@ -404,6 +404,14 @@ export async function getCurrentUserWithProfile() {
       return null;
     }
 
+    // Check if user's email is verified - critical for security
+    if (!currentUser.emailVerification) {
+      authDebug.warn("User session exists but email is not verified - logging out for security");
+      // Force logout to maintain security
+      await account.deleteSession('current');
+      return null;
+    }
+
     // Then fetch the full profile from the database
     try {
       const { getUserProfile } = await import('../api/user');

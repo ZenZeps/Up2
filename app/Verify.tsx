@@ -32,9 +32,9 @@ export default function Verify() {
           console.warn("Could not refresh global context after verification");
         }
 
-        // Auto-redirect after success
+        // Auto-redirect to complete signup after success
         setTimeout(() => {
-          router.replace("/SignIn");
+          router.replace("/SignUp");
         }, 3000);
 
       } catch (err: any) {
@@ -59,7 +59,7 @@ export default function Verify() {
   }, [userId, secret, refetch, router]);
 
   const handleRetry = () => {
-    router.replace("/SignIn");
+    router.replace("/SignUp");
   };
 
   return (
@@ -80,7 +80,7 @@ export default function Verify() {
             Email Verified Successfully!
           </Text>
           <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>
-            You can now sign in to your account. Redirecting...
+            Now let's complete your profile setup. Redirecting...
           </Text>
         </>
       ) : (
@@ -104,7 +104,7 @@ export default function Verify() {
             }}
           >
             <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
-              Back to Sign In
+              Back to Sign Up
             </Text>
           </TouchableOpacity>
         </>

@@ -9,6 +9,27 @@ const USER_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 const USERS_COLLECTION_CACHE_KEY = 'all-users';
 
 /**
+ * Checks if a user profile exists in the database
+ */
+export async function userProfileExists(userId: string): Promise<boolean> {
+  if (!userId) {
+    return false;
+  }
+
+  try {
+    await databases.getDocument(
+      config.databaseID!,
+      config.usersCollectionID!,
+      userId
+    );
+    return true;
+  } catch (error) {
+    // If document doesn't exist, Appwrite throws an error
+    return false;
+  }
+}
+
+/**
  * Creates a user profile in the database. Must use the actual Appwrite user ID.
  */
 export async function createUserProfile(profile: UserProfile) {

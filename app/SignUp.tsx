@@ -73,6 +73,7 @@ const SignUp = () => {
             try {
                 const user = await account.get();
                 if (user && user.emailVerification) {
+                    // User is verified but hasn't completed profile setup
                     setIsCompletingProfile(true);
                     setCurrentStep(2); // Skip to profile photo step
                     // Pre-fill user data
@@ -80,6 +81,16 @@ const SignUp = () => {
                     updateSignUpData('firstName', names[0] || '');
                     updateSignUpData('lastName', names.slice(1).join(' ') || '');
                     updateSignUpData('email', user.email);
+
+                    authDebug.info("User returning to complete profile after verification", { userId: user.$id });
+                } else if (user && !user.emailVerification) {
+                    // User exists but not verified - log them out and show verification message
+                    await account.deleteSession("current");
+                    Alert.alert(
+                        "Email Verification Required",
+                        "Please check your email and verify your account before continuing.",
+                        [{ text: "OK", onPress: () => router.replace("/SignIn") }]
+                    );
                 }
             } catch (error) {
                 // User not logged in, continue with normal signup
