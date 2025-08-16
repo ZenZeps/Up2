@@ -106,10 +106,19 @@ export default function ShareInviteModal({ visible, onClose, eventId }: ShareInv
                     option.id as 'whatsapp' | 'instagram' | 'messenger' | 'general'
                 );
 
-                Alert.alert(
-                    'Invite Sent!',
-                    `Your event invite has been shared via ${option.name}. Friends will be able to view the event details and join even if they don't have the app yet!`
-                );
+                // Platform-specific success messages
+                let successMessage = '';
+                if (option.id === 'instagram') {
+                    successMessage = `Your event invite is ready to share! Your device's sharing options will include Instagram if you have it installed.`;
+                } else if (option.id === 'messenger') {
+                    successMessage = `Your event invite is ready to share! Your device's sharing options will include Messenger if you have it installed.`;
+                } else if (option.id === 'whatsapp') {
+                    successMessage = `Your event invite has been shared via WhatsApp! Friends will be able to view the event details and join even if they don't have the Up2 app yet.`;
+                } else {
+                    successMessage = `Your event invite has been shared! Friends will be able to view the event details and join even if they don't have the Up2 app yet.`;
+                }
+
+                Alert.alert('Invite Ready!', successMessage);
                 onClose();
             } else {
                 Alert.alert('Sharing Failed', `Unable to share via ${option.name}. Please try another option.`);
@@ -205,8 +214,8 @@ export default function ShareInviteModal({ visible, onClose, eventId }: ShareInv
                                                 </Text>
                                                 <Text style={styles.shareOptionDescription}>
                                                     {option.id === 'whatsapp' && 'Share directly to WhatsApp chats'}
-                                                    {option.id === 'messenger' && 'Share via Facebook Messenger'}
-                                                    {option.id === 'instagram' && 'Share to Instagram Stories'}
+                                                    {option.id === 'messenger' && 'Share using your device\'s sharing options (includes Messenger)'}
+                                                    {option.id === 'instagram' && 'Share using your device\'s sharing options (includes Instagram)'}
                                                     {option.id === 'general' && 'Use your device\'s sharing options'}
                                                 </Text>
                                             </View>

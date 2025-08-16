@@ -70,7 +70,7 @@ export default function InviteTestingPage() {
         };
 
         const success = await testDeepLink(mockInviteData);
-        
+
         if (success) {
             Alert.alert('Success', 'Deep link opened successfully! The app should navigate to the invite landing page.');
         } else {

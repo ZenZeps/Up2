@@ -1,5 +1,5 @@
 import * as Linking from 'expo-linking';
-import * as Sharing from 'expo-sharing';
+import { Share } from 'react-native';
 import { config, databases, getCurrentUserWithProfile } from '../appwrite/appwrite';
 import { logInviteEvent } from './inviteTracking';
 
@@ -72,18 +72,24 @@ export const shareEventInvite = async (inviteData: InviteData): Promise<boolean>
     try {
         const shareContent = createShareContent(inviteData);
 
-        if (await Sharing.isAvailableAsync()) {
-            // Use native sharing with both message and URL
-            await Sharing.shareAsync(shareContent.message, {
-                dialogTitle: shareContent.title,
-                mimeType: 'text/plain',
-            });
+        // Use React Native's built-in Share API for text content
+        const result = await Share.share({
+            message: shareContent.message,
+            title: shareContent.title,
+            url: shareContent.url, // iOS will use this if provided
+        }, {
+            dialogTitle: shareContent.title, // Android dialog title
+        });
+
+        // Check if the user actually shared (not just dismissed)
+        if (result.action === Share.sharedAction) {
             return true;
-        } else {
-            // Fallback for platforms where sharing isn't available
-            console.log('Sharing not available, fallback needed');
+        } else if (result.action === Share.dismissedAction) {
+            // User dismissed the share sheet
             return false;
         }
+
+        return true; // Default to success for unknown actions
     } catch (error) {
         console.error('Error sharing event invite:', error);
         return false;
@@ -175,15 +181,15 @@ export const testDeepLink = async (inviteData: InviteData): Promise<boolean> => 
     try {
         const deepLink = generateAppDeepLink(inviteData);
         console.log('Testing deep link:', deepLink);
-        
+
         const canOpen = await Linking.canOpenURL(deepLink);
         console.log('Can open deep link:', canOpen);
-        
+
         if (canOpen) {
             await Linking.openURL(deepLink);
             return true;
         }
-        
+
         return false;
     } catch (error) {
         console.error('Error testing deep link:', error);
