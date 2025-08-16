@@ -14,6 +14,13 @@ export interface Event {
   isPrivate?: boolean; // Whether the event is private (only visible to invitees)
   groupId?: string; // Optional group ID if event belongs to a group
   groupName?: string; // Optional group name for display (computed field)
+  // Optimized fields for enterprise scalability
+  attendeeCount?: number; // Count of confirmed attendees (performance counter)
+  inviteCount?: number; // Count of sent invites (performance counter)
+  viewCount?: number; // Number of views (engagement metric)
+  popularityScore?: number; // Computed popularity score (0.0-1.0)
+  responseRate?: boolean; // Whether responses are being tracked
+  lastActivtyAt?: string; // ISO timestamp of last activity
 }
 
 export interface EventWithDetails extends Event {

@@ -48,12 +48,27 @@ export default function Invites() {
         const res = await databases.listDocuments(
           config.databaseID!,
           config.friendRequestsCollectionID,
-          [Query.equal('to', userId), Query.equal('status', 'pending')]
+          [
+            Query.and([
+              Query.or([
+                Query.equal('userId1', userId),
+                Query.equal('userId2', userId)
+              ]),
+              Query.equal('status', 'pending'),
+              Query.notEqual('requesterId', userId) // Exclude requests we sent
+            ])
+          ]
         );
         const requestsWithSenderNames = await Promise.all(
-          res.documents.map(async (req) => {
-            const senderProfile = await getUserProfile(req.from);
-            return { ...req, senderName: userDisplayUtils.getFullName(senderProfile || {}, 'Unknown User') };
+          res.documents.map(async (req: any) => {
+            // Get the requester ID (the person who sent the request)
+            const senderProfile = await getUserProfile(req.requesterId);
+            return {
+              ...req,
+              senderName: userDisplayUtils.getFullName(senderProfile || {}, 'Unknown User'),
+              from: req.requesterId, // For backward compatibility with existing UI logic
+              to: userId
+            };
           })
         );
         setFriendRequests(requestsWithSenderNames);

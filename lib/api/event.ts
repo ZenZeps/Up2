@@ -109,22 +109,53 @@ export async function fetchEvents(): Promise<Event[]> {
         startTime,
         endTime,
         creatorId: doc.creatorId,
-        inviteeIds: Array.isArray(doc.inviteeIds) ? doc.inviteeIds : [],
+        inviteeIds: [], // Will be populated from junction table
         description: doc.description || '',
-        attendees: Array.isArray(doc.attendees) ? doc.attendees : [],
+        attendees: [], // Will be populated from junction table
         tags: Array.isArray(doc.tags) ? doc.tags : [], // Include tags field
+        // Include new optimized fields
+        attendeeCount: doc.attendeeCount || 0,
+        inviteCount: doc.inviteCount || 0,
+        viewCount: doc.viewCount || 0,
+        popularityScore: doc.popularityScore || 0.0,
       };
     });
 
-    // Cache individual events
-    events.forEach(event => {
+    // Enhance events with junction table data for app compatibility
+    const enhancedEvents = await Promise.all(events.map(async (event) => {
+      try {
+        // Get attendees and invitees from junction tables in parallel
+        const [attendees, inviteeIds] = await Promise.all([
+          getEventAttendees(event.$id),
+          getEventInvitees(event.$id)
+        ]);
+
+        // Return event with reconstructed arrays for app compatibility
+        return {
+          ...event,
+          attendees,
+          inviteeIds,
+        };
+      } catch (error) {
+        // If junction table lookup fails, use empty arrays
+        authDebug.warn(`Failed to load relationships for event ${event.$id}:`, error);
+        return {
+          ...event,
+          attendees: [],
+          inviteeIds: [],
+        };
+      }
+    }));
+
+    // Cache individual events (with junction table data)
+    enhancedEvents.forEach(event => {
       cacheManager.set<Event>(`event-${event.$id}`, event, EVENT_CACHE_TTL);
     });
 
     // Cache the whole collection
-    cacheManager.set<Event[]>(EVENT_COLLECTION_CACHE_KEY, events, EVENT_CACHE_TTL);
+    cacheManager.set<Event[]>(EVENT_COLLECTION_CACHE_KEY, enhancedEvents, EVENT_CACHE_TTL);
 
-    return events;
+    return enhancedEvents;
   } catch (error) {
     authDebug.error('Error fetching events:', error);
     return [];
@@ -151,20 +182,37 @@ export async function fetchEventById(id: string): Promise<Event | null> {
       id
     );
 
-    const event = {
+    const baseEvent = {
       $id: doc.$id,
       title: doc.title,
       location: doc.location,
       startTime: doc.startTime,
       endTime: doc.endTime,
       creatorId: doc.creatorId,
-      inviteeIds: doc.inviteeIds || [],
+      inviteeIds: [], // Will be populated from junction table
       description: doc.description || '',
-      attendees: doc.attendees || [],
+      attendees: [], // Will be populated from junction table
       tags: Array.isArray(doc.tags) ? doc.tags : [], // Include tags field
+      // Include optimized fields
+      attendeeCount: doc.attendeeCount || 0,
+      inviteCount: doc.inviteCount || 0,
+      viewCount: doc.viewCount || 0,
+      popularityScore: doc.popularityScore || 0.0,
     };
 
-    // Cache the event
+    // Get attendees and invitees from junction tables
+    const [attendees, inviteeIds] = await Promise.all([
+      getEventAttendees(id),
+      getEventInvitees(id)
+    ]);
+
+    const event = {
+      ...baseEvent,
+      attendees,
+      inviteeIds,
+    };
+
+    // Cache the enhanced event
     cacheManager.set<Event>(cacheKey, event, EVENT_CACHE_TTL);
 
     return event;
@@ -346,92 +394,361 @@ export async function createEvent(event: Event) {
 /**
  * Update an existing event
  */
+// ================== DATA MIGRATION UTILITIES ==================
+
 /**
- * Handle event invitation (optimized database approach)
- * In the new schema, invitations are stored in junction tables
+ * Migration utility: Convert legacy array data to junction tables
+ * Use this ONCE to migrate existing events to the new relationship model
  */
-export async function inviteUserToEvent(eventId: string, userId: string) {
+export async function migrateLegacyEventRelationships() {
+  authDebug.info('Starting legacy event relationship migration...');
+
   try {
-    // TODO: In optimized database, create entry in event_invitations junction table
-    // For now, just update the invite count
-    const currentEvent = await databases.getDocument(
+    // Get all events without junction table filtering
+    const response = await databases.listDocuments(
       config.databaseID!,
       config.eventsCollectionID!,
-      eventId
+      [Query.limit(1000)] // Process in batches
     );
 
-    const newInviteCount = (currentEvent.inviteCount || 0) + 1;
+    const events = response.documents;
+    let migrated = 0;
+    let errors = 0;
+
+    for (const event of events) {
+      try {
+        // Check if event has legacy attendees array
+        if (event.attendees && Array.isArray(event.attendees) && event.attendees.length > 0) {
+          authDebug.info(`Migrating attendees for event ${event.$id}: ${event.attendees.length} users`);
+
+          for (const userId of event.attendees) {
+            try {
+              await addEventAttendee(event.$id, userId);
+            } catch (error: any) {
+              // Ignore duplicate errors - means already migrated
+              if (!error.message?.includes('already exists')) {
+                authDebug.warn(`Failed to migrate attendee ${userId} for event ${event.$id}:`, error);
+              }
+            }
+          }
+        }
+
+        // Check if event has legacy inviteeIds array
+        if (event.inviteeIds && Array.isArray(event.inviteeIds) && event.inviteeIds.length > 0) {
+          authDebug.info(`Migrating invitees for event ${event.$id}: ${event.inviteeIds.length} users`);
+
+          for (const userId of event.inviteeIds) {
+            try {
+              await addEventInvitation(event.$id, userId);
+            } catch (error: any) {
+              // Ignore duplicate errors - means already migrated
+              if (!error.message?.includes('already exists')) {
+                authDebug.warn(`Failed to migrate invitee ${userId} for event ${event.$id}:`, error);
+              }
+            }
+          }
+        }
+
+        migrated++;
+      } catch (error) {
+        errors++;
+        authDebug.error(`Failed to migrate event ${event.$id}:`, error);
+      }
+    }
+
+    authDebug.info(`Migration complete: ${migrated} events processed, ${errors} errors`);
+    return { migrated, errors, total: events.length };
+
+  } catch (error) {
+    authDebug.error('Migration failed:', error);
+    throw error;
+  }
+}
+
+// ================== JUNCTION TABLE MANAGEMENT ==================
+
+/**
+ * Add user to event attendees (junction table approach)
+ */
+export async function addEventAttendee(eventId: string, userId: string): Promise<boolean> {
+  try {
+    // Check if already attending
+    const existingAttendance = await databases.listDocuments(
+      config.databaseID!,
+      'event_attendance', // Junction table
+      [
+        Query.equal('eventId', eventId),
+        Query.equal('userId', userId)
+      ]
+    );
+
+    if (existingAttendance.documents.length > 0) {
+      authDebug.info(`User ${userId} already attending event ${eventId}`);
+      return true;
+    }
+
+    // Create attendance record
+    await databases.createDocument(
+      config.databaseID!,
+      'event_attendance',
+      ID.unique(),
+      {
+        eventId,
+        userId,
+        joinedAt: new Date().toISOString(),
+        status: 'attending'
+      }
+    );
+
+    // Update event attendee count
+    const currentEvent = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
+    const newCount = (currentEvent.attendeeCount || 0) + 1;
 
     await databases.updateDocument(
       config.databaseID!,
       config.eventsCollectionID!,
       eventId,
       {
-        inviteCount: newInviteCount,
+        attendeeCount: newCount,
         lastActivtyAt: new Date().toISOString(),
       }
     );
 
-    authDebug.info(`User ${userId} invited to event ${eventId}`);
+    authDebug.info(`User ${userId} added to event ${eventId}, new count: ${newCount}`);
     return true;
   } catch (error) {
-    authDebug.error(`Failed to invite user to event: ${eventId}`, error);
+    authDebug.error(`Failed to add attendee to event: ${eventId}`, error);
     throw error;
   }
+}
+
+/**
+ * Remove user from event attendees (junction table approach)
+ */
+export async function removeEventAttendee(eventId: string, userId: string): Promise<boolean> {
+  try {
+    // Find attendance record
+    const attendanceRecords = await databases.listDocuments(
+      config.databaseID!,
+      'event_attendance',
+      [
+        Query.equal('eventId', eventId),
+        Query.equal('userId', userId)
+      ]
+    );
+
+    if (attendanceRecords.documents.length === 0) {
+      authDebug.info(`User ${userId} not attending event ${eventId}`);
+      return true;
+    }
+
+    // Remove attendance record
+    for (const record of attendanceRecords.documents) {
+      await databases.deleteDocument(
+        config.databaseID!,
+        'event_attendance',
+        record.$id
+      );
+    }
+
+    // Update event attendee count
+    const currentEvent = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
+    const newCount = Math.max(0, (currentEvent.attendeeCount || 0) - 1);
+
+    await databases.updateDocument(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      eventId,
+      {
+        attendeeCount: newCount,
+        lastActivtyAt: new Date().toISOString(),
+      }
+    );
+
+    authDebug.info(`User ${userId} removed from event ${eventId}, new count: ${newCount}`);
+    return true;
+  } catch (error) {
+    authDebug.error(`Failed to remove attendee from event: ${eventId}`, error);
+    throw error;
+  }
+}
+
+/**
+ * Add user to event invitations (junction table approach)
+ */
+export async function addEventInvitation(eventId: string, userId: string): Promise<boolean> {
+  try {
+    // Check if already invited
+    const existingInvite = await databases.listDocuments(
+      config.databaseID!,
+      'event_invitations', // Junction table
+      [
+        Query.equal('eventId', eventId),
+        Query.equal('userId', userId)
+      ]
+    );
+
+    if (existingInvite.documents.length > 0) {
+      authDebug.info(`User ${userId} already invited to event ${eventId}`);
+      return true;
+    }
+
+    // Create invitation record
+    await databases.createDocument(
+      config.databaseID!,
+      'event_invitations',
+      ID.unique(),
+      {
+        eventId,
+        userId,
+        invitedAt: new Date().toISOString(),
+        status: 'pending'
+      }
+    );
+
+    // Update event invite count
+    const currentEvent = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
+    const newCount = (currentEvent.inviteCount || 0) + 1;
+
+    await databases.updateDocument(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      eventId,
+      {
+        inviteCount: newCount,
+        lastActivtyAt: new Date().toISOString(),
+      }
+    );
+
+    authDebug.info(`User ${userId} invited to event ${eventId}, new count: ${newCount}`);
+    return true;
+  } catch (error) {
+    authDebug.error(`Failed to add invitation to event: ${eventId}`, error);
+    throw error;
+  }
+}
+
+/**
+ * Get event attendees from junction table
+ */
+export async function getEventAttendees(eventId: string): Promise<string[]> {
+  try {
+    const attendanceRecords = await databases.listDocuments(
+      config.databaseID!,
+      'event_attendance',
+      [
+        Query.equal('eventId', eventId),
+        Query.equal('status', 'attending'),
+        Query.limit(1000) // Scalability limit
+      ]
+    );
+
+    return attendanceRecords.documents.map((record: any) => record.userId);
+  } catch (error) {
+    authDebug.error(`Failed to get attendees for event: ${eventId}`, error);
+    return [];
+  }
+}
+
+/**
+ * Get event invitees from junction table
+ */
+export async function getEventInvitees(eventId: string): Promise<string[]> {
+  try {
+    const invitationRecords = await databases.listDocuments(
+      config.databaseID!,
+      'event_invitations',
+      [
+        Query.equal('eventId', eventId),
+        Query.equal('status', 'pending'),
+        Query.limit(1000) // Scalability limit
+      ]
+    );
+
+    return invitationRecords.documents.map((record: any) => record.userId);
+  } catch (error) {
+    authDebug.error(`Failed to get invitees for event: ${eventId}`, error);
+    return [];
+  }
+}
+
+/**
+ * Handle event invitation (optimized database approach)
+ * DEPRECATED: Use addEventInvitation() instead
+ */
+export async function inviteUserToEvent(eventId: string, userId: string) {
+  return addEventInvitation(eventId, userId);
 }
 
 /**
  * Handle event attendance (optimized database approach)
- * In the new schema, attendance is stored in junction tables
+ * DEPRECATED: Use addEventAttendee()/removeEventAttendee() instead
  */
 export async function updateEventAttendance(eventId: string, userId: string, isAttending: boolean) {
-  try {
-    // TODO: In optimized database, create/update entry in event_attendance junction table
-    // For now, just update the attendee count
-    const currentEvent = await databases.getDocument(
-      config.databaseID!,
-      config.eventsCollectionID!,
-      eventId
-    );
-
-    const currentCount = currentEvent.attendeeCount || 0;
-    const newAttendeeCount = isAttending ? currentCount + 1 : Math.max(0, currentCount - 1);
-
-    await databases.updateDocument(
-      config.databaseID!,
-      config.eventsCollectionID!,
-      eventId,
-      {
-        attendeeCount: newAttendeeCount,
-        lastActivtyAt: new Date().toISOString(),
-      }
-    );
-
-    authDebug.info(`Event ${eventId} attendance updated for user ${userId}: ${isAttending}`);
-    return true;
-  } catch (error) {
-    authDebug.error(`Failed to update event attendance: ${eventId}`, error);
-    throw error;
+  if (isAttending) {
+    return addEventAttendee(eventId, userId);
+  } else {
+    return removeEventAttendee(eventId, userId);
   }
-}
-
-export async function updateEvent(id: string, eventData: Partial<Event>) {
+} export async function updateEvent(id: string, eventData: Partial<Event>) {
   try {
     authDebug.info(`Updating event: ${id}`);
 
-    // Build sanitized data with computed fields
-    const sanitizedEventData: any = { ...eventData };
+    // Handle legacy array operations with proper junction table management
+    if (eventData.attendees || (eventData as any).inviteeIds) {
+      authDebug.info('Legacy array update detected, using junction table approach');
 
-    // Extract counts from legacy arrays if they exist (for transition period)
-    if (eventData.attendees && Array.isArray(eventData.attendees)) {
-      sanitizedEventData.attendeeCount = eventData.attendees.length;
-    } else if (sanitizedEventData.attendeeCount === undefined) {
-      sanitizedEventData.attendeeCount = 0;
+      // Handle attendees array update
+      if (eventData.attendees && Array.isArray(eventData.attendees)) {
+        // Get current attendees from junction table
+        const currentAttendees = await getEventAttendees(id);
+        const newAttendees = eventData.attendees;
+
+        // Find users to add (in new but not in current)
+        const toAdd = newAttendees.filter(userId => !currentAttendees.includes(userId));
+
+        // Find users to remove (in current but not in new)
+        const toRemove = currentAttendees.filter(userId => !newAttendees.includes(userId));
+
+        // Execute changes
+        for (const userId of toAdd) {
+          await addEventAttendee(id, userId);
+        }
+        for (const userId of toRemove) {
+          await removeEventAttendee(id, userId);
+        }
+
+        authDebug.info(`Updated attendees: +${toAdd.length}, -${toRemove.length}`);
+      }
+
+      // Handle invitees array update
+      if ((eventData as any).inviteeIds && Array.isArray((eventData as any).inviteeIds)) {
+        const newInvitees = (eventData as any).inviteeIds;
+
+        // For invitations, we typically only add (don't remove existing invites)
+        // But let's implement full sync for consistency
+        const currentInvitees = await getEventInvitees(id);
+        const toAdd = newInvitees.filter((userId: string) => !currentInvitees.includes(userId));
+
+        // Execute additions
+        for (const userId of toAdd) {
+          await addEventInvitation(id, userId);
+        }
+
+        authDebug.info(`Updated invitees: +${toAdd.length}`);
+      }
+
+      return; // Exit early as we've handled the array updates
     }
 
-    if ((eventData as any).inviteeIds && Array.isArray((eventData as any).inviteeIds)) {
-      sanitizedEventData.inviteCount = (eventData as any).inviteeIds.length;
-    } else if (sanitizedEventData.inviteCount === undefined) {
+    // Build sanitized data with computed fields (for non-array updates)
+    const sanitizedEventData: any = { ...eventData };
+
+    // Always ensure required fields are present
+    if (sanitizedEventData.attendeeCount === undefined) {
+      sanitizedEventData.attendeeCount = 0;
+    }
+    if (sanitizedEventData.inviteCount === undefined) {
       sanitizedEventData.inviteCount = 0;
     }
 

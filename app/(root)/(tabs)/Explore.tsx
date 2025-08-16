@@ -110,11 +110,15 @@ const Explore = () => {
           config.databaseID!,
           config.friendRequestsCollectionID,
           [
-            Query.equal('from', currentUser.$id),
+            Query.equal('requesterId', currentUser.$id),
             Query.equal('status', 'pending'),
           ]
         );
-        setRequestedUsers(requestsRes.documents.map((req) => req.to));
+        // Extract the other user ID from the friendship records
+        setRequestedUsers(requestsRes.documents.map((req: any) => {
+          // If currentUser is userId1, then the recipient is userId2, and vice versa
+          return req.userId1 === currentUser.$id ? req.userId2 : req.userId1;
+        }));
 
       } catch (err) {
         console.error('Explore fetch error:', err);
@@ -322,14 +326,20 @@ const Explore = () => {
       console.log('👤 Current user profile:', profile);
 
       const requestId = ID.unique();
+
+      // Use the new UserFriendship schema with userId1, userId2, requesterId
+      // Always put the smaller ID first for consistency
+      const userId1 = userId < toUserId ? userId : toUserId;
+      const userId2 = userId < toUserId ? toUserId : userId;
+
       await databases.createDocument(
         config.databaseID!,
         config.friendRequestsCollectionID,
         requestId,
         {
-          id: requestId,
-          from: userId,
-          to: toUserId,
+          userId1,
+          userId2,
+          requesterId: userId, // The person sending the request
           status: 'pending',
         }
       );
@@ -398,13 +408,17 @@ const Explore = () => {
 
   const handleCancelFriendRequest = async (toUserId: string) => {
     try {
-      // Find the friend request document
+      // Find the friend request document using new schema
       const response = await databases.listDocuments(
         config.databaseID!,
         config.friendRequestsCollectionID,
         [
-          Query.equal('from', userId),
-          Query.equal('to', toUserId),
+          Query.equal('requesterId', userId),
+          Query.equal('status', 'pending'),
+          Query.or([
+            Query.and([Query.equal('userId1', userId), Query.equal('userId2', toUserId)]),
+            Query.and([Query.equal('userId1', toUserId), Query.equal('userId2', userId)])
+          ])
         ]
       );
 
