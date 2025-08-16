@@ -20,11 +20,28 @@ export const generateInviteLink = (inviteData: InviteData): string => {
     const params = new URLSearchParams({
         eventId: inviteData.eventId,
         inviter: inviteData.inviterUserId,
-        type: 'event-invite' // Keep type for parsing logic
+        type: 'event-invite',
+        eventTitle: inviteData.eventTitle,
+        eventDate: inviteData.eventDate,
+        eventLocation: inviteData.eventLocation,
+        inviterName: inviteData.inviterName
     });
 
-    // Use the universal domain configured in app.json
-    return `https://up2.app/invite?${params.toString()}`;
+    // Use the same GitHub Pages domain as email verification and password reset
+    return `https://zenzeps.github.io/Up2/invite-landing.html?${params.toString()}`;
+};
+
+/**
+ * Generates a direct deep link that opens the app if installed
+ */
+export const generateAppDeepLink = (inviteData: InviteData): string => {
+    const params = new URLSearchParams({
+        eventId: inviteData.eventId,
+        inviter: inviteData.inviterUserId,
+        type: 'event-invite'
+    });
+
+    return `up2://invite?${params.toString()}`;
 };
 
 /**
@@ -102,8 +119,9 @@ export const shareToWhatsApp = async (inviteData: InviteData): Promise<boolean> 
  */
 export const shareToInstagram = async (inviteData: InviteData): Promise<boolean> => {
     try {
-        // Instagram doesn't allow direct text sharing via URL schemes
-        // Use the general sharing method which will include Instagram as an option
+        // Instagram doesn't support direct text sharing via URL schemes for regular posts
+        // The only option is to use the general sharing, which will show Instagram as an option
+        console.log('Using general sharing for Instagram (Instagram does not support direct text sharing)');
         return await shareEventInvite(inviteData);
     } catch (error) {
         console.error('Error sharing to Instagram:', error);
@@ -118,18 +136,10 @@ export const shareToMessenger = async (inviteData: InviteData): Promise<boolean>
     try {
         const shareContent = createShareContent(inviteData);
 
-        // Try the Messenger app scheme first
-        const messengerUrl = `fb-messenger://share?text=${encodeURIComponent(shareContent.message)}`;
-
-        const canOpen = await Linking.canOpenURL(messengerUrl);
-        if (canOpen) {
-            await Linking.openURL(messengerUrl);
-            return true;
-        } else {
-            // If Messenger app isn't available, use general sharing
-            // This will show Messenger as an option if installed
-            return await shareEventInvite(inviteData);
-        }
+        // Messenger sharing is complex and has limited URL scheme support
+        // The best approach is to use the general sharing which will include Messenger as an option
+        console.log('Using general sharing for Messenger (most reliable method)');
+        return await shareEventInvite(inviteData);
     } catch (error) {
         console.error('Error sharing to Messenger:', error);
         // Even if there's an error, try the general sharing as fallback
@@ -155,6 +165,29 @@ export const logInviteSent = async (
     } catch (error) {
         // Fail silently for analytics
         console.log('Could not log invite sent:', error);
+    }
+};
+
+/**
+ * Tests deep link functionality by attempting to open the app
+ */
+export const testDeepLink = async (inviteData: InviteData): Promise<boolean> => {
+    try {
+        const deepLink = generateAppDeepLink(inviteData);
+        console.log('Testing deep link:', deepLink);
+        
+        const canOpen = await Linking.canOpenURL(deepLink);
+        console.log('Can open deep link:', canOpen);
+        
+        if (canOpen) {
+            await Linking.openURL(deepLink);
+            return true;
+        }
+        
+        return false;
+    } catch (error) {
+        console.error('Error testing deep link:', error);
+        return false;
     }
 };/**
  * Validates and extracts invite data from a deep link

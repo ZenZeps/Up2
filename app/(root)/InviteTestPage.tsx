@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import QuickShareButton from '../../components/QuickShareButton';
 import ShareInviteModal from '../../components/ShareInviteModal';
-import { generateAppDeepLink, generateInviteLink } from '../../lib/utils/invites';
+import { generateAppDeepLink, generateInviteLink, testDeepLink } from '../../lib/utils/invites';
 
 export default function InviteTestingPage() {
     const [eventId, setEventId] = useState('');
@@ -54,15 +54,28 @@ export default function InviteTestingPage() {
         Alert.alert('Copied', 'Link copied to console log');
     };
 
-    const testDeepLink = () => {
-        if (!generatedDeepLink) {
-            Alert.alert('Error', 'Generate links first');
+    const testDeepLinkFunctionality = async () => {
+        if (!eventId.trim()) {
+            Alert.alert('Error', 'Please enter an Event ID');
             return;
         }
 
-        // In a real test, you'd use Linking.openURL(generatedDeepLink)
-        console.log('Testing deep link:', generatedDeepLink);
-        Alert.alert('Deep Link Test', 'Check console for link - use with iOS Simulator or Android Emulator');
+        const mockInviteData = {
+            eventId: eventId.trim(),
+            eventTitle: 'Test Event',
+            eventDate: 'Tomorrow at 7:00 PM',
+            eventLocation: 'Test Location',
+            inviterName: 'Test User',
+            inviterUserId: 'test-user-123'
+        };
+
+        const success = await testDeepLink(mockInviteData);
+        
+        if (success) {
+            Alert.alert('Success', 'Deep link opened successfully! The app should navigate to the invite landing page.');
+        } else {
+            Alert.alert('Info', 'Deep link could not be opened. This is normal when testing in the same app. Check console logs for details.');
+        }
     };
 
     return (
@@ -129,7 +142,7 @@ export default function InviteTestingPage() {
                         </View>
 
                         <TouchableOpacity
-                            onPress={testDeepLink}
+                            onPress={testDeepLinkFunctionality}
                             className="bg-green-500 py-3 rounded-lg"
                         >
                             <Text className="text-white text-center font-rubik-semibold">
