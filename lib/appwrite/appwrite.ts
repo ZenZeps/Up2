@@ -66,26 +66,38 @@ export async function signupWithEmail(email: string, password: string, name: str
   try {
     // Create the user account
     const user = await account.create(ID.unique(), email, password, name);
+    authDebug.info("User account created", { userId: user.$id, email: user.email });
 
-    // Try to send verification email by creating a temporary session
+    // Send verification email by creating a temporary session
     try {
       const session = await account.createEmailPasswordSession(email, password);
+      authDebug.debug("Temporary session created for verification email");
 
-      // Send verification email now that user is authenticated
+      // Send verification email with proper redirect URL
       await account.createVerification('up2://verify');
+      authDebug.info("Verification email sent successfully");
 
-      // Delete the session since we want user to verify email first
+      // Delete the temporary session since we want user to verify email first
       await account.deleteSession(session.$id);
-    } catch (verificationError) {
+      authDebug.debug("Temporary session deleted");
+    } catch (verificationError: any) {
       // If verification email fails, log it but don't fail the entire signup
-      console.warn("Could not send verification email during signup:", verificationError);
+      authDebug.warn("Could not send verification email during signup", verificationError);
       // User can still sign in and request verification email later
     }
 
     return user;
-  } catch (err) {
-    console.error("Signup error:", err);
-    throw err;
+  } catch (err: any) {
+    authDebug.error("Signup failed", err);
+    
+    // Handle specific Appwrite error cases
+    if (err.code === 409 || err.message?.includes("user_already_exists")) {
+      throw new Error("An account with this email already exists. Please sign in instead or use a different email address.");
+    } else if (err.code === 400) {
+      throw new Error("Invalid email or password format. Please check your input and try again.");
+    } else {
+      throw new Error(err.message || "Could not create your account. Please try again.");
+    }
   }
 }
 
@@ -98,12 +110,24 @@ export async function sendVerificationEmail() {
       throw new Error('User must be authenticated to send verification email');
     }
 
-    // Use the proper mobile app verification URL
+    if (user.emailVerification) {
+      throw new Error('Email is already verified');
+    }
+
+    // Send verification email with proper redirect URL
     const response = await account.createVerification('up2://verify');
+    authDebug.info("Verification email sent", { userId: user.$id });
     return response;
-  } catch (err) {
-    console.error("Send verification error:", err);
-    throw err;
+  } catch (err: any) {
+    authDebug.error("Send verification error", err);
+    
+    if (err.message?.includes('already verified')) {
+      throw new Error("Your email is already verified.");
+    } else if (err.message?.includes('rate limit')) {
+      throw new Error("Too many verification emails sent. Please wait before requesting another.");
+    } else {
+      throw new Error(err.message || "Could not send verification email. Please try again.");
+    }
   }
 }
 
@@ -112,17 +136,37 @@ export async function resendVerificationEmail(email: string, password: string) {
   try {
     // First, create a temporary session to send verification
     const session = await account.createEmailPasswordSession(email, password);
+    authDebug.debug("Temporary session created for resending verification");
+
+    // Get user info to check current verification status
+    const user = await account.get();
+    
+    if (user.emailVerification) {
+      await account.deleteSession(session.$id);
+      throw new Error('Email is already verified');
+    }
 
     // Send verification email
     const response = await account.createVerification('up2://verify');
+    authDebug.info("Verification email resent", { userId: user.$id });
 
     // Delete the temporary session
     await account.deleteSession(session.$id);
+    authDebug.debug("Temporary session deleted after resending verification");
 
     return response;
-  } catch (err) {
-    console.error("Resend verification error:", err);
-    throw err;
+  } catch (err: any) {
+    authDebug.error("Resend verification error", err);
+    
+    if (err.message?.includes('already verified')) {
+      throw new Error("Your email is already verified.");
+    } else if (err.message?.includes('Invalid credentials')) {
+      throw new Error("Invalid email or password.");
+    } else if (err.message?.includes('rate limit')) {
+      throw new Error("Too many verification emails sent. Please wait before requesting another.");
+    } else {
+      throw new Error(err.message || "Could not resend verification email. Please try again.");
+    }
   }
 }
 
@@ -130,10 +174,18 @@ export async function resendVerificationEmail(email: string, password: string) {
 export async function verifyEmail(userId: string, secret: string) {
   try {
     const response = await account.updateVerification(userId, secret);
+    authDebug.info("Email verified successfully", { userId });
     return response;
-  } catch (err) {
-    console.error("Email verification error:", err);
-    throw err;
+  } catch (err: any) {
+    authDebug.error("Email verification error", err);
+    
+    if (err.code === 401 || err.message?.includes('Invalid verification')) {
+      throw new Error("The verification link is invalid or has expired. Please request a new verification email.");
+    } else if (err.message?.includes('already verified')) {
+      throw new Error("This email has already been verified.");
+    } else {
+      throw new Error(err.message || "Could not verify email. Please try again or request a new verification link.");
+    }
   }
 }
 
@@ -174,7 +226,7 @@ export async function loginWithEmail(email: string, password: string) {
   } catch (err: any) {
     // Handle email verification error
     if (err.message === 'UNVERIFIED_EMAIL') {
-      throw new Error('Please verify your email before signing in. If you did not receive a verification email, try signing in again and we can resend it.');
+      throw new Error('Please verify your email before signing in. Check your inbox for the verification email or sign in again to request a new one.');
     }
 
     // Track failed login attempts for password recovery
@@ -247,12 +299,32 @@ export async function logout() {
 // ✅ Forgot password
 export async function forgotPassword(email: string) {
   try {
-    // Use localhost for testing - this should work without additional platform setup
-    const response = await account.createRecovery(email, 'http://localhost:3000/reset-password');
+    // Use GitHub Pages URL for production deployment (FREE!)
+    const resetUrl = process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:8082/reset-password.html'
+      : 'https://zenzeps.github.io/Up2/reset-password.html';
+    
+    authDebug.info("Sending password recovery email", { 
+      email: email.substring(0, 3) + "****",
+      resetUrl 
+    });
+    
+    const response = await account.createRecovery(email, resetUrl);
+    authDebug.info("Password recovery email sent successfully");
     return response;
-  } catch (err) {
-    console.error("Forgot password error:", err);
-    throw err;
+  } catch (err: any) {
+    authDebug.error("Forgot password error", err);
+    
+    // Handle specific error cases
+    if (err.code === 404 || err.message?.includes('user_not_found')) {
+      throw new Error("No account found with this email address.");
+    } else if (err.message?.includes('rate limit')) {
+      throw new Error("Too many password reset requests. Please wait before requesting another.");
+    } else if (err.message?.includes('Invalid `url` param')) {
+      throw new Error("Password reset is temporarily unavailable. Please try again later.");
+    } else {
+      throw new Error(err.message || "Failed to send password reset email. Please try again.");
+    }
   }
 }
 
@@ -260,10 +332,19 @@ export async function forgotPassword(email: string) {
 export async function resetPassword(userId: string, secret: string, newPassword: string) {
   try {
     const response = await account.updateRecovery(userId, secret, newPassword);
+    authDebug.info("Password reset successfully", { userId });
     return response;
-  } catch (err) {
-    console.error("Reset password error:", err);
-    throw err;
+  } catch (err: any) {
+    authDebug.error("Reset password error", err);
+    
+    // Handle specific error cases
+    if (err.code === 401 || err.message?.includes('Invalid recovery')) {
+      throw new Error("The password reset link is invalid or has expired. Please request a new one.");
+    } else if (err.message?.includes('Password must be')) {
+      throw new Error("Password does not meet the security requirements. Please choose a stronger password.");
+    } else {
+      throw new Error(err.message || "Could not reset password. Please try again or request a new reset link.");
+    }
   }
 }
 
