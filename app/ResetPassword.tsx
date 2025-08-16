@@ -49,8 +49,8 @@ export default function ResetPassword() {
         try {
             setLoading(true);
             await PasswordResetHandler.resetPassword(
-                String(userId), 
-                String(secret), 
+                String(userId),
+                String(secret),
                 newPassword
             );
 

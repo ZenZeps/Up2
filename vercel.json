@@ -1,20 +1,20 @@
 {
-  "functions": {},
-  "rewrites": [
-    {
-      "source": "/reset-password.html",
-      "destination": "/public/reset-password.html"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/reset-password.html",
-      "headers": [
+    "functions": {},
+    "rewrites": [
         {
-          "key": "Content-Type",
-          "value": "text/html"
+            "source": "/reset-password.html",
+            "destination": "/public/reset-password.html"
         }
-      ]
-    }
-  ]
+    ],
+    "headers": [
+        {
+            "source": "/reset-password.html",
+            "headers": [
+                {
+                    "key": "Content-Type",
+                    "value": "text/html"
+                }
+            ]
+        }
+    ]
 }

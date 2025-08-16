@@ -11,7 +11,6 @@ import {
     databases,
     signupWithEmail
 } from "@/lib/appwrite/appwrite";
-import { EmailVerificationHandler } from "@/lib/auth/emailVerification";
 import { authDebug } from "@/lib/debug/authDebug";
 import { useGlobalContext } from "@/lib/global-provider";
 import { MaterialIcons } from '@expo/vector-icons';

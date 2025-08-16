@@ -89,7 +89,7 @@ export async function signupWithEmail(email: string, password: string, name: str
     return user;
   } catch (err: any) {
     authDebug.error("Signup failed", err);
-    
+
     // Handle specific Appwrite error cases
     if (err.code === 409 || err.message?.includes("user_already_exists")) {
       throw new Error("An account with this email already exists. Please sign in instead or use a different email address.");
@@ -120,7 +120,7 @@ export async function sendVerificationEmail() {
     return response;
   } catch (err: any) {
     authDebug.error("Send verification error", err);
-    
+
     if (err.message?.includes('already verified')) {
       throw new Error("Your email is already verified.");
     } else if (err.message?.includes('rate limit')) {
@@ -140,7 +140,7 @@ export async function resendVerificationEmail(email: string, password: string) {
 
     // Get user info to check current verification status
     const user = await account.get();
-    
+
     if (user.emailVerification) {
       await account.deleteSession(session.$id);
       throw new Error('Email is already verified');
@@ -157,7 +157,7 @@ export async function resendVerificationEmail(email: string, password: string) {
     return response;
   } catch (err: any) {
     authDebug.error("Resend verification error", err);
-    
+
     if (err.message?.includes('already verified')) {
       throw new Error("Your email is already verified.");
     } else if (err.message?.includes('Invalid credentials')) {
@@ -178,7 +178,7 @@ export async function verifyEmail(userId: string, secret: string) {
     return response;
   } catch (err: any) {
     authDebug.error("Email verification error", err);
-    
+
     if (err.code === 401 || err.message?.includes('Invalid verification')) {
       throw new Error("The verification link is invalid or has expired. Please request a new verification email.");
     } else if (err.message?.includes('already verified')) {
@@ -299,23 +299,19 @@ export async function logout() {
 // ✅ Forgot password
 export async function forgotPassword(email: string) {
   try {
-    // Always use GitHub Pages URL for production
-    // For local testing, you can temporarily uncomment the localhost line below
+    // GitHub Pages URL - make sure to add zenzeps.github.io as a Web platform in Appwrite console
     const resetUrl = 'https://zenzeps.github.io/Up2/reset-password.html';
-    // const resetUrl = 'http://localhost:8082/reset-password.html'; // Uncomment for local testing only
-    
-    authDebug.info("Sending password recovery email", { 
+
+    authDebug.info("Sending password recovery email", {
       email: email.substring(0, 3) + "****",
-      resetUrl 
+      resetUrl
     });
-    
+
     const response = await account.createRecovery(email, resetUrl);
     authDebug.info("Password recovery email sent successfully");
     return response;
   } catch (err: any) {
-    authDebug.error("Forgot password error", err);
-    
-    // Handle specific error cases
+    authDebug.error("Forgot password error", err);    // Handle specific error cases
     if (err.code === 404 || err.message?.includes('user_not_found')) {
       throw new Error("No account found with this email address.");
     } else if (err.message?.includes('rate limit')) {
@@ -336,7 +332,7 @@ export async function resetPassword(userId: string, secret: string, newPassword:
     return response;
   } catch (err: any) {
     authDebug.error("Reset password error", err);
-    
+
     // Handle specific error cases
     if (err.code === 401 || err.message?.includes('Invalid recovery')) {
       throw new Error("The password reset link is invalid or has expired. Please request a new one.");

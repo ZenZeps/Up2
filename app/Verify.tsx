@@ -1,8 +1,8 @@
-import { account, verifyEmail } from "@/lib/appwrite/appwrite";
+import { verifyEmail } from "@/lib/appwrite/appwrite";
 import { useGlobalContext } from "@/lib/global-provider";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
 export default function Verify() {
   const { userId, secret } = useLocalSearchParams();
@@ -24,7 +24,7 @@ export default function Verify() {
         // Verify the email using the provided userId and secret
         await verifyEmail(String(userId), String(secret));
         setVerified(true);
-        
+
         // Try to refresh global context to get updated user state
         try {
           await refetch();
@@ -40,7 +40,7 @@ export default function Verify() {
       } catch (err: any) {
         console.error("Email verification failed:", err);
         let errorMessage = "Could not verify your email. ";
-        
+
         if (err.message?.includes("expired")) {
           errorMessage += "The verification link has expired.";
         } else if (err.message?.includes("invalid")) {
@@ -48,7 +48,7 @@ export default function Verify() {
         } else {
           errorMessage += "Please try again or request a new verification email.";
         }
-        
+
         setError(errorMessage);
       } finally {
         setVerifying(false);

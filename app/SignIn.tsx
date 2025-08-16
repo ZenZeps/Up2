@@ -109,9 +109,9 @@ const SignIn = () => {
     }
   };
 
-    const handleForgotPassword = async () => {
+  const handleForgotPassword = async () => {
     const trimmedEmail = email.trim().toLowerCase();
-    
+
     if (!trimmedEmail) {
       // Show dialog to get email if not entered
       PasswordResetHandler.showForgotPasswordDialog(
@@ -126,7 +126,7 @@ const SignIn = () => {
     try {
       await PasswordResetHandler.sendResetEmail(trimmedEmail);
       Alert.alert(
-        "Reset Link Sent", 
+        "Reset Link Sent",
         `A password reset link has been sent to ${trimmedEmail}. Please check your inbox and spam folder.`
       );
     } catch (err: any) {

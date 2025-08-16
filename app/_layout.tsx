@@ -94,9 +94,9 @@ export default function RootLayout() {
         }
       } else if (hostname === 'reset-password' || path === '/reset-password') {
         // Handle password reset
-        const { userId, secret, expire } = queryParams as { 
-          userId?: string; 
-          secret?: string; 
+        const { userId, secret, expire } = queryParams as {
+          userId?: string;
+          secret?: string;
           expire?: string;
         };
         if (userId && secret) {
