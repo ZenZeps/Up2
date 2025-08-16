@@ -73,8 +73,8 @@ export async function signupWithEmail(email: string, password: string, name: str
       const session = await account.createEmailPasswordSession(email, password);
       authDebug.debug("Temporary session created for verification email");
 
-      // Send verification email with proper redirect URL
-      await account.createVerification('up2://verify');
+      // Send verification email with GitHub Pages redirect URL
+      await account.createVerification('https://zenzeps.github.io/Up2/verify-email.html');
       authDebug.info("Verification email sent successfully");
 
       // Delete the temporary session since we want user to verify email first
@@ -114,8 +114,8 @@ export async function sendVerificationEmail() {
       throw new Error('Email is already verified');
     }
 
-    // Send verification email with proper redirect URL
-    const response = await account.createVerification('up2://verify');
+    // Send verification email with GitHub Pages redirect URL
+    const response = await account.createVerification('https://zenzeps.github.io/Up2/verify-email.html');
     authDebug.info("Verification email sent", { userId: user.$id });
     return response;
   } catch (err: any) {
@@ -146,8 +146,8 @@ export async function resendVerificationEmail(email: string, password: string) {
       throw new Error('Email is already verified');
     }
 
-    // Send verification email
-    const response = await account.createVerification('up2://verify');
+    // Send verification email with GitHub Pages redirect URL
+    const response = await account.createVerification('https://zenzeps.github.io/Up2/verify-email.html');
     authDebug.info("Verification email resent", { userId: user.$id });
 
     // Delete the temporary session
