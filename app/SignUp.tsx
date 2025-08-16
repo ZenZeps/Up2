@@ -11,6 +11,7 @@ import {
     databases,
     signupWithEmail
 } from "@/lib/appwrite/appwrite";
+import { EmailVerificationHandler } from "@/lib/auth/emailVerification";
 import { authDebug } from "@/lib/debug/authDebug";
 import { useGlobalContext } from "@/lib/global-provider";
 import { MaterialIcons } from '@expo/vector-icons';
@@ -246,11 +247,11 @@ const SignUp = () => {
 
                 // Show verification message and redirect to sign-in
                 Alert.alert(
-                    "Email Verification Required",
-                    "We've sent a verification email to your inbox. Please verify your email before signing in.",
+                    "Account Created Successfully",
+                    "We've sent a verification email to your inbox. Please verify your email before signing in to complete your account setup.",
                     [
                         {
-                            text: "OK",
+                            text: "Check Email",
                             onPress: () => {
                                 authDebug.info("User directed to sign-in for verification");
                                 router.replace("/SignIn");

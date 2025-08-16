@@ -1,0 +1,7 @@
+[build]
+  publish = "public"
+
+[[redirects]]
+  from = "/reset-password"
+  to = "/reset-password.html"
+  status = 200

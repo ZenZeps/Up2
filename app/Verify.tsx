@@ -1,53 +1,113 @@
-import { account } from "@/lib/appwrite/appwrite";
+import { account, verifyEmail } from "@/lib/appwrite/appwrite";
+import { useGlobalContext } from "@/lib/global-provider";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from "react-native";
 
 export default function Verify() {
   const { userId, secret } = useLocalSearchParams();
   const router = useRouter();
+  const { refetch } = useGlobalContext();
   const [verifying, setVerifying] = useState(true);
   const [verified, setVerified] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const verifyEmail = async () => {
+    const handleVerification = async () => {
       if (!userId || !secret) {
-        Alert.alert("Missing info", "Verification link is invalid.");
-        router.replace("/SignIn");
+        setError("Verification link is invalid or missing parameters.");
+        setVerifying(false);
         return;
       }
 
       try {
-        await account.updateVerification(String(userId), String(secret));
+        // Verify the email using the provided userId and secret
+        await verifyEmail(String(userId), String(secret));
         setVerified(true);
+        
+        // Try to refresh global context to get updated user state
+        try {
+          await refetch();
+        } catch (refreshError) {
+          console.warn("Could not refresh global context after verification");
+        }
+
+        // Auto-redirect after success
         setTimeout(() => {
           router.replace("/SignIn");
-        }, 2500);
+        }, 3000);
+
       } catch (err: any) {
-        console.error("Verification error:", err);
-        Alert.alert("Verification Failed", err.message || "Could not verify email.");
-        router.replace("/SignIn");
+        console.error("Email verification failed:", err);
+        let errorMessage = "Could not verify your email. ";
+        
+        if (err.message?.includes("expired")) {
+          errorMessage += "The verification link has expired.";
+        } else if (err.message?.includes("invalid")) {
+          errorMessage += "The verification link is invalid.";
+        } else {
+          errorMessage += "Please try again or request a new verification email.";
+        }
+        
+        setError(errorMessage);
       } finally {
         setVerifying(false);
       }
     };
 
-    verifyEmail();
-  }, [userId, secret]);
+    handleVerification();
+  }, [userId, secret, refetch, router]);
+
+  const handleRetry = () => {
+    router.replace("/SignIn");
+  };
 
   return (
-    <View className="flex-1 justify-center items-center bg-white px-10">
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white', paddingHorizontal: 40 }}>
       {verifying ? (
         <>
-          <ActivityIndicator size="large" color="#0061FF" />
-          <Text className="text-lg text-gray-500 mt-4">Verifying your email...</Text>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={{ fontSize: 18, color: '#666', marginTop: 16, textAlign: 'center' }}>
+            Verifying your email address...
+          </Text>
         </>
       ) : verified ? (
-        <Text className="text-lg text-green-600 font-semibold text-center">
-          Email verified successfully! Redirecting...
-        </Text>
+        <>
+          <View style={{ backgroundColor: '#4CAF50', width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+            <Text style={{ color: 'white', fontSize: 40 }}>✓</Text>
+          </View>
+          <Text style={{ fontSize: 20, color: '#4CAF50', fontWeight: 'bold', textAlign: 'center', marginBottom: 8 }}>
+            Email Verified Successfully!
+          </Text>
+          <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>
+            You can now sign in to your account. Redirecting...
+          </Text>
+        </>
       ) : (
-        <Text className="text-lg text-red-500">Verification failed.</Text>
+        <>
+          <View style={{ backgroundColor: '#F44336', width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+            <Text style={{ color: 'white', fontSize: 40 }}>✗</Text>
+          </View>
+          <Text style={{ fontSize: 20, color: '#F44336', fontWeight: 'bold', textAlign: 'center', marginBottom: 8 }}>
+            Verification Failed
+          </Text>
+          <Text style={{ fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 30 }}>
+            {error}
+          </Text>
+          <TouchableOpacity
+            onPress={handleRetry}
+            style={{
+              backgroundColor: '#007AFF',
+              paddingHorizontal: 30,
+              paddingVertical: 12,
+              borderRadius: 8,
+            }}
+          >
+            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+              Back to Sign In
+            </Text>
+          </TouchableOpacity>
+        </>
       )}
     </View>
   );

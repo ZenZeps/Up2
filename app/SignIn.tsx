@@ -1,10 +1,10 @@
 import images from "@/constants/images";
 import {
   account,
-  forgotPassword,
   loginWithEmail,
-  resendVerificationEmail,
 } from "@/lib/appwrite/appwrite";
+import { EmailVerificationHandler } from "@/lib/auth/emailVerification";
+import { PasswordResetHandler } from "@/lib/auth/passwordReset";
 import { authDebug } from "@/lib/debug/authDebug";
 import { useGlobalContext } from "@/lib/global-provider";
 import { MaterialIcons } from '@expo/vector-icons';
@@ -74,26 +74,15 @@ const SignIn = () => {
         authDebug.warn("Email not verified, ending session");
         await account.deleteSession("current");
 
-        Alert.alert(
-          "Email Not Verified",
-          "Please verify your email first. Would you like us to resend the verification email?",
-          [
-            {
-              text: "Resend Email",
-              onPress: async () => {
-                try {
-                  await resendVerificationEmail(trimmedEmail, password);
-                  Alert.alert("Email Sent", "Verification email has been resent. Please check your inbox and spam folder.");
-                } catch (resendError: any) {
-                  Alert.alert("Error", "Failed to resend verification email. Please try again later.");
-                }
-              }
-            },
-            {
-              text: "OK",
-              style: "cancel"
-            }
-          ]
+        EmailVerificationHandler.handleUnverifiedEmail(
+          trimmedEmail,
+          password,
+          () => {
+            // On resend success, just show success message
+          },
+          () => {
+            // On navigation to sign in (already on sign in page, so just stay)
+          }
         );
         return;
       }
@@ -120,21 +109,28 @@ const SignIn = () => {
     }
   };
 
-  const handleForgotPassword = async () => {
+    const handleForgotPassword = async () => {
     const trimmedEmail = email.trim().toLowerCase();
+    
     if (!trimmedEmail) {
-      Alert.alert("Error", "Please enter your email to reset password.");
+      // Show dialog to get email if not entered
+      PasswordResetHandler.showForgotPasswordDialog(
+        "",
+        (emailAddress) => {
+          // Success callback - email sent
+        }
+      );
       return;
     }
+
     try {
-      setLoading(true);
-      await forgotPassword(trimmedEmail);
-      Alert.alert("Password Reset", "A password reset link has been sent to your email.");
+      await PasswordResetHandler.sendResetEmail(trimmedEmail);
+      Alert.alert(
+        "Reset Link Sent", 
+        `A password reset link has been sent to ${trimmedEmail}. Please check your inbox and spam folder.`
+      );
     } catch (err: any) {
-      console.error("Forgot password error:", err);
-      Alert.alert("Error", err?.message || "Failed to send password reset email.");
-    } finally {
-      setLoading(false);
+      Alert.alert("Error", err.message);
     }
   };
 

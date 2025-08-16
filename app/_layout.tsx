@@ -94,9 +94,15 @@ export default function RootLayout() {
         }
       } else if (hostname === 'reset-password' || path === '/reset-password') {
         // Handle password reset
-        const { userId, secret } = queryParams as { userId?: string; secret?: string };
+        const { userId, secret, expire } = queryParams as { 
+          userId?: string; 
+          secret?: string; 
+          expire?: string;
+        };
         if (userId && secret) {
-          router.push(`/ResetPassword?userId=${userId}&secret=${secret}`);
+          // Include expire parameter if present for additional validation
+          const resetUrl = `/ResetPassword?userId=${userId}&secret=${secret}${expire ? `&expire=${expire}` : ''}`;
+          router.push(resetUrl);
         }
       } else if (hostname === 'invite' || path === '/invite') {
         // Handle event invites

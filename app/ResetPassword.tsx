@@ -1,5 +1,5 @@
 import images from "@/constants/images";
-import { resetPassword } from "@/lib/appwrite/appwrite";
+import { PasswordResetHandler } from "@/lib/auth/passwordReset";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -17,60 +17,49 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function ResetPassword() {
-    const { userId, secret } = useLocalSearchParams();
+    const { userId, secret, expire } = useLocalSearchParams();
     const router = useRouter();
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [validating, setValidating] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         // Validate the reset link parameters
-        if (!userId || !secret) {
-            Alert.alert("Invalid Link", "This password reset link is invalid or expired.");
-            router.replace("/SignIn");
+        const validation = PasswordResetHandler.validateResetLink(userId, secret, expire);
+        if (!validation.isValid) {
+            setError(validation.error || "Invalid reset link");
+            Alert.alert("Invalid Link", validation.error || "This password reset link is invalid or expired.", [
+                { text: "OK", onPress: () => router.replace("/SignIn") }
+            ]);
             return;
         }
         setValidating(false);
-    }, [userId, secret]);
+    }, [userId, secret, expire, router]);
 
     const handleResetPassword = async () => {
-        // Validation
-        if (!newPassword || !confirmPassword) {
-            Alert.alert("Error", "Please fill in all fields.");
-            return;
-        }
-
-        if (newPassword.length < 8) {
-            Alert.alert("Weak Password", "Password must be at least 8 characters.");
-            return;
-        }
-
-        if (newPassword !== confirmPassword) {
-            Alert.alert("Password Mismatch", "Passwords do not match.");
+        // Validate passwords
+        const validation = PasswordResetHandler.validatePassword(newPassword, confirmPassword);
+        if (!validation.isValid) {
+            Alert.alert("Invalid Password", validation.error);
             return;
         }
 
         try {
             setLoading(true);
-            await resetPassword(String(userId), String(secret), newPassword);
+            await PasswordResetHandler.resetPassword(
+                String(userId), 
+                String(secret), 
+                newPassword
+            );
 
-            Alert.alert(
-                "Password Reset Successful",
-                "Your password has been reset successfully. You can now sign in with your new password.",
-                [
-                    {
-                        text: "OK",
-                        onPress: () => router.replace("/SignIn")
-                    }
-                ]
-            );
+            PasswordResetHandler.showResetSuccess(() => {
+                router.replace("/SignIn");
+            });
+
         } catch (error: any) {
-            console.error("Password reset error:", error);
-            Alert.alert(
-                "Reset Failed",
-                error.message || "Could not reset password. The link may be expired."
-            );
+            Alert.alert("Reset Failed", error.message);
         } finally {
             setLoading(false);
         }
@@ -78,9 +67,40 @@ export default function ResetPassword() {
 
     if (validating) {
         return (
-            <View className="flex-1 justify-center items-center bg-white">
-                <ActivityIndicator size="large" color="#0061FF" />
-                <Text className="text-lg text-gray-500 mt-4">Validating reset link...</Text>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white' }}>
+                <ActivityIndicator size="large" color="#007AFF" />
+                <Text style={{ fontSize: 18, color: '#666', marginTop: 16 }}>
+                    Validating reset link...
+                </Text>
+            </View>
+        );
+    }
+
+    if (error) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white', paddingHorizontal: 40 }}>
+                <View style={{ backgroundColor: '#F44336', width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+                    <Text style={{ color: 'white', fontSize: 40 }}>✗</Text>
+                </View>
+                <Text style={{ fontSize: 20, color: '#F44336', fontWeight: 'bold', textAlign: 'center', marginBottom: 8 }}>
+                    Invalid Reset Link
+                </Text>
+                <Text style={{ fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 30 }}>
+                    {error}
+                </Text>
+                <TouchableOpacity
+                    onPress={() => router.replace("/SignIn")}
+                    style={{
+                        backgroundColor: '#007AFF',
+                        paddingHorizontal: 30,
+                        paddingVertical: 12,
+                        borderRadius: 8,
+                    }}
+                >
+                    <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+                        Back to Sign In
+                    </Text>
+                </TouchableOpacity>
             </View>
         );
     }
