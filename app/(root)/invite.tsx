@@ -46,9 +46,9 @@ export default function Invite() {
     useEffect(() => {
         if (Platform.OS !== 'web') {
             if (eventId) {
-                router.replace(`/(root)/event/${eventId}`);
+                router.replace(`/(root)/event/${eventId}` as any);
             } else {
-                router.replace('/(root)');
+                router.replace('/(root)' as any);
             }
         }
     }, [eventId]);

@@ -115,14 +115,14 @@ const BusinessDashboard: React.FC = () => {
                 <View style={styles.eventActions}>
                     <TouchableOpacity
                         style={styles.actionButton}
-                        onPress={() => router.push(`/(root)/EventAnalytics?eventId=${event.$id}`)}
+                        onPress={() => router.push(`/(root)/EventAnalytics?eventId=${event.$id}` as any)}
                     >
                         <Text style={styles.actionButtonText}>View Analytics</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                         style={[styles.actionButton, styles.secondaryButton]}
-                        onPress={() => router.push(`/(root)/ScanTickets?eventId=${event.$id}`)}
+                        onPress={() => router.push(`/(root)/ScanTickets?eventId=${event.$id}` as any)}
                     >
                         <Text style={[styles.actionButtonText, styles.secondaryButtonText]}>
                             Scan Tickets

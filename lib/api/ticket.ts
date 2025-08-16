@@ -22,7 +22,7 @@ class TicketService {
                 }
             );
 
-            return newEvent as BusinessEvent;
+            return newEvent as unknown as BusinessEvent;
         } catch (error) {
             console.error('Error creating business event:', error);
             throw error;
@@ -38,7 +38,7 @@ class TicketService {
                 eventId
             );
 
-            return event as BusinessEvent;
+            return event as unknown as BusinessEvent;
         } catch (error) {
             console.error('Error getting business event:', error);
             throw error;
@@ -58,7 +58,7 @@ class TicketService {
                 ]
             );
 
-            return response.documents as BusinessEvent[];
+            return response.documents as unknown as BusinessEvent[];
         } catch (error) {
             console.error('Error getting business events:', error);
             throw error;
@@ -120,7 +120,7 @@ class TicketService {
                     }
                 );
 
-                tickets.push(ticket as Ticket);
+                tickets.push(ticket as unknown as Ticket);
             }
 
             // Update event ticket count
@@ -155,7 +155,7 @@ class TicketService {
                 ]
             );
 
-            return response.documents as Ticket[];
+            return response.documents as unknown as Ticket[];
         } catch (error) {
             console.error('Error getting user tickets:', error);
             throw error;
@@ -174,7 +174,7 @@ class TicketService {
                 ]
             );
 
-            return response.documents as Ticket[];
+            return response.documents as unknown as Ticket[];
         } catch (error) {
             console.error('Error getting event tickets:', error);
             throw error;
@@ -220,7 +220,7 @@ class TicketService {
                 DATABASE_ID,
                 TICKETS_COLLECTION_ID,
                 ticketId
-            ) as Ticket;
+            ) as unknown as Ticket;
 
             if (ticket.status !== 'active') {
                 throw new Error('Ticket cannot be refunded');
@@ -271,7 +271,7 @@ class TicketService {
             );
 
             if (response.documents.length > 0) {
-                return response.documents[0] as TicketSales;
+                return response.documents[0] as unknown as TicketSales;
             }
 
             // Return empty sales data if none exists
@@ -320,7 +320,7 @@ class TicketService {
 
             if (existingResponse.documents.length > 0) {
                 // Update existing record
-                const existing = existingResponse.documents[0] as TicketSales;
+                const existing = existingResponse.documents[0] as unknown as TicketSales;
                 await databases.updateDocument(
                     DATABASE_ID,
                     TICKET_SALES_COLLECTION_ID,

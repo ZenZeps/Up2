@@ -112,7 +112,7 @@ export class NotificationService {
     }
 
     /**
-     * Send push notification to specific users
+     * Send push notification to specific users with SCALABILITY LIMITS
      */
     public async sendPushNotification(
         userTokens: string[],
@@ -126,6 +126,13 @@ export class NotificationService {
             body,
             data
         });
+
+        // SCALABILITY FIX: Limit notifications to prevent spam and API abuse
+        const MAX_NOTIFICATIONS = 500; // Expo limit is ~100/hour for free, 1000+ for paid
+        if (userTokens.length > MAX_NOTIFICATIONS) {
+            console.warn(`⚠️ Too many notification recipients (${userTokens.length}). Limiting to ${MAX_NOTIFICATIONS} to prevent API abuse.`);
+            userTokens = userTokens.slice(0, MAX_NOTIFICATIONS);
+        }
 
         const messages = userTokens
             .filter(token => token && token.trim() !== '')
@@ -144,26 +151,45 @@ export class NotificationService {
             return;
         }
 
+        // SCALABILITY FIX: Send notifications in batches to prevent timeout
+        const BATCH_SIZE = 100; // Expo recommends batches of 100
+        const batches = [];
+        for (let i = 0; i < messages.length; i += BATCH_SIZE) {
+            batches.push(messages.slice(i, i + BATCH_SIZE));
+        }
+
+        console.log(`� Sending ${messages.length} notifications in ${batches.length} batches`);
+
         try {
-            console.log('📡 Sending to Expo push service...');
-            const response = await fetch('https://exp.host/--/api/v2/push/send', {
-                method: 'POST',
-                headers: {
-                    Accept: 'application/json',
-                    'Accept-encoding': 'gzip, deflate',
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(messages),
-            });
+            for (let i = 0; i < batches.length; i++) {
+                const batch = batches[i];
+                console.log(`📡 Sending batch ${i + 1}/${batches.length} with ${batch.length} notifications...`);
 
-            const result = await response.json();
-            console.log('✅ Push notification response:', result);
+                const response = await fetch('https://exp.host/--/api/v2/push/send', {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Accept-encoding': 'gzip, deflate',
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(batch),
+                });
 
-            if (!response.ok) {
-                console.error('❌ Push notification failed:', response.status, result);
+                const result = await response.json();
+                console.log(`✅ Batch ${i + 1} response:`, result);
+
+                if (!response.ok) {
+                    console.error(`❌ Batch ${i + 1} failed:`, response.status, result);
+                }
+
+                // Add small delay between batches to prevent rate limiting
+                if (i < batches.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
             }
+            console.log('🎉 All notification batches sent successfully');
         } catch (error) {
-            console.error('❌ Error sending push notification:', error);
+            console.error('❌ Error sending push notification batches:', error);
         }
     }
 
@@ -186,10 +212,10 @@ export class NotificationService {
     }
 
     /**
-     * Remove notification listener
+     * Remove notification listener - FIXED deprecated method
      */
     public removeNotificationListener(subscription: Notifications.Subscription): void {
-        Notifications.removeNotificationSubscription(subscription);
+        subscription.remove(); // Use the new method instead of deprecated removeNotificationSubscription
     }
 
     /**

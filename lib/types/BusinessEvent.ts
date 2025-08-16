@@ -72,6 +72,7 @@ export interface PaymentIntent {
 }
 
 export interface TicketSales {
+    $id?: string; // Appwrite document ID
     eventId: string;
     totalTicketsSold: number;
     totalRevenue: number; // In cents

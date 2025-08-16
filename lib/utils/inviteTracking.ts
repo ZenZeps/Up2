@@ -1,4 +1,4 @@
-import { config, databases } from '../appwrite/appwrite';
+import { config, databases, Query } from '../appwrite/appwrite';
 
 /**
  * Simple invite tracking utility
@@ -39,31 +39,36 @@ export const logInviteEvent = async (
 };
 
 /**
- * Gets invite statistics for an event (if collection exists)
+ * Gets invite statistics for an event (if collection exists) with SCALABILITY LIMITS
  */
 export const getInviteStats = async (eventId: string) => {
     try {
+        // SCALABILITY FIX: Query with eventId filter instead of loading all invites
         const invites = await databases.listDocuments(
             config.databaseID!,
-            'invites_sent'
+            'invites_sent',
+            [
+                Query.equal('eventId', eventId),
+                Query.limit(500), // SCALABILITY: Limit to 500 invites max
+            ]
         );
 
-        const eventInvites = invites.documents.filter((invite: any) => invite.eventId === eventId);
-
         const stats = {
-            total: eventInvites.length,
+            total: invites.documents.length,
             whatsapp: 0,
             instagram: 0,
             messenger: 0,
             general: 0,
         };
 
-        eventInvites.forEach((invite: any) => {
+        // No need to filter since we already queried by eventId
+        invites.documents.forEach((invite: any) => {
             if (invite.platform in stats) {
                 (stats as any)[invite.platform]++;
             }
         });
 
+        console.log(`Invite stats for event ${eventId}: ${stats.total} total invites`);
         return stats;
     } catch (error) {
         console.log('Could not get invite stats - collection may not exist');

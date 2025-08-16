@@ -45,15 +45,16 @@ export async function createTravelAnnouncement(travel: Omit<TravelAnnouncement, 
 }
 
 /**
- * Get travel announcements for a specific user
+ * Get travel announcements for a specific user with SCALABILITY LIMITS
  */
-export async function getUserTravelAnnouncements(userId: string): Promise<TravelAnnouncement[]> {
+export async function getUserTravelAnnouncements(userId: string, limit: number = 20): Promise<TravelAnnouncement[]> {
     try {
         const response = await databases.listDocuments(
             config.databaseID!,
             config.travelCollectionID!,
             [
                 Query.equal('userId', userId),
+                Query.limit(limit), // SCALABILITY: Add limit to prevent loading all travel history
                 Query.orderDesc('startDate')
             ]
         );
@@ -66,22 +67,27 @@ export async function getUserTravelAnnouncements(userId: string): Promise<Travel
 }
 
 /**
- * Get travel announcements from friends for the feed
+ * Get travel announcements from friends for the feed with SCALABILITY LIMITS
  */
-export async function getFriendsTravelAnnouncements(friendIds: string[]): Promise<TravelAnnouncement[]> {
+export async function getFriendsTravelAnnouncements(friendIds: string[], limit: number = 50): Promise<TravelAnnouncement[]> {
     if (friendIds.length === 0) return [];
 
     try {
+        // SCALABILITY FIX: Limit friends to prevent excessive API calls
+        const limitedFriendIds = friendIds.slice(0, 100); // Max 100 friends for travel feed
+
         const response = await databases.listDocuments(
             config.databaseID!,
             config.travelCollectionID!,
             [
-                Query.equal('userId', friendIds),
+                Query.equal('userId', limitedFriendIds),
                 Query.equal('isPublic', true),
+                Query.limit(limit), // SCALABILITY: Add query limit
                 Query.orderDesc('createdAt')
             ]
         );
 
+        console.log(`Travel feed: Found ${response.documents.length} travel announcements from ${limitedFriendIds.length} friends`);
         return response.documents as unknown as TravelAnnouncement[];
     } catch (error) {
         console.error('Error fetching friends travel announcements:', error);
@@ -90,9 +96,9 @@ export async function getFriendsTravelAnnouncements(friendIds: string[]): Promis
 }
 
 /**
- * Get active travel for a user (currently traveling or future travel)
+ * Get active travel for a user (currently traveling or future travel) with SCALABILITY LIMITS
  */
-export async function getActiveTravelForUser(userId: string): Promise<TravelAnnouncement[]> {
+export async function getActiveTravelForUser(userId: string, limit: number = 10): Promise<TravelAnnouncement[]> {
     try {
         const now = new Date().toISOString();
 
@@ -102,6 +108,7 @@ export async function getActiveTravelForUser(userId: string): Promise<TravelAnno
             [
                 Query.equal('userId', userId),
                 Query.greaterThanEqual('endDate', now), // Travel that hasn't ended yet
+                Query.limit(limit), // SCALABILITY: Limit active travel results
                 Query.orderAsc('startDate')
             ]
         );

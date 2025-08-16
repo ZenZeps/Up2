@@ -143,29 +143,79 @@ export default function Feed() {
 
   const fetchTravelAnnouncements = async (friendIds: string[]) => {
     try {
-      const travelData = await getFriendsTravelAnnouncements(friendIds);
+      // SCALABILITY FIX: Use the now-optimized getFriendsTravelAnnouncements with limits
+      const travelData = await getFriendsTravelAnnouncements(friendIds, 30); // Limit to 30 travel announcements
 
       // Filter for upcoming/current travel only (not past travel)
       const now = new Date();
       const upcomingTravelData = travelData.filter(travel => new Date(travel.endDate) > now);
 
-      // Fetch user names and photos for each travel announcement
-      const travelWithUserInfo = await Promise.all(
-        upcomingTravelData.map(async (travel) => {
-          const userProfile = await getUserProfile(travel.userId);
-          const userPhotoUrl = await getUserProfilePhotoUrl(travel.userId);
+      if (upcomingTravelData.length === 0) {
+        setTravelAnnouncements([]);
+        return;
+      }
 
-          return {
-            ...travel,
-            userName: userDisplayUtils.getFullName(userProfile || {}, 'Unknown User'),
-            userPhotoUrl,
-          } as TravelAnnouncementWithUserInfo;
-        })
-      );
+      // SCALABILITY FIX: Batch process user profiles instead of sequential calls
+      const uniqueUserIds = [...new Set(upcomingTravelData.map(travel => travel.userId))];
+
+      // Batch fetch user profiles (max 25 at once)
+      const BATCH_SIZE = 25;
+      const userProfileBatches: any[][] = [];
+      const photoUrlBatches: (string | null)[][] = [];
+
+      for (let i = 0; i < uniqueUserIds.length; i += BATCH_SIZE) {
+        const batch = uniqueUserIds.slice(i, i + BATCH_SIZE);
+
+        // Process profiles and photos in parallel batches
+        const [profiles, photoUrls] = await Promise.all([
+          getUsersByIds(batch),
+          Promise.all(batch.map(async (userId) => {
+            try {
+              return await getUserProfilePhotoUrl(userId);
+            } catch {
+              return null;
+            }
+          }))
+        ]);
+
+        userProfileBatches.push(profiles);
+        photoUrlBatches.push(photoUrls);
+      }
+
+      // Create lookup maps for O(1) access
+      const profileMap = new Map();
+      const photoMap = new Map();
+
+      userProfileBatches.flat().forEach((profile, index) => {
+        if (profile) {
+          profileMap.set(profile.$id, profile);
+        }
+      });
+
+      uniqueUserIds.forEach((userId, index) => {
+        const batchIndex = Math.floor(index / BATCH_SIZE);
+        const indexInBatch = index % BATCH_SIZE;
+        const photoUrl = photoUrlBatches[batchIndex]?.[indexInBatch] || null;
+        photoMap.set(userId, photoUrl);
+      });
+
+      // Map travel announcements with cached user data
+      const travelWithUserInfo = upcomingTravelData.map((travel) => {
+        const userProfile = profileMap.get(travel.userId);
+        const userPhotoUrl = photoMap.get(travel.userId);
+
+        return {
+          ...travel,
+          userName: userDisplayUtils.getFullName(userProfile || {}, 'Unknown User'),
+          userPhotoUrl,
+        } as TravelAnnouncementWithUserInfo;
+      });
 
       setTravelAnnouncements(travelWithUserInfo);
+      console.log(`Feed: Loaded ${travelWithUserInfo.length} travel announcements with batched user data`);
     } catch (error) {
       console.error('Error fetching travel announcements:', error);
+      setTravelAnnouncements([]); // Ensure UI doesn't break
     }
   };
 

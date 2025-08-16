@@ -17,15 +17,55 @@ export interface NotificationToken {
 /**
  * Professional notification token service following industry best practices
  * Separates notification tokens from user profiles to prevent database bloat
+ * 
+ * SETUP REQUIRED: Create the notification_tokens collection in Appwrite with these attributes:
+ * - userId (String, required)
+ * - deviceToken (String, required)
+ * - deviceType (String, required)
+ * - deviceId (String, optional)
+ * - enabled (Boolean, required, default: true)
+ * - lastUsed (String, required) // ISO date string
+ * - appVersion (String, optional)
  */
 export class NotificationTokenService {
-    private static readonly COLLECTION_ID = process.env.EXPO_PUBLIC_APPWRITE_NOTIFICATION_TOKENS_ID || 'user_notification_tokens';
+    private static readonly COLLECTION_ID = process.env.EXPO_PUBLIC_APPWRITE_NOTIFICATION_TOKENS_ID || 'notification_tokens';
+
+    /**
+     * Check if the notification tokens collection exists and is properly configured
+     */
+    private static async checkCollectionExists(): Promise<boolean> {
+        try {
+            // Try to list documents with limit 1 to test collection access
+            await databases.listDocuments(
+                config.databaseID!,
+                this.COLLECTION_ID,
+                [Query.limit(1)]
+            );
+            return true;
+        } catch (error: any) {
+            if (error.message?.includes('Collection with the requested ID could not be found') ||
+                error.message?.includes('Attribute not found in schema')) {
+                console.warn('⚠️ Notification tokens collection not found or improperly configured.');
+                console.warn('📋 To enable push notifications, create a collection in Appwrite with ID:', this.COLLECTION_ID);
+                console.warn('📋 Required attributes: userId (string), deviceToken (string), deviceType (string), enabled (boolean), lastUsed (string)');
+                return false;
+            }
+            throw error; // Re-throw unexpected errors
+        }
+    }
 
     /**
      * Register or update a notification token for a user
      */
     static async registerToken(userId: string, token: string): Promise<void> {
         try {
+            // Check if collection exists before attempting operations
+            const collectionExists = await this.checkCollectionExists();
+            if (!collectionExists) {
+                console.log('🔕 Skipping notification token registration - collection not configured');
+                return;
+            }
+
             const deviceType = Platform.OS as 'ios' | 'android';
             const deviceId = await this.getDeviceId();
 
@@ -71,7 +111,14 @@ export class NotificationTokenService {
             }
         } catch (error) {
             console.error('❌ Error registering notification token:', error);
-            throw error;
+            // Don't throw error for collection setup issues - app should continue working
+            if (error instanceof Error &&
+                (error.message?.includes('Collection with the requested ID could not be found') ||
+                    error.message?.includes('Attribute not found in schema'))) {
+                console.log('💡 This is expected if you haven\'t set up the notification_tokens collection yet');
+                return; // Gracefully fail without breaking the app
+            }
+            throw error; // Only throw for unexpected errors
         }
     }
 
@@ -80,6 +127,13 @@ export class NotificationTokenService {
      */
     static async getUserTokens(userId: string): Promise<string[]> {
         try {
+            // Check if collection exists before attempting operations
+            const collectionExists = await this.checkCollectionExists();
+            if (!collectionExists) {
+                console.log('🔕 No notification tokens available - collection not configured');
+                return [];
+            }
+
             const tokens = await databases.listDocuments(
                 config.databaseID!,
                 this.COLLECTION_ID,

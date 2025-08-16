@@ -102,7 +102,7 @@ export default function RootLayout() {
         if (userId && secret) {
           // Include expire parameter if present for additional validation
           const resetUrl = `/ResetPassword?userId=${userId}&secret=${secret}${expire ? `&expire=${expire}` : ''}`;
-          router.push(resetUrl);
+          router.push(resetUrl as any); // Type assertion for dynamic URL
         }
       } else if (hostname === 'invite' || path === '/invite') {
         // Handle event invites
