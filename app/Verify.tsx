@@ -1,4 +1,4 @@
-import { verifyEmail } from "@/lib/appwrite/appwrite";
+import { account, verifyEmail } from "@/lib/appwrite/appwrite";
 import { useGlobalContext } from "@/lib/global-provider";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -23,6 +23,18 @@ export default function Verify() {
       try {
         // Verify the email using the provided userId and secret
         await verifyEmail(String(userId), String(secret));
+
+        // After successful verification, we need to create a session for the user
+        // The user now has a verified email, so let's check if we can get their account
+        try {
+          // Try to get the user account (this might work if there's still a session)
+          const user = await account.get();
+          console.log("User session found after verification:", user);
+        } catch (sessionError) {
+          // No active session, but that's okay - the routing logic will handle this
+          console.log("No active session after verification - user will be prompted to sign in");
+        }
+
         setVerified(true);
 
         // Try to refresh global context to get updated user state
@@ -32,10 +44,10 @@ export default function Verify() {
           console.warn("Could not refresh global context after verification");
         }
 
-        // Auto-redirect to complete signup after success
+        // Auto-redirect to index to let routing logic handle the verified user properly
         setTimeout(() => {
-          router.replace("/SignUp");
-        }, 3000);
+          router.replace("/");
+        }, 2000);
 
       } catch (err: any) {
         console.error("Email verification failed:", err);
@@ -59,7 +71,7 @@ export default function Verify() {
   }, [userId, secret, refetch, router]);
 
   const handleRetry = () => {
-    router.replace("/SignUp");
+    router.replace("/");
   };
 
   return (
@@ -79,8 +91,25 @@ export default function Verify() {
           <Text style={{ fontSize: 20, color: '#4CAF50', fontWeight: 'bold', textAlign: 'center', marginBottom: 8 }}>
             Email Verified Successfully!
           </Text>
-          <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>
-            Now let's complete your profile setup. Redirecting...
+          <Text style={{ fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 30 }}>
+            Great! Now please sign in to complete your profile setup.
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.replace("/")}
+            style={{
+              backgroundColor: '#007AFF',
+              paddingHorizontal: 30,
+              paddingVertical: 12,
+              borderRadius: 8,
+              marginBottom: 15,
+            }}
+          >
+            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+              Continue
+            </Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 14, color: '#999', textAlign: 'center' }}>
+            Or wait to be automatically redirected...
           </Text>
         </>
       ) : (

@@ -1,7 +1,9 @@
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import { getUserProfile, updateUserProfile } from '../api/user';
+import { NotificationTokenService } from './notificationTokenService';
+// Temporary fallback
+import { notificationTokenManager } from './tokenManager';
 
 // Configure notifications
 Notifications.setNotificationHandler({
@@ -74,20 +76,20 @@ export class NotificationService {
     }
 
     /**
-     * Update user's notification token in the database
-     */
+ * Update the notification token for a specific user using proper architecture
+ */
     public async updateUserNotificationToken(userId: string): Promise<void> {
         try {
             const token = await this.registerForPushNotifications();
             if (token) {
-                const userProfile = await getUserProfile(userId);
-                if (userProfile) {
-                    await updateUserProfile({
-                        ...userProfile,
-                        notificationToken: token,
-                        notificationsEnabled: true,
-                    });
-                    console.log('User notification token updated successfully');
+                try {
+                    // Use production NotificationTokenService
+                    await NotificationTokenService.registerToken(userId, token);
+                    console.log('✅ Notification token registered in production database');
+                } catch (error) {
+                    console.log('⚠️ Production database failed, using temporary storage as fallback:', error);
+                    notificationTokenManager.setUserToken(userId, token, true);
+                    console.log('✅ Notification token stored temporarily for user:', userId);
                 }
             }
         } catch (error) {
@@ -118,6 +120,13 @@ export class NotificationService {
         body: string,
         data?: any
     ): Promise<void> {
+        console.log('🚀 NotificationService.sendPushNotification called:', {
+            tokenCount: userTokens.length,
+            title,
+            body,
+            data
+        });
+
         const messages = userTokens
             .filter(token => token && token.trim() !== '')
             .map(token => ({
@@ -128,12 +137,15 @@ export class NotificationService {
                 data,
             }));
 
+        console.log('📝 Prepared messages:', messages.length, 'valid tokens');
+
         if (messages.length === 0) {
-            console.warn('No valid notification tokens provided');
+            console.warn('⚠️ No valid notification tokens provided');
             return;
         }
 
         try {
+            console.log('📡 Sending to Expo push service...');
             const response = await fetch('https://exp.host/--/api/v2/push/send', {
                 method: 'POST',
                 headers: {
@@ -145,9 +157,13 @@ export class NotificationService {
             });
 
             const result = await response.json();
-            console.log('Push notification sent:', result);
+            console.log('✅ Push notification response:', result);
+
+            if (!response.ok) {
+                console.error('❌ Push notification failed:', response.status, result);
+            }
         } catch (error) {
-            console.error('Error sending push notification:', error);
+            console.error('❌ Error sending push notification:', error);
         }
     }
 

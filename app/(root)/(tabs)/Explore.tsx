@@ -151,6 +151,9 @@ const Explore = () => {
   // Send a friend request to another user
   const handleSendFriendRequest = useCallback(async (toUserId: string) => {
     try {
+      console.log('📤 Sending friend request:', { from: userId, to: toUserId });
+      console.log('👤 Current user profile:', profile);
+
       const requestId = ID.unique();
       await databases.createDocument(
         config.databaseID!,
@@ -164,13 +167,18 @@ const Explore = () => {
         }
       );
 
+      console.log('✅ Friend request document created successfully');
+
       // Send push notification to the recipient
       const senderName = profile ? `${profile.firstName} ${profile.lastName}` : 'Someone';
+      console.log('🔔 Attempting to send notification with sender name:', senderName);
+
       await sendFriendRequestNotification(toUserId, senderName, userId);
 
       setRequestedUsers((prev) => [...prev, toUserId]); // Update state
+      console.log('🎯 Friend request process completed');
     } catch (err) {
-      console.error('Friend request error:', err);
+      console.error('❌ Friend request error:', err);
       Alert.alert('Error', 'Failed to send friend request');
     }
   }, [userId, profile]);

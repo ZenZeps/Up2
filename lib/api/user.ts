@@ -55,6 +55,9 @@ export async function createUserProfile(profile: UserProfile) {
         friends: profile.friends ?? [],
         photoId: profile.photoId,
         age: profile.age,
+        // Temporarily comment out notification fields until database attributes are added
+        // notificationToken: profile.notificationToken,
+        // notificationsEnabled: profile.notificationsEnabled ?? true, // Default to enabled
       },
       [
         Permission.read(Role.any()), // or Role.user(profile.$id) for private
@@ -140,6 +143,12 @@ export async function updateUserProfile(profile: UserProfile) {
         preferences: profile.preferences,
         friends: profile.friends,
         photoId: profile.photoId,
+        age: profile.age,
+        about: profile.about,
+        nationality: profile.nationality,
+        // Temporarily comment out notification fields until database attributes are added
+        // notificationToken: profile.notificationToken,
+        // notificationsEnabled: profile.notificationsEnabled,
       }
     );
 

@@ -1,6 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import DeepLinkTester from '../../components/DeepLinkTester';
+import { NotificationTester } from '../../components/debug/NotificationTester';
 // Import but don't use OptimizationTester until we fix the context nesting issue
 // import OptimizationTester from './components/OptimizationTester';
 
@@ -14,6 +15,9 @@ export default function DebugPage() {
                 <Text style={styles.title}>Debug & Testing Page</Text>
                 <Text style={styles.subtitle}>Database Optimization Test Suite</Text>
             </View>
+
+            {/* Notification Testing */}
+            <NotificationTester />
 
             {/* Temporarily disabled to fix context nesting issue */}
             {/* <OptimizationTester /> */}
