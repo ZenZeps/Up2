@@ -161,3 +161,43 @@ export async function sendFriendRequestAcceptedNotification(
         console.error('Error sending friend request accepted notification:', error);
     }
 }
+
+/**
+ * Send notification when a user receives a group invite
+ */
+export async function sendGroupInviteNotification(
+    invitedUserIds: string[],
+    groupName: string,
+    inviterName: string,
+    groupId: string
+): Promise<void> {
+    try {
+        // Get user profiles to get notification tokens
+        const users = await getUsersByIds(invitedUserIds);
+
+        const userTokens = users
+            .filter(user => user.notificationsEnabled && user.notificationToken)
+            .map(user => user.notificationToken!);
+
+        if (userTokens.length === 0) {
+            console.log('No users with notifications enabled for group invite');
+            return;
+        }
+
+        await notificationService.sendPushNotification(
+            userTokens,
+            '👥 Group Invitation',
+            `${inviterName} invited you to join "${groupName}"`,
+            {
+                type: 'group_invite',
+                groupId,
+                inviterName,
+                groupName,
+            }
+        );
+
+        console.log(`Group invite notification sent to ${userTokens.length} users`);
+    } catch (error) {
+        console.error('Error sending group invite notification:', error);
+    }
+}

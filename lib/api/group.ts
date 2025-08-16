@@ -1,6 +1,8 @@
-import { config, databases } from '@/lib/appwrite/appwrite';
 import { Group } from '@/lib/types/Groups';
 import { ID, Query } from 'react-native-appwrite';
+import { config, databases } from '../appwrite/appwrite';
+import { sendGroupInviteNotification } from '../notifications/notificationUtils';
+import { getUserProfile } from './user';
 
 /**
  * Get all groups that a user belongs to
@@ -544,6 +546,17 @@ export const sendGroupInvite = async (groupId: string, fromUserId: string, toUse
                 status: 'pending'
             }
         );
+
+        // Get group and inviter details for notification
+        const [group, inviterProfile] = await Promise.all([
+            getGroupById(groupId),
+            getUserProfile(fromUserId)
+        ]);
+
+        if (group && inviterProfile) {
+            const inviterName = `${inviterProfile.firstName} ${inviterProfile.lastName}`;
+            await sendGroupInviteNotification([toUserId], group.title, inviterName, groupId);
+        }
 
         return true;
     } catch (error) {

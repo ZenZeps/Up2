@@ -3,6 +3,7 @@ import icons from '@/constants/icons';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriends, getUsersByIds } from '@/lib/api/user';
 import { config, databases } from '@/lib/appwrite/appwrite';
+import { sendEventInviteNotification } from '@/lib/notifications/notificationUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -144,6 +145,14 @@ const EventDetailsModal = ({
         {
           inviteeIds: updatedInviteeIds,
         }
+      );
+
+      // Send push notification to the invited friend
+      await sendEventInviteNotification(
+        [friendId],
+        event.title,
+        (event as any).creatorName || 'Someone',
+        event.$id
       );
 
       Alert.alert('Success', 'Friend invited to the event!');

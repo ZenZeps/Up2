@@ -3,6 +3,7 @@ import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { sendFriendRequestAcceptedNotification } from '@/lib/notifications/notificationUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -117,6 +118,10 @@ export default function Invites() {
         request.$id,
         { status: 'accepted' }
       );
+
+      // Send notification to the original sender that their request was accepted
+      const accepterName = `${toProfile.firstName} ${toProfile.lastName}`;
+      await sendFriendRequestAcceptedNotification(request.from, accepterName, request.to);
 
       setFriendRequests((prev) => prev.filter((r) => r.$id !== request.$id));
       alert('Friend request accepted!');

@@ -3,6 +3,7 @@ import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getAllUsers, getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -162,12 +163,17 @@ const Explore = () => {
           status: 'pending',
         }
       );
+
+      // Send push notification to the recipient
+      const senderName = profile ? `${profile.firstName} ${profile.lastName}` : 'Someone';
+      await sendFriendRequestNotification(toUserId, senderName, userId);
+
       setRequestedUsers((prev) => [...prev, toUserId]); // Update state
     } catch (err) {
       console.error('Friend request error:', err);
       Alert.alert('Error', 'Failed to send friend request');
     }
-  }, [userId]);
+  }, [userId, profile]);
 
   const handleDeleteFriend = async (friendId: string) => {
     Alert.alert(
