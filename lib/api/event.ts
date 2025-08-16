@@ -65,7 +65,13 @@ export async function fetchEvents(): Promise<Event[]> {
   try {
     const res = await databases.listDocuments(
       config.databaseID!,
-      config.eventsCollectionID!
+      config.eventsCollectionID!,
+      [
+        // SCALABILITY FIX: Add query limits and filters
+        Query.limit(100), // Limit to 100 most recent events
+        Query.orderDesc('$createdAt'), // Most recent first
+        Query.greaterThan('endTime', new Date().toISOString()) // Only future events
+      ]
     );
 
     const events = res.documents.map((doc): Event => {

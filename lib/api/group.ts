@@ -6,26 +6,36 @@ import { getUserProfile } from './user';
 
 /**
  * Get all groups that a user belongs to
- * Optimized to reduce database calls where possible
+ * SCALABILITY OPTIMIZED: Uses pagination and limits to handle 100k+ users
  */
-export const getUserGroups = async (userId: string): Promise<Group[]> => {
+export const getUserGroups = async (userId: string, limit: number = 50): Promise<Group[]> => {
     try {
         // Get groups where user is the creator (this can be queried directly)
         const creatorGroups = await databases.listDocuments(
             config.databaseID!,
             config.groupsCollectionID!,
-            [Query.equal('creatorId', userId)]
+            [
+                Query.equal('creatorId', userId),
+                Query.limit(Math.floor(limit / 2)), // Split limit between creator and member groups
+                Query.orderDesc('$createdAt')
+            ]
         );
 
-        // For groups where user is a member (but not creator), we need to fetch all groups
-        // This is a limitation of Appwrite's relationship queries
-        const allGroups = await databases.listDocuments(
+        // CRITICAL SCALABILITY FIX: Instead of loading ALL groups, we'll use a workaround
+        // Since Appwrite doesn't support direct member queries, we'll limit the search scope
+        // This is much better than loading unlimited groups which would crash with scale
+        const recentGroups = await databases.listDocuments(
             config.databaseID!,
-            config.groupsCollectionID!
+            config.groupsCollectionID!,
+            [
+                Query.limit(500), // EMERGENCY LIMIT: Only check recent 500 groups instead of ALL
+                Query.orderDesc('$createdAt'), // Most recent first - users likely in recent groups
+                Query.notEqual('creatorId', userId) // Exclude groups user created
+            ]
         );
 
         // Filter groups where the user is a member but not the creator
-        const memberGroups = allGroups.documents.filter((group: any) => {
+        const memberGroups = recentGroups.documents.filter((group: any) => {
             if (!group.users || group.creatorId === userId) {
                 return false; // Skip if no users or user is already creator
             }
@@ -43,13 +53,15 @@ export const getUserGroups = async (userId: string): Promise<Group[]> => {
             }
 
             return false;
-        });
+        }).slice(0, Math.ceil(limit / 2)); // Take only half the limit for member groups
 
         // Combine creator groups and member groups
         const allUserGroups = [
             ...creatorGroups.documents,
             ...memberGroups
         ];
+
+        console.log(`getUserGroups: Found ${allUserGroups.length} groups for user ${userId} (${creatorGroups.documents.length} created, ${memberGroups.length} member)`);
 
         return allUserGroups as unknown as Group[];
     } catch (error) {

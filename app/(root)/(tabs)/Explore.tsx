@@ -1,6 +1,6 @@
 import { enrichEventsWithGroupNames } from '@/lib/api/event';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
-import { getAllUsers, getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
+import { getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Linking,
   ScrollView,
   StyleSheet,
@@ -35,6 +36,9 @@ const Explore = () => {
   // State variables
   const [query, setQuery] = useState(''); // Search query
   const [users, setUsers] = useState<any[]>([]); // All users except current
+  const [hasMoreUsers, setHasMoreUsers] = useState(true); // Pagination state
+  const [userOffset, setUserOffset] = useState(0); // Pagination offset
+  const [loadingMoreUsers, setLoadingMoreUsers] = useState(false); // Loading more users
   const [mode, setMode] = useState<'events' | 'users' | 'groups'>('events'); // 'events', 'users', or 'groups' - default to events
 
   const [loading, setLoading] = useState(true); // Loading state
@@ -66,21 +70,38 @@ const Explore = () => {
         const currentUserPhoto = await getUserProfilePhotoUrl(currentUser.$id);
         setCurrentUserPhotoUrl(currentUserPhoto);
 
-        // Get all users except current user
-        const userRes = await getAllUsers();
-        const otherUsers = (userRes || []).filter((u: any) => u.$id !== currentUser.$id);
+        // Get paginated users instead of ALL users - CRITICAL FIX
+        const USER_PAGE_SIZE = 50; // Only load 50 users at a time
+        const userRes = await databases.listDocuments(
+          config.databaseID!,
+          config.usersCollectionID!,
+          [
+            Query.limit(USER_PAGE_SIZE),
+            Query.offset(0),
+            Query.notEqual('$id', currentUser.$id), // Exclude current user
+            Query.orderDesc('$createdAt') // Most recent users first
+          ]
+        );
+        const otherUsers = userRes.documents || [];
         setUsers(otherUsers);
+        setHasMoreUsers(userRes.documents.length === USER_PAGE_SIZE);
 
-        // Get profile photos for all users
+        // Get profile photos ONLY for visible users - CRITICAL FIX
         const photoUrls: Record<string, string | null> = {};
-        for (const user of otherUsers) {
-          try {
-            const photoUrl = await getUserProfilePhotoUrl(user.$id);
-            photoUrls[user.$id] = photoUrl;
-          } catch (error) {
-            console.error(`Error fetching photo for user ${user.$id}:`, error);
-            photoUrls[user.$id] = null;
-          }
+        const BATCH_SIZE = 10; // Process photos in small batches
+
+        for (let i = 0; i < otherUsers.length; i += BATCH_SIZE) {
+          const batch = otherUsers.slice(i, i + BATCH_SIZE);
+          const batchPromises = batch.map(async (user: any) => {
+            try {
+              const photoUrl = await getUserProfilePhotoUrl(user.$id);
+              photoUrls[user.$id] = photoUrl;
+            } catch (error) {
+              console.error(`Error fetching photo for user ${user.$id}:`, error);
+              photoUrls[user.$id] = null;
+            }
+          });
+          await Promise.all(batchPromises); // Parallel processing
         }
         setUserPhotoUrls(photoUrls);
 
@@ -143,9 +164,155 @@ const Explore = () => {
     }
   }, [events, userId]);
 
+  // Load more users for pagination - SCALABILITY FIX
+  const loadMoreUsers = useCallback(async () => {
+    if (loadingMoreUsers || !hasMoreUsers) return;
+
+    try {
+      setLoadingMoreUsers(true);
+      const USER_PAGE_SIZE = 50;
+      const newOffset = userOffset + USER_PAGE_SIZE;
+
+      const userRes = await databases.listDocuments(
+        config.databaseID!,
+        config.usersCollectionID!,
+        [
+          Query.limit(USER_PAGE_SIZE),
+          Query.offset(newOffset),
+          Query.notEqual('$id', userId),
+          Query.orderDesc('$createdAt')
+        ]
+      );
+
+      const newUsers = userRes.documents || [];
+      if (newUsers.length === 0) {
+        setHasMoreUsers(false);
+        return;
+      }
+
+      // Get profile photos for new users in batches
+      const photoUrls: Record<string, string | null> = { ...userPhotoUrls };
+      const BATCH_SIZE = 10;
+
+      for (let i = 0; i < newUsers.length; i += BATCH_SIZE) {
+        const batch = newUsers.slice(i, i + BATCH_SIZE);
+        const batchPromises = batch.map(async (user: any) => {
+          try {
+            const photoUrl = await getUserProfilePhotoUrl(user.$id);
+            photoUrls[user.$id] = photoUrl;
+          } catch (error) {
+            console.error(`Error fetching photo for user ${user.$id}:`, error);
+            photoUrls[user.$id] = null;
+          }
+        });
+        await Promise.all(batchPromises);
+      }
+
+      setUsers(prev => [...prev, ...newUsers]);
+      setUserPhotoUrls(photoUrls);
+      setUserOffset(newOffset);
+      setHasMoreUsers(newUsers.length === USER_PAGE_SIZE);
+
+    } catch (error) {
+      console.error('Error loading more users:', error);
+    } finally {
+      setLoadingMoreUsers(false);
+    }
+  }, [loadingMoreUsers, hasMoreUsers, userOffset, userId, userPhotoUrls]);
+
   const openInMaps = (location: string) => {
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
     Linking.openURL(url);
+  };
+
+  // Render user item for FlatList - SCALABILITY FIX
+  const renderUserItem = ({ item: user }: { item: any }) => {
+    const isFriend = friends.includes(user.$id);
+    return (
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <TouchableOpacity
+          onPress={() => router.push(`/(root)/UserProfile/${user.$id}` as any)}
+          style={styles.userItem}
+        >
+          <View style={styles.userInfo}>
+            <UserAvatar
+              photoUrl={userPhotoUrls[user.$id]}
+              firstName={user.firstName}
+              lastName={user.lastName}
+              name={userDisplayUtils.getFullName(user)}
+              size={56}
+            />
+            <View style={styles.userDetails}>
+              <Text style={[styles.userName, { color: isFriend ? colors.primary : colors.text }]}>
+                {userDisplayUtils.getFullName(user)}
+              </Text>
+              <Text style={[styles.userBio, { color: colors.textSecondary }]} numberOfLines={1}>
+                {user.bio || 'No bio available'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.userActions}>
+            {isFriend ? (
+              <TouchableOpacity
+                onPress={() => handleDeleteFriend(user.$id)}
+                style={[styles.actionButton, { backgroundColor: colors.textSecondary }]}
+              >
+                <MaterialIcons name="person-remove" size={16} color={colors.background} />
+                <Text style={[styles.actionButtonText, { color: colors.background }]}>
+                  Remove
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => {
+                  if (requestedUsers.includes(user.$id)) {
+                    handleCancelFriendRequest(user.$id);
+                  } else {
+                    handleSendFriendRequest(user.$id);
+                  }
+                }}
+                style={[
+                  styles.actionButton,
+                  {
+                    backgroundColor: requestedUsers.includes(user.$id) ? colors.background : colors.primary,
+                    borderWidth: requestedUsers.includes(user.$id) ? 1 : 0,
+                    borderColor: colors.border,
+                  }
+                ]}
+              >
+                <MaterialIcons
+                  name={requestedUsers.includes(user.$id) ? "hourglass-empty" : "person-add"}
+                  size={16}
+                  color={requestedUsers.includes(user.$id) ? colors.text : 'white'}
+                />
+                <Text
+                  style={[
+                    styles.actionButtonText,
+                    {
+                      color: requestedUsers.includes(user.$id) ? colors.text : 'white'
+                    }
+                  ]}
+                >
+                  {requestedUsers.includes(user.$id) ? 'Pending' : 'Add'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  // Footer component for FlatList loading
+  const renderListFooter = () => {
+    if (!loadingMoreUsers) return null;
+    return (
+      <View style={styles.loadingFooter}>
+        <ActivityIndicator size="small" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading more users...</Text>
+      </View>
+    );
   };
 
   // Send a friend request to another user
@@ -440,83 +607,16 @@ const Explore = () => {
           ) : mode === 'users' ? (
             query.trim() ? (
               filteredUsers.length > 0 ? (
-                filteredUsers.map((user) => {
-                  const isFriend = friends.includes(user.$id);
-                  return (
-                    <View key={user.$id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                      <TouchableOpacity
-                        onPress={() => router.push(`/(root)/UserProfile/${user.$id}` as any)}
-                        style={styles.userItem}
-                      >
-                        <View style={styles.userInfo}>
-                          <UserAvatar
-                            photoUrl={userPhotoUrls[user.$id]}
-                            firstName={user.firstName}
-                            lastName={user.lastName}
-                            name={userDisplayUtils.getFullName(user)}
-                            size={56}
-                          />
-                          <View style={styles.userDetails}>
-                            <Text style={[styles.userName, { color: isFriend ? colors.primary : colors.text }]}>
-                              {userDisplayUtils.getFullName(user)}
-                            </Text>
-                            <Text style={[styles.userBio, { color: colors.textSecondary }]} numberOfLines={1}>
-                              {user.bio || 'No bio available'}
-                            </Text>
-                          </View>
-                        </View>
-
-                        <View style={styles.userActions}>
-                          {isFriend ? (
-                            <TouchableOpacity
-                              onPress={() => handleDeleteFriend(user.$id)}
-                              style={[styles.actionButton, { backgroundColor: colors.textSecondary }]}
-                            >
-                              <MaterialIcons name="person-remove" size={16} color={colors.background} />
-                              <Text style={[styles.actionButtonText, { color: colors.background }]}>
-                                Remove
-                              </Text>
-                            </TouchableOpacity>
-                          ) : (
-                            <TouchableOpacity
-                              onPress={() => {
-                                if (requestedUsers.includes(user.$id)) {
-                                  handleCancelFriendRequest(user.$id);
-                                } else {
-                                  handleSendFriendRequest(user.$id);
-                                }
-                              }}
-                              style={[
-                                styles.actionButton,
-                                {
-                                  backgroundColor: requestedUsers.includes(user.$id) ? colors.background : colors.primary,
-                                  borderWidth: requestedUsers.includes(user.$id) ? 1 : 0,
-                                  borderColor: colors.border,
-                                }
-                              ]}
-                            >
-                              <MaterialIcons
-                                name={requestedUsers.includes(user.$id) ? "hourglass-empty" : "person-add"}
-                                size={16}
-                                color={requestedUsers.includes(user.$id) ? colors.text : 'white'}
-                              />
-                              <Text
-                                style={[
-                                  styles.actionButtonText,
-                                  {
-                                    color: requestedUsers.includes(user.$id) ? colors.text : 'white'
-                                  }
-                                ]}
-                              >
-                                {requestedUsers.includes(user.$id) ? 'Pending' : 'Add'}
-                              </Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })
+                <FlatList
+                  data={filteredUsers}
+                  renderItem={renderUserItem}
+                  keyExtractor={(item) => item.$id}
+                  onEndReached={loadMoreUsers}
+                  onEndReachedThreshold={0.5}
+                  ListFooterComponent={renderListFooter}
+                  showsVerticalScrollIndicator={false}
+                  scrollEnabled={false} // Disable internal scrolling as it's inside ScrollView
+                />
               ) : (
                 <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={styles.emptyState}>
@@ -526,17 +626,29 @@ const Explore = () => {
                 </View>
               )
             ) : (
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.emptyState}>
-                  <MaterialIcons name="people" size={48} color={colors.primary} />
-                  <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>
-                    Find Friends
-                  </Text>
-                  <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8 }]}>
-                    Use the search bar above to discover and connect with other users in your community
-                  </Text>
-                </View>
-              </View>
+              <FlatList
+                data={users}
+                renderItem={renderUserItem}
+                keyExtractor={(item) => item.$id}
+                onEndReached={loadMoreUsers}
+                onEndReachedThreshold={0.5}
+                ListFooterComponent={renderListFooter}
+                showsVerticalScrollIndicator={false}
+                scrollEnabled={false}
+                ListEmptyComponent={() => (
+                  <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <View style={styles.emptyState}>
+                      <MaterialIcons name="people" size={48} color={colors.primary} />
+                      <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>
+                        Find Friends
+                      </Text>
+                      <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8 }]}>
+                        Use the search bar above to discover and connect with other users in your community
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              />
             )
           ) : mode === 'events' ? (
             filteredEvents.length > 0 ? (
@@ -832,6 +944,17 @@ const styles = StyleSheet.create({
   eventDescription: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  // Loading footer styles - SCALABILITY FIX
+  loadingFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 14,
   },
 });
 

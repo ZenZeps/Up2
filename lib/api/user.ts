@@ -184,7 +184,12 @@ export async function getAllUsers(useCache = true): Promise<UserProfile[]> {
 
     const response = await databases.listDocuments(
       config.databaseID!,
-      config.usersCollectionID!
+      config.usersCollectionID!,
+      [
+        // SCALABILITY FIX: Add limits to prevent loading all users
+        Query.limit(200), // Maximum 200 users at once
+        Query.orderDesc('$createdAt') // Most recent users first
+      ]
     );
 
     const users = response.documents as unknown as UserProfile[];

@@ -35,6 +35,7 @@ export interface MessageThread {
     chat: Chat;
     messages: MessageWithAuthor[];
     totalCount: number;
+    hasMore?: boolean; // SCALABILITY: Indicates if more messages are available for pagination
 }
 
 export interface MessageInput {
