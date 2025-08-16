@@ -299,10 +299,10 @@ export async function logout() {
 // ✅ Forgot password
 export async function forgotPassword(email: string) {
   try {
-    // Use GitHub Pages URL for production deployment (FREE!)
-    const resetUrl = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:8082/reset-password.html'
-      : 'https://zenzeps.github.io/Up2/reset-password.html';
+    // Always use GitHub Pages URL for production
+    // For local testing, you can temporarily uncomment the localhost line below
+    const resetUrl = 'https://zenzeps.github.io/Up2/reset-password.html';
+    // const resetUrl = 'http://localhost:8082/reset-password.html'; // Uncomment for local testing only
     
     authDebug.info("Sending password recovery email", { 
       email: email.substring(0, 3) + "****",
