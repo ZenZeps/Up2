@@ -1,4 +1,5 @@
 import { CATEGORIES } from '@/constants/categories';
+import { updateEvent as updateEventAPI } from '@/lib/api/event';
 import { addEventToGroup } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriends } from '@/lib/api/user';
@@ -861,12 +862,10 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   onPress={async () => {
                     try {
                       const updatedInvitees = inviteeIds.filter((id) => id !== currentUserId);
-                      await databases.updateDocument(
-                        config.databaseID!,
-                        config.eventsCollectionID!,
-                        event.$id,
-                        { inviteeIds: updatedInvitees }
-                      );
+                      // Use updateEventAPI function to ensure all required fields are included
+                      await updateEventAPI(event.$id, {
+                        inviteeIds: updatedInvitees
+                      });
                       setInviteeIds(updatedInvitees);
                       await refetchEvents();
                       onClose();
@@ -884,12 +883,10 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   onPress={async () => {
                     try {
                       const updatedInvitees = [...inviteeIds, currentUserId];
-                      await databases.updateDocument(
-                        config.databaseID!,
-                        config.eventsCollectionID!,
-                        event.$id,
-                        { inviteeIds: updatedInvitees }
-                      );
+                      // Use updateEventAPI function to ensure all required fields are included
+                      await updateEventAPI(event.$id, {
+                        inviteeIds: updatedInvitees
+                      });
                       setInviteeIds(updatedInvitees);
                       await refetchEvents();
                       onClose();

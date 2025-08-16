@@ -235,16 +235,40 @@ export async function createEvent(event: Event) {
       throw new Error('Tags must be an array');
     }
 
-    // Sanitize and prepare data
+    // Sanitize and prepare data with new required fields
     const sanitizedEvent = {
       ...event,
       title: event.title.trim(),
       location: event.location?.trim() || '',
       description: event.description?.trim() || '',
-      inviteeIds: event.inviteeIds?.filter(id => id && typeof id === 'string') || [],
-      attendees: event.attendees?.filter(id => id && typeof id === 'string') || [],
+      creatorId: event.creatorId,
+      startTime: event.startTime,
+      endTime: event.endTime,
+      isPrivate: event.isPrivate || false,
+
+      // ✅ NEW: Required fields for optimized database
+      id: event.$id || ID.unique(), // Required id field
+      attendeeCount: event.attendees?.length || 0, // Count from attendees array
+      inviteCount: event.inviteeIds?.length || 0, // Count from inviteeIds array
+      viewCount: 0, // Start with 0 views
+      popularityScore: 0.0, // Start with 0.0 popularity
+      responseRate: true, // Default to true
+      lastActivtyAt: new Date().toISOString(), // Current timestamp
+
+      // Optional fields - set defaults since they don't exist in Event type yet
+      locationLat: 0.0, // Default location coordinates
+      locationLng: 0.0,
+      searchKeywords: [], // Default empty array
+      categoryTags: [], // Default empty array
+
+      // Array fields (keep these if they exist in schema, remove if they cause errors)
       tags: event.tags?.filter(tag => tag && typeof tag === 'string') || [],
     };
+
+    // Remove legacy fields that no longer exist in the optimized database schema
+    delete (sanitizedEvent as any).inviteeIds;
+    delete (sanitizedEvent as any).attendees;
+    delete (sanitizedEvent as any).isAttending;
 
     authDebug.debug('Creating event with data:', sanitizedEvent);
 
@@ -322,15 +346,117 @@ export async function createEvent(event: Event) {
 /**
  * Update an existing event
  */
+/**
+ * Handle event invitation (optimized database approach)
+ * In the new schema, invitations are stored in junction tables
+ */
+export async function inviteUserToEvent(eventId: string, userId: string) {
+  try {
+    // TODO: In optimized database, create entry in event_invitations junction table
+    // For now, just update the invite count
+    const currentEvent = await databases.getDocument(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      eventId
+    );
+
+    const newInviteCount = (currentEvent.inviteCount || 0) + 1;
+
+    await databases.updateDocument(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      eventId,
+      {
+        inviteCount: newInviteCount,
+        lastActivtyAt: new Date().toISOString(),
+      }
+    );
+
+    authDebug.info(`User ${userId} invited to event ${eventId}`);
+    return true;
+  } catch (error) {
+    authDebug.error(`Failed to invite user to event: ${eventId}`, error);
+    throw error;
+  }
+}
+
+/**
+ * Handle event attendance (optimized database approach)
+ * In the new schema, attendance is stored in junction tables
+ */
+export async function updateEventAttendance(eventId: string, userId: string, isAttending: boolean) {
+  try {
+    // TODO: In optimized database, create/update entry in event_attendance junction table
+    // For now, just update the attendee count
+    const currentEvent = await databases.getDocument(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      eventId
+    );
+
+    const currentCount = currentEvent.attendeeCount || 0;
+    const newAttendeeCount = isAttending ? currentCount + 1 : Math.max(0, currentCount - 1);
+
+    await databases.updateDocument(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      eventId,
+      {
+        attendeeCount: newAttendeeCount,
+        lastActivtyAt: new Date().toISOString(),
+      }
+    );
+
+    authDebug.info(`Event ${eventId} attendance updated for user ${userId}: ${isAttending}`);
+    return true;
+  } catch (error) {
+    authDebug.error(`Failed to update event attendance: ${eventId}`, error);
+    throw error;
+  }
+}
+
 export async function updateEvent(id: string, eventData: Partial<Event>) {
   try {
     authDebug.info(`Updating event: ${id}`);
+
+    // Build sanitized data with computed fields
+    const sanitizedEventData: any = { ...eventData };
+
+    // Extract counts from legacy arrays if they exist (for transition period)
+    if (eventData.attendees && Array.isArray(eventData.attendees)) {
+      sanitizedEventData.attendeeCount = eventData.attendees.length;
+    } else if (sanitizedEventData.attendeeCount === undefined) {
+      sanitizedEventData.attendeeCount = 0;
+    }
+
+    if ((eventData as any).inviteeIds && Array.isArray((eventData as any).inviteeIds)) {
+      sanitizedEventData.inviteCount = (eventData as any).inviteeIds.length;
+    } else if (sanitizedEventData.inviteCount === undefined) {
+      sanitizedEventData.inviteCount = 0;
+    }
+
+    // Always ensure these fields exist with defaults
+    if (sanitizedEventData.viewCount === undefined) {
+      sanitizedEventData.viewCount = 0;
+    }
+    if (sanitizedEventData.popularityScore === undefined) {
+      sanitizedEventData.popularityScore = 0.0;
+    }
+    if (sanitizedEventData.responseRate === undefined) {
+      sanitizedEventData.responseRate = true;
+    }
+    sanitizedEventData.lastActivtyAt = new Date().toISOString();
+
+    // Remove legacy fields that no longer exist in the optimized database schema
+    delete sanitizedEventData.inviteeIds;
+    delete sanitizedEventData.attendees;
+    delete sanitizedEventData.isAttending;
 
     const res = await databases.updateDocument(
       config.databaseID!,
       config.eventsCollectionID!,
       id,
-      eventData
+      sanitizedEventData
     );
 
     // Invalidate caches

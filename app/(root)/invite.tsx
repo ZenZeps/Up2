@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import images from '../../constants/images';
+import { updateEvent } from '../../lib/api/event';
 import { getUserProfile } from '../../lib/api/user';
 import { config, databases, getCurrentUser } from '../../lib/appwrite/appwrite';
 import { userDisplayUtils } from '../../lib/utils/userDisplay';
@@ -129,15 +130,11 @@ export default function Invite() {
             const updatedInvitees = (event.inviteeIds || []).filter(id => id !== currentUser.$id);
             const updatedAttendees = [...(event.attendees || []), currentUser.$id];
 
-            await databases.updateDocument(
-                config.databaseID!,
-                config.eventsCollectionID!,
-                event.$id,
-                {
-                    inviteeIds: updatedInvitees,
-                    attendees: updatedAttendees,
-                }
-            );
+            // Use updateEvent function to ensure all required fields are included
+            await updateEvent(event.$id, {
+                inviteeIds: updatedInvitees,
+                attendees: updatedAttendees,
+            });
 
             Alert.alert('Success!', 'You\'ve accepted the invite and are now attending this event!');
             router.push(`/(root)/event/${event.$id}`);

@@ -46,18 +46,21 @@ export async function createUserProfile(profile: UserProfile) {
       config.usersCollectionID!,
       profile.$id,
       {
-        id: profile.$id,
         firstName: profile.firstName,
         lastName: profile.lastName,
         email: profile.email,
         isPublic: profile.isPublic,
-        preferences: profile.preferences,
-        friends: profile.friends ?? [],
         photoId: profile.photoId,
         age: profile.age,
-        // Temporarily comment out notification fields until database attributes are added
-        // notificationToken: profile.notificationToken,
-        // notificationsEnabled: profile.notificationsEnabled ?? true, // Default to enabled
+        // ✅ NEW: Required fields for optimized database
+        accountStatus: 'active', // Default to active
+        lastActive: new Date().toISOString(),
+        friendCount: 0, // Start with 0 friends
+        groupCount: 0, // Start with 0 groups  
+        popularityScore: 0, // Start with 0 popularity
+        // Note: friends and preferences are no longer stored directly in user documents
+        // friends are now in user_friendships junction table
+        // preferences can be added back if the attribute exists in your schema
       },
       [
         Permission.read(Role.any()), // or Role.user(profile.$id) for private
@@ -99,20 +102,11 @@ export async function getUserProfile(id: string): Promise<UserProfile | null> {
   try {
     authDebug.debug(`Fetching user profile: ${id}`);
 
-    const response = await databases.listDocuments(
+    const profile = await databases.getDocument(
       config.databaseID!,
       config.usersCollectionID!,
-      [
-        Query.equal('$id', id),
-      ]
-    );
-
-    if (response.documents.length === 0) {
-      authDebug.warn(`User profile not found: ${id}`);
-      return null;
-    }
-
-    const profile = response.documents[0] as unknown as UserProfile;
+      id
+    ) as unknown as UserProfile;
 
     // Cache the profile
     cacheManager.set<UserProfile>(cacheKey, profile, USER_CACHE_TTL);
@@ -140,12 +134,19 @@ export async function updateUserProfile(profile: UserProfile) {
         lastName: profile.lastName,
         email: profile.email,
         isPublic: profile.isPublic,
-        preferences: profile.preferences,
-        friends: profile.friends,
         photoId: profile.photoId,
         age: profile.age,
         about: profile.about,
         nationality: profile.nationality,
+        // ✅ NEW: Update optimized fields if provided
+        lastActive: new Date().toISOString(), // Always update last active on profile update
+        ...(profile.accountStatus && { accountStatus: profile.accountStatus }),
+        ...(profile.friendCount !== undefined && { friendCount: profile.friendCount }),
+        ...(profile.groupCount !== undefined && { groupCount: profile.groupCount }),
+        ...(profile.popularityScore !== undefined && { popularityScore: profile.popularityScore }),
+        ...(profile.lastLocationLat !== undefined && { lastLocationLat: profile.lastLocationLat }),
+        ...(profile.lastLocationLng !== undefined && { lastLocationLng: profile.lastLocationLng }),
+        // Note: friends and preferences removed - friends now in user_friendships table
         // Temporarily comment out notification fields until database attributes are added
         // notificationToken: profile.notificationToken,
         // notificationsEnabled: profile.notificationsEnabled,

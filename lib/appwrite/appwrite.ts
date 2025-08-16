@@ -43,6 +43,11 @@ export const config = {
   usersCollectionID: process.env.EXPO_PUBLIC_APPWRITE_USERS_COLLECTION_ID || "685bb460000e2c55b3a5",
   eventsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_EVENTS_COLLECTION_ID || "68594f3e0030d3de2a3c",
   friendRequestsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_FRIENDREQUESTS_COLLECTION_ID || "68594f490020c5c17b6c",
+
+  // ✅ NEW: Optimized junction tables
+  userFriendshipsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_USERFRIENDSHIPS_COLLECTION_ID || "temp_friendships_id",
+  eventAttendancesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_EVENTATTENDANCES_COLLECTION_ID || "temp_attendances_id",
+
   travelCollectionID: process.env.EXPO_PUBLIC_APPWRITE_TRAVEL_COLLECTION_ID || "68594f4d0034f9a3bb1b",
   profilePhotosBucketID: process.env.EXPO_PUBLIC_APPWRITE_PROFILE_PHOTOS_BUCKET_ID || "68594f610012a2c5c4d7",
   groupsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_GROUPS_ID || "temp_groups_id",

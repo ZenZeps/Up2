@@ -1,5 +1,6 @@
 import { getEventEmoji } from '@/constants/categories';
 import icons from '@/constants/icons';
+import { updateEvent } from '@/lib/api/event';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriends, getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
@@ -115,14 +116,10 @@ const EventDetail = () => {
 
     try {
       const updatedAttendees = [...(event.attendees || []), userId];
-      await databases.updateDocument(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        event.$id,
-        {
-          attendees: updatedAttendees,
-        }
-      );
+      // Use updateEvent function to ensure all required fields are included
+      await updateEvent(event.$id, {
+        attendees: updatedAttendees,
+      });
       setEvent({ ...event, attendees: updatedAttendees });
       setAttending(true);
       Alert.alert('Success', 'You are now attending this event!');
@@ -138,14 +135,10 @@ const EventDetail = () => {
 
     try {
       const updatedAttendees = (event.attendees || []).filter((id: string) => id !== userId);
-      await databases.updateDocument(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        event.$id,
-        {
-          attendees: updatedAttendees,
-        }
-      );
+      // Use updateEvent function to ensure all required fields are included
+      await updateEvent(event.$id, {
+        attendees: updatedAttendees,
+      });
       setEvent({ ...event, attendees: updatedAttendees });
       setAttending(false);
       Alert.alert('Success', 'You are no longer attending this event.');
@@ -199,14 +192,10 @@ const EventDetail = () => {
       // Update the event's inviteeIds
       const updatedInviteeIds = [...(event.inviteeIds || []), friendId];
 
-      await databases.updateDocument(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        event.$id,
-        {
-          inviteeIds: updatedInviteeIds,
-        }
-      );
+      // Use updateEvent function to ensure all required fields are included
+      await updateEvent(event.$id, {
+        inviteeIds: updatedInviteeIds,
+      });
 
       // Update local state
       setEvent({ ...event, inviteeIds: updatedInviteeIds });

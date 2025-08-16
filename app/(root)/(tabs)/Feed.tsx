@@ -1,4 +1,5 @@
 import { getCategoriesByValues, getEventEmoji } from '@/constants/categories';
+import { updateEvent } from '@/lib/api/event';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
@@ -233,14 +234,10 @@ export default function Feed() {
 
     try {
       const updatedAttendees = [...(event.attendees || []), currentUserId];
-      await databases.updateDocument(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        event.$id,
-        {
-          attendees: updatedAttendees,
-        }
-      );
+      // Use updateEvent function to ensure all required fields are included
+      await updateEvent(event.$id, {
+        attendees: updatedAttendees,
+      });
       // Update the local state to reflect the change
       setEventsWithCreatorNames(prevEvents =>
         prevEvents.map(e =>
@@ -260,14 +257,10 @@ export default function Feed() {
 
     try {
       const updatedAttendees = (event.attendees || []).filter((id: string) => id !== currentUserId);
-      await databases.updateDocument(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        event.$id,
-        {
-          attendees: updatedAttendees,
-        }
-      );
+      // Use updateEvent function to ensure all required fields are included
+      await updateEvent(event.$id, {
+        attendees: updatedAttendees,
+      });
       // Update the local state to reflect the change
       setEventsWithCreatorNames(prevEvents =>
         prevEvents.map(e =>

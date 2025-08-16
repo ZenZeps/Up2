@@ -1,3 +1,4 @@
+import { updateEvent } from '@/lib/api/event';
 import { acceptGroupInvite, declineGroupInvite, getGroupById, getUserGroupInvites } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, updateUserProfile } from '@/lib/api/user';
@@ -350,12 +351,11 @@ export default function Invites() {
                           // Remove userId from inviteeIds, add to attendingIds
                           const updatedInvitees = event.inviteeIds.filter((id: string) => id !== userId);
                           const updatedAttendees = [...(event.attendees || []), userId];
-                          await databases.updateDocument(
-                            config.databaseID!,
-                            config.eventsCollectionID!,
-                            event.$id,
-                            { inviteeIds: updatedInvitees, attendees: updatedAttendees }
-                          );
+                          // Use updateEvent function to ensure all required fields are included
+                          await updateEvent(event.$id, {
+                            inviteeIds: updatedInvitees,
+                            attendees: updatedAttendees
+                          });
                           if (typeof refetchEvents === 'function') {
                             await refetchEvents();
                           }

@@ -1,5 +1,5 @@
 // context/EventContext.tsx
-import { fetchUserEvents } from '@/lib/api/event';
+import { createEvent as createEventAPI, fetchUserEvents, updateEvent as updateEventAPI } from '@/lib/api/event';
 import { config, databases, ID } from '@/lib/appwrite/appwrite';
 import { invalidateCache, useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { authDebug } from '@/lib/debug/authDebug';
@@ -112,18 +112,12 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
 
       setEvents((prev) => [...prev, optimisticEvent]);
 
-      // Create in database - ensure we include the id field
-      const documentData = {
+      // Create in database using API function that handles all required fields
+      const newEvent = await createEventAPI({
         ...eventData,
-        id: uniqueId // Add the required id field for Appwrite
-      };
-
-      const newEvent = await databases.createDocument(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        uniqueId,
-        documentData
-      );
+        id: uniqueId,
+        $id: uniqueId
+      } as Event);
 
       authDebug.info('Event added successfully', { eventId: newEvent.$id });
 
@@ -154,13 +148,8 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
         prev.map((e) => (e.$id === eventData.$id ? eventData : e))
       );
 
-      // Update in database
-      await databases.updateDocument(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        eventData.$id,
-        eventData
-      );
+      // Update in database using our API function that handles required fields
+      await updateEventAPI(eventData.$id, eventData);
 
       authDebug.info('Event updated successfully', { eventId: eventData.$id });
 

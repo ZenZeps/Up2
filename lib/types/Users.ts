@@ -5,7 +5,7 @@ export interface UserProfile {
     email: string;
     isPublic: boolean;
     preferences: string[];
-    friends: string[];
+    friends?: string[];
     photoId?: string;
     notificationToken?: string;
     notificationsEnabled?: boolean;
@@ -14,4 +14,13 @@ export interface UserProfile {
     age?: number;
     createdAt?: string;
     updatedAt?: string;
+
+    // ✅ NEW: Optimized fields for enterprise scalability
+    accountStatus?: 'active' | 'suspended' | 'deleted';
+    lastActive?: string;
+    friendCount?: number;
+    groupCount?: number;
+    popularityScore?: number;
+    lastLocationLat?: number;
+    lastLocationLng?: number;
 } 

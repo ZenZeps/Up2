@@ -2,6 +2,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import DeepLinkTester from '../../components/DeepLinkTester';
 import { NotificationTester } from '../../components/debug/NotificationTester';
+// import UserSystemDiagnostic from '../../components/debug/UserSystemDiagnostic';
+import AccountCreationTester from '../../components/debug/AccountCreationTester';
 // Import but don't use OptimizationTester until we fix the context nesting issue
 // import OptimizationTester from './components/OptimizationTester';
 
@@ -16,10 +18,14 @@ export default function DebugPage() {
                 <Text style={styles.subtitle}>Database Optimization Test Suite</Text>
             </View>
 
-            {/* Notification Testing */}
-            <NotificationTester />
+            {/* Account Creation Testing */}
+            <AccountCreationTester />
 
-            {/* Temporarily disabled to fix context nesting issue */}
+            {/* User System Diagnostics - Temporarily disabled due to import issues */}
+            {/* <UserSystemDiagnostic /> */}
+
+            {/* Notification Testing */}
+            <NotificationTester />            {/* Temporarily disabled to fix context nesting issue */}
             {/* <OptimizationTester /> */}
             <View style={{ padding: 20, backgroundColor: '#ffe0e0', borderRadius: 8, marginVertical: 10 }}>
                 <Text style={{ fontWeight: 'bold' }}>OptimizationTester Temporarily Disabled</Text>

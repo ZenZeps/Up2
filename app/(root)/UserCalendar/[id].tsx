@@ -1,7 +1,7 @@
 import { getEventColor } from '@/constants/categories';
-import { getAllEvents } from '@/lib/api/event';
+import { getAllEvents, updateEvent } from '@/lib/api/event';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
-import { account, config, databases } from '@/lib/appwrite/appwrite';
+import { account } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
@@ -104,14 +104,10 @@ export default function UserCalendar() {
 
         try {
             const updatedAttendees = [...(event.attendees || []), currentUserId];
-            await databases.updateDocument(
-                config.databaseID!,
-                config.eventsCollectionID!,
-                event.$id,
-                {
-                    attendees: updatedAttendees,
-                }
-            );
+            // Use updateEvent function to ensure all required fields are included
+            await updateEvent(event.$id, {
+                attendees: updatedAttendees,
+            });
 
             // Update local state
             setEvents(prevEvents =>
@@ -135,14 +131,10 @@ export default function UserCalendar() {
 
         try {
             const updatedAttendees = (event.attendees || []).filter(id => id !== currentUserId);
-            await databases.updateDocument(
-                config.databaseID!,
-                config.eventsCollectionID!,
-                event.$id,
-                {
-                    attendees: updatedAttendees,
-                }
-            );
+            // Use updateEvent function to ensure all required fields are included
+            await updateEvent(event.$id, {
+                attendees: updatedAttendees,
+            });
 
             // Update local state
             setEvents(prevEvents =>

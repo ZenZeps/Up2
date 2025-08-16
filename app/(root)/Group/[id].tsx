@@ -1,8 +1,8 @@
 import { getEventColor } from '@/constants/categories';
+import { updateEvent } from '@/lib/api/event';
 import { getGroupById, getGroupEvents, leaveGroup } from '@/lib/api/group';
 import { getProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUsersByIds } from '@/lib/api/user';
-import { config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Event as AppEvent } from '@/lib/types/Events';
@@ -156,12 +156,10 @@ const GroupPage = () => {
 
         try {
             const updatedAttendees = [...(event.attendees || []), user.$id];
-            await databases.updateDocument(
-                config.databaseID!,
-                config.eventsCollectionID!,
-                event.$id,
-                { attendees: updatedAttendees }
-            );
+            // Use updateEvent function to ensure all required fields are included
+            await updateEvent(event.$id, {
+                attendees: updatedAttendees
+            });
 
             // Update local state
             setEvents(prevEvents =>
@@ -184,12 +182,10 @@ const GroupPage = () => {
 
         try {
             const updatedAttendees = (event.attendees || []).filter(id => id !== user.$id);
-            await databases.updateDocument(
-                config.databaseID!,
-                config.eventsCollectionID!,
-                event.$id,
-                { attendees: updatedAttendees }
-            );
+            // Use updateEvent function to ensure all required fields are included
+            await updateEvent(event.$id, {
+                attendees: updatedAttendees
+            });
 
             // Update local state
             setEvents(prevEvents =>

@@ -1,4 +1,4 @@
-import { enrichEventsWithGroupNames } from '@/lib/api/event';
+import { enrichEventsWithGroupNames, updateEvent } from '@/lib/api/event';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
@@ -448,15 +448,11 @@ const Explore = () => {
     if (!event.inviteeIds?.includes(userId)) {
       try {
         const updatedInviteeIds = [...(event.inviteeIds || []), userId];
-        await databases.updateDocument(
-          config.databaseID!,
-          config.eventsCollectionID!,
-          event.$id || event.id,
-          {
-            ...event,
-            inviteeIds: updatedInviteeIds,
-          }
-        );
+        // Use updateEvent function to ensure all required fields are included
+        await updateEvent(event.$id || event.id, {
+          ...event,
+          inviteeIds: updatedInviteeIds,
+        });
         // Correct: refetch events from the server
         await refetchEvents();
         Alert.alert('Success', 'You are now attending this event!');
