@@ -1,6 +1,7 @@
+import { getUserFriends } from '@/lib/api/friendship';
 import { getUserGroups } from '@/lib/api/group';
 import { getProfilePhotoUrl, uploadProfilePhoto } from '@/lib/api/profilePhoto';
-import { getFriends, getUserProfile, updateUserProfile } from '@/lib/api/user';
+import { getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Group } from '@/lib/types/Groups';
@@ -53,11 +54,14 @@ const Profile = () => {
 
       try {
         // Load user profile, friends and groups
-        const [freshProfile, userFriends, userGroups] = await Promise.all([
+        const [freshProfile, userFriendIds, userGroups] = await Promise.all([
           getUserProfile(userId),
-          getFriends(userId),
+          getUserFriends(userId),
           getUserGroups(userId)
         ]);
+
+        // Get full friend profiles from IDs
+        const userFriends = userFriendIds.length > 0 ? await getUsersByIds(userFriendIds) : [];
 
         // Update profile information with fresh data
         if (freshProfile) {
@@ -106,11 +110,14 @@ const Profile = () => {
 
     try {
       // Load user profile, friends and groups
-      const [freshProfile, userFriends, userGroups] = await Promise.all([
+      const [freshProfile, userFriendIds, userGroups] = await Promise.all([
         getUserProfile(userId),
-        getFriends(userId),
+        getUserFriends(userId),
         getUserGroups(userId)
       ]);
+
+      // Get full friend profiles from IDs
+      const userFriends = userFriendIds.length > 0 ? await getUsersByIds(userFriendIds) : [];
 
       // Update profile information with fresh data
       if (freshProfile) {

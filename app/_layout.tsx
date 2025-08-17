@@ -1,4 +1,5 @@
 import { account } from "@/lib/appwrite/client";
+import { AlertProvider } from "@/lib/context/AlertContext";
 import { ThemeProvider } from "@/lib/context/ThemeContext";
 import { setupGlobalErrorHandler } from "@/lib/debug/globalErrorHandler";
 import GlobalProvider from "@/lib/global-provider";
@@ -177,20 +178,22 @@ export default function RootLayout() {
 
   if (!fontsLoaded || !isAppReady || isAuthenticated === null) return null;
 
-  // Wrap the Stack in ThemeProvider, GlobalProvider, and ErrorBoundary for crash protection
+  // Wrap the Stack in ThemeProvider, AlertProvider, GlobalProvider, and ErrorBoundary for crash protection
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <GlobalProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="(root)" />
-            <Stack.Screen name="SignIn" />
-            <Stack.Screen name="SignUp" />
-            <Stack.Screen name="Verify" />
-            <Stack.Screen name="ResetPassword" />
-          </Stack>
-        </GlobalProvider>
+        <AlertProvider>
+          <GlobalProvider>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="(root)" />
+              <Stack.Screen name="SignIn" />
+              <Stack.Screen name="SignUp" />
+              <Stack.Screen name="Verify" />
+              <Stack.Screen name="ResetPassword" />
+            </Stack>
+          </GlobalProvider>
+        </AlertProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

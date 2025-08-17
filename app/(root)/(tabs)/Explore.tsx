@@ -1,19 +1,19 @@
 import { enrichEventsWithGroupNames, updateEvent } from '@/lib/api/event';
-import { cancelFriendRequest, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
+import { cancelFriendRequest, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
+import { useAlert } from '@/lib/context/AlertContext';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Linking,
   ScrollView,
@@ -33,6 +33,7 @@ const Explore = () => {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { events, refetchEvents } = useEvents();
+  const { showAlert } = useAlert();
 
   // State variables
   const [query, setQuery] = useState(''); // Search query
@@ -65,7 +66,10 @@ const Explore = () => {
         setUserId(currentUser.$id); // Function to define the currentUser statd with information form Appwrite
         const userProfile = await getUserProfile(currentUser.$id); // Fetches the user profile for the specified user from Appwrite
         setProfile(userProfile); // Sets the profile state to the found user profile
-        setFriends(userProfile?.friends ?? []); // Sets the friends state to the users friend list attribute
+
+        // Use new friendship API to get friends from junction table
+        const userFriendIds = await getUserFriends(currentUser.$id);
+        setFriends(userFriendIds); // Sets the friends state to the users friend IDs from junction table
 
         // Get current user's profile photo
         const currentUserPhoto = await getUserProfilePhotoUrl(currentUser.$id);
@@ -130,6 +134,25 @@ const Explore = () => {
     fetchData();
     refetchEvents(); // Fetch latest events on mount
   }, []);
+
+  // Refresh friends list when screen comes into focus
+  const refreshFriends = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const userFriendIds = await getUserFriends(userId);
+      setFriends(userFriendIds);
+      console.log('🔄 Friends list refreshed:', userFriendIds);
+    } catch (error) {
+      console.error('Error refreshing friends:', error);
+    }
+  }, [userId]);
+
+  // Refresh friends when returning to this screen
+  useFocusEffect(
+    useCallback(() => {
+      refreshFriends();
+    }, [refreshFriends])
+  );
 
   useEffect(() => {
     const addCreatorNames = async () => {
@@ -330,7 +353,7 @@ const Explore = () => {
       const result = await sendFriendRequest(userId, toUserId);
 
       if (!result.success) {
-        Alert.alert('Cannot Send Request', result.message);
+        showAlert('Cannot Send Request', result.message, [{ text: 'OK' }], 'warning');
         return;
       }
 
@@ -346,39 +369,35 @@ const Explore = () => {
       console.log('🎯 Friend request process completed');
     } catch (err) {
       console.error('❌ Friend request error:', err);
-      Alert.alert('Error', 'Failed to send friend request');
+      showAlert('Error', 'Failed to send friend request', [{ text: 'OK' }], 'error');
     }
   }, [userId, profile]);
 
   const handleDeleteFriend = async (friendId: string) => {
-    Alert.alert(
+    showConfirm(
       'Remove Friend',
       'Are you sure you want to remove this friend?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'OK',
-          onPress: async () => {
-            try {
-              // Use the new unfriend API that properly deletes from database
-              const result = await unfriendUser(userId, friendId);
+      async () => {
+        try {
+          // Use the new unfriend API that properly deletes from database
+          const result = await unfriendUser(userId, friendId);
 
-              if (!result.success) {
-                Alert.alert('Error', result.message);
-                return;
-              }
+          if (!result.success) {
+            showAlert('Error', result.message, [{ text: 'OK' }], 'error');
+            return;
+          }
 
-              // Update the UI state after successful database deletion
-              setFriends((prev) => prev.filter((id) => id !== friendId));
-              console.log('✅ Friend removed successfully from database and UI');
+          // Update the UI state after successful database deletion
+          setFriends((prev) => prev.filter((id) => id !== friendId));
+          console.log('✅ Friend removed successfully from database and UI');
 
-            } catch (err) {
-              console.error('Delete friend error:', err);
-              Alert.alert('Error', 'Failed to remove friend');
-            }
-          },
-        },
-      ]
+        } catch (err) {
+          console.error('Delete friend error:', err);
+          showAlert('Error', 'Failed to remove friend', [{ text: 'OK' }], 'error');
+        }
+      },
+      'Remove',
+      'cancel'
     );
   };
 
@@ -388,7 +407,7 @@ const Explore = () => {
       const result = await cancelFriendRequest(userId, toUserId);
 
       if (!result.success) {
-        Alert.alert('Error', result.message);
+        showAlert('Error', result.message, [{ text: 'OK' }], 'error');
         return;
       }
 
@@ -396,7 +415,7 @@ const Explore = () => {
       console.log('✅ Friend request canceled successfully');
     } catch (err) {
       console.error('Cancel friend request error:', err);
-      Alert.alert('Error', 'Failed to cancel friend request');
+      showAlert('Error', 'Failed to cancel friend request', [{ text: 'OK' }], 'error');
     }
   };
 

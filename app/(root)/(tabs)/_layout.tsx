@@ -1,25 +1,92 @@
 import icons from '@/constants/icons';
+import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { Tabs } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, Text, View } from 'react-native';
+import { Query } from 'react-native-appwrite';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+// Hook to check for unread notifications
+const useNotificationCount = () => {
+  const [hasNotifications, setHasNotifications] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkNotifications = async () => {
+      try {
+        const currentUser = await getCurrentUser();
+        if (!currentUser) return;
+
+        setUserId(currentUser.$id);
+
+        // Check for pending friend requests
+        const friendRequests = await databases.listDocuments(
+          config.databaseID!,
+          config.userFriendshipsCollectionID!,
+          [
+            Query.and([
+              Query.or([
+                Query.equal('userId1', currentUser.$id),
+                Query.equal('userId2', currentUser.$id)
+              ]),
+              Query.equal('status', 'pending'),
+              Query.notEqual('requesterId', currentUser.$id) // Exclude requests we sent
+            ]),
+            Query.limit(1) // Just check if any exist
+          ]
+        );
+
+        setHasNotifications(friendRequests.documents.length > 0);
+      } catch (error) {
+        console.error('Error checking notifications:', error);
+        setHasNotifications(false);
+      }
+    };
+
+    checkNotifications();
+    // Check every 30 seconds for new notifications
+    const interval = setInterval(checkNotifications, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return hasNotifications;
+};
+
 // TabIcon: Renders an icon and label for each tab in the bottom navigation bar
-const TabIcon = ({ focused, icon, title, colors }: { focused: boolean; icon: any; title: string; colors: any }) => (
-  <View className="flex-1 mt-3 flex flex-col items-center">
+const TabIcon = ({ focused, icon, title, colors, hasNotifications = false }: {
+  focused: boolean;
+  icon: any;
+  title: string;
+  colors: any;
+  hasNotifications?: boolean;
+}) => (
+  <View className="flex-1 mt-3 flex flex-col items-center relative">
     {/* Tab icon with dynamic tint color based on focus */}
-    <Image
-      source={icon}
-      style={{ width: 24, height: 24, tintColor: focused ? '#000000' : colors.textSecondary }}
-      resizeMode="contain"
-    />
+    <View className="relative">
+      <Image
+        source={icon}
+        style={{
+          width: 24,
+          height: 24,
+          tintColor: hasNotifications && title === 'Feed' ? '#ef4444' : (focused ? '#000000' : colors.textSecondary)
+        }}
+        resizeMode="contain"
+      />
+      {/* Notification badge */}
+      {hasNotifications && title === 'Feed' && (
+        <View className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-white" />
+      )}
+    </View>
     {/* Tab label with dynamic style based on focus */}
     <Text
       className={`${focused ? 'font-rubik-medium' : 'font-rubik'} text-xs w-full text-center mt-1`}
-      style={{ color: focused ? '#000000' : colors.textSecondary }}
+      style={{
+        color: hasNotifications && title === 'Feed' ? '#ef4444' : (focused ? '#000000' : colors.textSecondary)
+      }}
     >
       {title}
     </Text>
@@ -30,6 +97,7 @@ const TabIcon = ({ focused, icon, title, colors }: { focused: boolean; icon: any
 const TabsLayout = () => {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const hasNotifications = useNotificationCount();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -55,7 +123,7 @@ const TabsLayout = () => {
             title: 'Home',
             headerShown: false, // Hide the header for this tab
             tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.home} focused={focused} title="Home" colors={colors} />
+              <TabIcon icon={icons.home} focused={focused} title="Home" colors={colors} hasNotifications={false} />
             )
           }}
         />
@@ -66,7 +134,7 @@ const TabsLayout = () => {
             title: 'Feed',
             headerShown: false,
             tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.bell} focused={focused} title="Feed" colors={colors} />
+              <TabIcon icon={icons.bell} focused={focused} title="Feed" colors={colors} hasNotifications={hasNotifications} />
             )
           }}
         />
@@ -77,7 +145,7 @@ const TabsLayout = () => {
             title: 'Explore',
             headerShown: false,
             tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.search} focused={focused} title="Explore" colors={colors} />
+              <TabIcon icon={icons.search} focused={focused} title="Explore" colors={colors} hasNotifications={false} />
             )
           }}
         />
@@ -88,7 +156,7 @@ const TabsLayout = () => {
             title: 'Profile',
             headerShown: false,
             tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.person} focused={focused} title="Profile" colors={colors} />
+              <TabIcon icon={icons.person} focused={focused} title="Profile" colors={colors} hasNotifications={false} />
             )
           }}
         />
