@@ -1,6 +1,7 @@
 import { enrichEventsWithGroupNames, updateEvent } from '@/lib/api/event';
+import { cancelFriendRequest, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
-import { getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
+import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
@@ -22,7 +23,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { ID, Query } from 'react-native-appwrite';
+import { Query } from 'react-native-appwrite';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserAvatar from '../components/UserAvatar';
 import { useEvents } from '../context/EventContext';
@@ -108,7 +109,7 @@ const Explore = () => {
         // Get pending friend requests sent by the current user
         const requestsRes = await databases.listDocuments(
           config.databaseID!,
-          config.friendRequestsCollectionID,
+          config.userFriendshipsCollectionID,
           [
             Query.equal('requesterId', currentUser.$id),
             Query.equal('status', 'pending'),
@@ -325,26 +326,15 @@ const Explore = () => {
       console.log('📤 Sending friend request:', { from: userId, to: toUserId });
       console.log('👤 Current user profile:', profile);
 
-      const requestId = ID.unique();
+      // Use the new friendship API with uniqueness checking
+      const result = await sendFriendRequest(userId, toUserId);
 
-      // Use the new UserFriendship schema with userId1, userId2, requesterId
-      // Always put the smaller ID first for consistency
-      const userId1 = userId < toUserId ? userId : toUserId;
-      const userId2 = userId < toUserId ? toUserId : userId;
+      if (!result.success) {
+        Alert.alert('Cannot Send Request', result.message);
+        return;
+      }
 
-      await databases.createDocument(
-        config.databaseID!,
-        config.friendRequestsCollectionID,
-        requestId,
-        {
-          userId1,
-          userId2,
-          requesterId: userId, // The person sending the request
-          status: 'pending',
-        }
-      );
-
-      console.log('✅ Friend request document created successfully');
+      console.log('✅ Friend request sent successfully');
 
       // Send push notification to the recipient
       const senderName = profile ? `${profile.firstName} ${profile.lastName}` : 'Someone';
@@ -370,35 +360,21 @@ const Explore = () => {
           text: 'OK',
           onPress: async () => {
             try {
-              // Optimistically update the UI
+              // Use the new unfriend API that properly deletes from database
+              const result = await unfriendUser(userId, friendId);
+
+              if (!result.success) {
+                Alert.alert('Error', result.message);
+                return;
+              }
+
+              // Update the UI state after successful database deletion
               setFriends((prev) => prev.filter((id) => id !== friendId));
-
-              // Update current user's friend list
-              const updatedUserFriends = friends.filter((id) => id !== friendId);
-              if (profile) {
-                await updateUserProfile({
-                  ...profile,
-                  friends: updatedUserFriends
-                });
-              }
-
-              // Update friend's friend list
-              const friendProfile = await getUserProfile(friendId);
-              if (friendProfile) {
-                const updatedFriendFriends = (friendProfile.friends || []).filter(
-                  (id: string) => id !== userId
-                );
-                await updateUserProfile({
-                  ...friendProfile,
-                  friends: updatedFriendFriends
-                });
-              }
+              console.log('✅ Friend removed successfully from database and UI');
 
             } catch (err) {
               console.error('Delete friend error:', err);
               Alert.alert('Error', 'Failed to remove friend');
-              // Revert the UI update if the API call fails
-              setFriends((prev) => [...prev, friendId]);
             }
           },
         },
@@ -408,29 +384,16 @@ const Explore = () => {
 
   const handleCancelFriendRequest = async (toUserId: string) => {
     try {
-      // Find the friend request document using new schema
-      const response = await databases.listDocuments(
-        config.databaseID!,
-        config.friendRequestsCollectionID,
-        [
-          Query.equal('requesterId', userId),
-          Query.equal('status', 'pending'),
-          Query.or([
-            Query.and([Query.equal('userId1', userId), Query.equal('userId2', toUserId)]),
-            Query.and([Query.equal('userId1', toUserId), Query.equal('userId2', userId)])
-          ])
-        ]
-      );
+      // Use the new cancel friend request API
+      const result = await cancelFriendRequest(userId, toUserId);
 
-      if (response.documents.length > 0) {
-        const requestId = response.documents[0].$id;
-        await databases.deleteDocument(
-          config.databaseID!,
-          config.friendRequestsCollectionID,
-          requestId
-        );
-        setRequestedUsers((prev) => prev.filter((id) => id !== toUserId)); // Update state
+      if (!result.success) {
+        Alert.alert('Error', result.message);
+        return;
       }
+
+      setRequestedUsers((prev) => prev.filter((id) => id !== toUserId)); // Update state
+      console.log('✅ Friend request canceled successfully');
     } catch (err) {
       console.error('Cancel friend request error:', err);
       Alert.alert('Error', 'Failed to cancel friend request');

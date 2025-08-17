@@ -1,7 +1,8 @@
 import { updateEvent } from '@/lib/api/event';
+import { acceptFriendRequest, declineFriendRequest } from '@/lib/api/friendship';
 import { acceptGroupInvite, declineGroupInvite, getGroupById, getUserGroupInvites } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
-import { getUserProfile, updateUserProfile } from '@/lib/api/user';
+import { getUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { sendFriendRequestAcceptedNotification } from '@/lib/notifications/notificationUtils';
@@ -47,7 +48,7 @@ export default function Invites() {
         setLoading(true);
         const res = await databases.listDocuments(
           config.databaseID!,
-          config.friendRequestsCollectionID,
+          config.userFriendshipsCollectionID,
           [
             Query.and([
               Query.or([
@@ -96,54 +97,46 @@ export default function Invites() {
 
   const handleAcceptFriendRequest = async (request: any) => {
     try {
-      const fromProfile = await getUserProfile(request.from);
-      const toProfile = await getUserProfile(request.to);
+      // Use the new friendship API for accepting requests
+      const result = await acceptFriendRequest(request.$id);
 
-      if (!fromProfile || !toProfile) {
-        alert('Could not find user profiles.');
+      if (!result.success) {
+        alert(`Could not accept friend request: ${result.message}`);
         return;
       }
 
-      const fromFriends = Array.from(new Set([...(fromProfile.friends ?? []), request.to]));
-      const toFriends = Array.from(new Set([...(toProfile.friends ?? []), request.from]));
-
-      await updateUserProfile({
-        $id: fromProfile.$id,
-        firstName: fromProfile.firstName,
-        lastName: fromProfile.lastName,
-        email: fromProfile.email,
-        isPublic: fromProfile.isPublic,
-        preferences: fromProfile.preferences,
-        friends: fromFriends,
-        photoId: fromProfile.photoId,
-      });
-      await updateUserProfile({
-        $id: toProfile.$id,
-        firstName: toProfile.firstName,
-        lastName: toProfile.lastName,
-        email: toProfile.email,
-        isPublic: toProfile.isPublic,
-        preferences: toProfile.preferences,
-        friends: toFriends,
-        photoId: toProfile.photoId,
-      });
-
-      await databases.updateDocument(
-        config.databaseID!,
-        config.friendRequestsCollectionID,
-        request.$id,
-        { status: 'accepted' }
-      );
-
       // Send notification to the original sender that their request was accepted
-      const accepterName = `${toProfile.firstName} ${toProfile.lastName}`;
-      await sendFriendRequestAcceptedNotification(request.from, accepterName, request.to);
+      const toProfile = await getUserProfile(request.to);
+      if (toProfile) {
+        const accepterName = `${toProfile.firstName} ${toProfile.lastName}`;
+        await sendFriendRequestAcceptedNotification(request.from, accepterName, request.to);
+      }
 
-      setFriendRequests((prev) => prev.filter((r) => r.$id !== request.$id));
+      // Remove the request from the list
+      setFriendRequests((prev) => prev.filter((req) => req.$id !== request.$id));
       alert('Friend request accepted!');
-    } catch (err) {
-      alert('Failed to accept friend request');
-      console.error("Accept friend request error:", err);
+    } catch (error) {
+      console.error('Error accepting friend request:', error);
+      alert('Could not accept friend request.');
+    }
+  };
+
+  const handleDeclineFriendRequest = async (request: any) => {
+    try {
+      // Use the new friendship API for declining requests
+      const result = await declineFriendRequest(request.$id);
+
+      if (!result.success) {
+        alert(`Could not decline friend request: ${result.message}`);
+        return;
+      }
+
+      // Remove the request from the list
+      setFriendRequests((prev) => prev.filter((req) => req.$id !== request.$id));
+      alert('Friend request declined.');
+    } catch (error) {
+      console.error('Error declining friend request:', error);
+      alert('Could not decline friend request.');
     }
   };
 
