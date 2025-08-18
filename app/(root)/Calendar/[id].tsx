@@ -58,24 +58,72 @@ export default function FriendCalendar() {
 
                 // Get all events
                 const allEvents = await getAllEvents();
+                console.log('Friend Calendar: Total events loaded:', allEvents.length);
 
-                // Filter events for this friend (created by them or they're attending)
-                // Also filter out private events unless current user is creator, invitee, or attendee
+                // Debug: Log a sample of events to see their structure
+                if (allEvents.length > 0) {
+                    console.log('Friend Calendar: Sample event structure:', {
+                        title: allEvents[0].title,
+                        creatorId: allEvents[0].creatorId,
+                        attendees: allEvents[0].attendees,
+                        attendeeCount: allEvents[0].attendeeCount,
+                        hasAttendees: Array.isArray(allEvents[0].attendees)
+                    });
+                }
+
+                // Filter events for this friend using multiple approaches
                 const friendEvents = allEvents.filter(event => {
-                    const isEventRelatedToFriend = event.creatorId === friendId ||
-                        (event.attendees && event.attendees.includes(friendId));
+                    // Approach 1: Check if friend created the event
+                    const isCreatedByFriend = event.creatorId === friendId;
+
+                    // Approach 2: Check if friend is in attendees array
+                    let isAttendingEvent = false;
+                    if (event.attendees && Array.isArray(event.attendees)) {
+                        isAttendingEvent = event.attendees.includes(friendId);
+                    }
+
+                    // Approach 3: For debugging, let's also check if event has any attendees at all
+                    const hasAnyAttendees = event.attendees && Array.isArray(event.attendees) && event.attendees.length > 0;
+
+                    console.log(`Event "${event.title}":`, {
+                        eventId: event.$id,
+                        creatorId: event.creatorId,
+                        friendId: friendId,
+                        isCreatedByFriend,
+                        attendees: event.attendees,
+                        attendeesLength: event.attendees ? event.attendees.length : 'null/undefined',
+                        isAttendingEvent,
+                        hasAnyAttendees,
+                        attendeeCount: event.attendeeCount
+                    });
+
+                    const isEventRelatedToFriend = isCreatedByFriend || isAttendingEvent;
 
                     if (!isEventRelatedToFriend) return false;
 
                     // If event is private, only show if current user has access
                     if (event.isPrivate) {
-                        return event.creatorId === user.$id || // User is creator
+                        const hasAccess = event.creatorId === user.$id || // User is creator
                             (event.inviteeIds && event.inviteeIds.includes(user.$id)) || // User is invited
                             (event.attendees && event.attendees.includes(user.$id)); // User is attending
+
+                        console.log(`Private event "${event.title}" access check:`, {
+                            creatorId: event.creatorId,
+                            currentUserId: user.$id,
+                            isCreator: event.creatorId === user.$id,
+                            isInvited: event.inviteeIds && event.inviteeIds.includes(user.$id),
+                            isAttending: event.attendees && event.attendees.includes(user.$id),
+                            hasAccess
+                        });
+
+                        return hasAccess;
                     }
 
                     return true; // Public event, show it
                 });
+
+                console.log('Friend Calendar: Filtered events for friend:', friendEvents.length);
+                console.log('Friend Calendar: Friend events:', friendEvents.map(e => ({ title: e.title, creator: e.creatorId === friendId ? 'friend' : 'other', attendees: e.attendees })));
 
                 // Add creator names to events
                 const uniqueCreatorIds = [...new Set(friendEvents.map(event => event.creatorId))];

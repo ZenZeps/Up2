@@ -30,8 +30,13 @@ const GroupsExplore = () => {
     const [joinLoading, setJoinLoading] = useState<{ [key: string]: boolean }>({});
 
     useEffect(() => {
-        loadPublicGroups();
-    }, []);
+        // Only load groups if user is authenticated
+        if (user && userId) {
+            loadPublicGroups();
+        } else {
+            console.log('GroupsExplore: Waiting for user authentication before loading groups');
+        }
+    }, [user, userId]);
 
     useEffect(() => {
         if (searchTerm.trim()) {
@@ -43,13 +48,24 @@ const GroupsExplore = () => {
 
     const loadPublicGroups = async () => {
         try {
+            console.log('GroupsExplore: Starting to load public groups...');
+            console.log('GroupsExplore: User authenticated:', !!user);
+            console.log('GroupsExplore: User ID:', userId);
+
             setLoading(true);
             const publicGroups = await getPublicGroups();
+            console.log('GroupsExplore: Loaded', publicGroups.length, 'public groups');
+
             setGroups(publicGroups);
             setFilteredGroups(publicGroups);
         } catch (error) {
             console.error('Error loading public groups:', error);
-            Alert.alert('Error', 'Failed to load groups');
+            console.error('Error details:', {
+                message: error instanceof Error ? error.message : 'Unknown error',
+                userId: userId,
+                userAuthenticated: !!user
+            });
+            Alert.alert('Error', 'Failed to load groups. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -62,15 +78,19 @@ const GroupsExplore = () => {
         }
 
         try {
+            console.log('GroupsExplore: Starting search for:', searchTerm);
             const searchResults = await searchPublicGroups(searchTerm.trim());
+            console.log('GroupsExplore: Search returned', searchResults.length, 'results');
             setFilteredGroups(searchResults);
         } catch (error) {
             console.error('Error searching groups:', error);
-            // Fallback to local filtering
+            // Always fallback to local filtering for better user experience
+            console.log('GroupsExplore: Falling back to local search');
             const localResults = groups.filter(group =>
                 group.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (group.description && group.description.toLowerCase().includes(searchTerm.toLowerCase()))
             );
+            console.log('GroupsExplore: Local search found', localResults.length, 'results');
             setFilteredGroups(localResults);
         }
     };

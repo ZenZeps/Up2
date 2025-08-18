@@ -1,14 +1,36 @@
 import { Group } from '@/lib/types/Groups';
 import { ID, Query } from 'react-native-appwrite';
 import { config, databases } from '../appwrite/appwrite';
-import { sendGroupInviteNotification } from '../notifications/notificationUtils';
-import { getUserProfile } from './user';
+import { addGroupMember, getGroupMembers, getUserGroups as getJunctionUserGroups, removeGroupMember } from './groupMembership';
 
 /**
  * Get all groups that a user belongs to
- * SCALABILITY OPTIMIZED: Uses pagination and limits to handle 100k+ users
+ * UPDATED: Now uses junction table for scalability
  */
 export const getUserGroups = async (userId: string, limit: number = 50): Promise<Group[]> => {
+    try {
+        console.log(`getUserGroups: Fetching groups for user ${userId} using junction table`);
+
+        // Use the new junction table implementation
+        const groups = await getJunctionUserGroups(userId, limit);
+
+        console.log(`getUserGroups: Found ${groups.length} groups for user ${userId} via junction table`);
+
+        return groups as Group[];
+    } catch (error) {
+        console.error('Error fetching user groups via junction table:', error);
+
+        // Fallback to old implementation if junction table fails
+        console.log('Falling back to legacy group fetching...');
+        return await getUserGroupsLegacy(userId, limit);
+    }
+};
+
+/**
+ * Legacy implementation as fallback
+ * SCALABILITY OPTIMIZED: Uses pagination and limits to handle 100k+ users
+ */
+const getUserGroupsLegacy = async (userId: string, limit: number = 50): Promise<Group[]> => {
     try {
         // Get groups where user is the creator (this can be queried directly)
         const creatorGroups = await databases.listDocuments(
@@ -72,6 +94,7 @@ export const getUserGroups = async (userId: string, limit: number = 50): Promise
 
 /**
  * Get group details by ID
+ * UPDATED: Now uses junction table for member information
  */
 export const getGroupById = async (groupId: string): Promise<Group | null> => {
     try {
@@ -81,16 +104,31 @@ export const getGroupById = async (groupId: string): Promise<Group | null> => {
             groupId
         );
 
+        // Get member count and member list from junction table
+        let memberCount = response.memberCount || 0;
+        let members: any[] = [];
+
+        try {
+            // Try to get members from junction table
+            members = await getGroupMembers(groupId, 100);
+            memberCount = members.length;
+        } catch (error) {
+            console.warn(`Could not load members from junction table for group ${groupId}:`, error);
+            // Fallback to legacy users array
+            members = response.users || [];
+            memberCount = members.length;
+        }
+
         return {
             $id: response.$id,
             id: response.id || response.$id,
             title: response.title,
             description: response.description || '',
             creatorId: response.creatorId,
-            isPrivate: response.isPrivate || false,
-            users: response.users || [],
+            isPrivate: !response.isPublic, // Convert isPublic to isPrivate for app logic
+            users: members, // Now populated from junction table
             events: response.events || [],
-            memberCount: (response.users || []).length,
+            memberCount: memberCount, // Accurate count from junction table
             $createdAt: response.$createdAt,
             $updatedAt: response.$updatedAt,
         } as Group;
@@ -111,10 +149,11 @@ export const createGroup = async (
     description?: string
 ): Promise<Group | null> => {
     try {
-        const groupId = ID.unique();
-        // Include creator and any additional members, remove duplicates
-        const allMembers = Array.from(new Set([creatorId, ...(members || [])]));
+        console.log(`createGroup: Creating group "${title}" by user ${creatorId}`);
 
+        const groupId = ID.unique();
+
+        // Create the group document first (without users array for new system)
         const response = await databases.createDocument(
             config.databaseID!,
             config.groupsCollectionID!,
@@ -123,11 +162,41 @@ export const createGroup = async (
                 title,
                 description: description || '',
                 creatorId,
-                isPrivate,
-                // For relationship attributes, pass array of user IDs
-                users: allMembers,
+                isPublic: !isPrivate, // Database only has isPublic field
+                memberCount: 0, // Will be updated by junction table operations
+                lastActivityAt: new Date().toISOString()
             }
         );
+
+        // Add creator and members to junction table
+        const allMembers = Array.from(new Set([creatorId, ...(members || [])]));
+
+        try {
+            // Add creator as admin/owner
+            await addGroupMember(groupId, creatorId, 'admin');
+
+            // Add other members as regular members
+            for (const memberId of members || []) {
+                if (memberId !== creatorId) {
+                    await addGroupMember(groupId, memberId, 'member');
+                }
+            }
+
+            console.log(`createGroup: Group "${title}" created successfully with ${allMembers.length} members`);
+        } catch (memberError) {
+            console.warn('Error adding members to junction table, falling back to legacy method:', memberError);
+
+            // Fallback: Update the group document with users array
+            await databases.updateDocument(
+                config.databaseID!,
+                config.groupsCollectionID!,
+                groupId,
+                {
+                    users: allMembers
+                }
+            );
+        }
+
         return response as unknown as Group;
     } catch (error) {
         console.error('Error creating group:', error);
@@ -140,6 +209,30 @@ export const createGroup = async (
  * Remove user from group
  */
 export const removeUserFromGroup = async (groupId: string, userId: string): Promise<boolean> => {
+    try {
+        console.log(`removeUserFromGroup: Removing user ${userId} from group ${groupId}`);
+
+        // Use junction table to remove user
+        const success = await removeGroupMember(groupId, userId);
+
+        if (success) {
+            console.log(`removeUserFromGroup: User ${userId} successfully removed from group ${groupId}`);
+        } else {
+            console.error(`removeUserFromGroup: Failed to remove user ${userId} from group ${groupId}`);
+        }
+
+        return success;
+    } catch (error) {
+        console.error('Error removing user from group:', error);
+        // Fallback to legacy implementation
+        return await removeUserFromGroupLegacy(groupId, userId);
+    }
+};
+
+/**
+ * Legacy remove user from group implementation as fallback
+ */
+const removeUserFromGroupLegacy = async (groupId: string, userId: string): Promise<boolean> => {
     try {
         const group = await getGroupById(groupId);
         if (!group) return false;
@@ -157,7 +250,7 @@ export const removeUserFromGroup = async (groupId: string, userId: string): Prom
         );
         return true;
     } catch (error) {
-        console.error('Error removing user from group:', error);
+        console.error('Error removing user from group (legacy):', error);
         return false;
     }
 };
@@ -178,7 +271,7 @@ export const getAllGroups = async (): Promise<Group[]> => {
             title: doc.title,
             description: doc.description || '',
             creatorId: doc.creatorId,
-            isPrivate: doc.isPrivate || false,
+            isPrivate: !doc.isPublic, // Convert isPublic to isPrivate for app logic
             users: doc.users || [],
             events: doc.events || [],
             memberCount: (doc.users || []).length,
@@ -192,64 +285,119 @@ export const getAllGroups = async (): Promise<Group[]> => {
 };
 
 /**
- * Get all public groups for discovery
+ * Get all public groups for discovery - Optimized for explore page
+ * UPDATED: Uses junction table for accurate member counts but doesn't load full profiles
  */
 export const getPublicGroups = async (): Promise<Group[]> => {
     try {
+        console.log('getPublicGroups: Fetching public groups with optimized member counts');
+        console.log('getPublicGroups: Database ID:', config.databaseID);
+        console.log('getPublicGroups: Collection ID:', config.groupsCollectionID);
+
         const response = await databases.listDocuments(
             config.databaseID!,
             config.groupsCollectionID!,
-            [Query.equal('isPrivate', false)]
+            [Query.equal('isPublic', true)] // Use isPublic field that database expects
         );
 
-        return response.documents.map(doc => ({
-            $id: doc.$id,
-            id: doc.id || doc.$id,
-            title: doc.title,
-            description: doc.description || '',
-            creatorId: doc.creatorId,
-            isPrivate: doc.isPrivate || false,
-            users: doc.users || [],
-            events: doc.events || [],
-            memberCount: (doc.users || []).length,
-            $createdAt: doc.$createdAt,
-            $updatedAt: doc.$updatedAt,
-        }));
+        console.log(`getPublicGroups: Found ${response.documents.length} public groups`);
+
+        // For explore page, we only need accurate member counts, not full profiles
+        const groupsWithMemberCounts = response.documents.map(doc => {
+            return {
+                $id: doc.$id,
+                id: doc.id || doc.$id,
+                title: doc.title,
+                description: doc.description || '',
+                creatorId: doc.creatorId,
+                isPrivate: !doc.isPublic, // Database uses isPublic, convert to app logic
+                users: doc.users || [], // Keep legacy for membership checks
+                events: doc.events || [],
+                memberCount: doc.memberCount || (doc.users || []).length, // Use denormalized count
+                $createdAt: doc.$createdAt,
+                $updatedAt: doc.$updatedAt,
+            } as Group;
+        });
+
+        return groupsWithMemberCounts;
     } catch (error) {
         console.error('Error fetching public groups:', error);
-        return [];
+        console.error('Error details:', {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            code: error instanceof Error && 'code' in error ? error.code : 'Unknown code',
+            type: error instanceof Error && 'type' in error ? error.type : 'Unknown type'
+        });
+
+        // Re-throw the error so the UI can handle it properly
+        throw error;
     }
 };
 
 /**
- * Search public groups by title
+ * Search public groups by title - Optimized for explore page
+ * UPDATED: Uses denormalized member counts for performance
  */
 export const searchPublicGroups = async (searchTerm: string): Promise<Group[]> => {
     try {
-        const response = await databases.listDocuments(
-            config.databaseID!,
-            config.groupsCollectionID!,
-            [
-                Query.equal('isPrivate', false),
-                Query.search('title', searchTerm)
-            ]
-        );
+        console.log(`searchPublicGroups: Searching for "${searchTerm}"`);
 
-        return response.documents.map(doc => ({
-            $id: doc.$id,
-            id: doc.id || doc.$id,
-            title: doc.title,
-            description: doc.description || '',
-            creatorId: doc.creatorId,
-            isPrivate: doc.isPrivate || false,
-            users: doc.users || [],
-            events: doc.events || [],
-            memberCount: (doc.users || []).length,
-            $createdAt: doc.$createdAt,
-            $updatedAt: doc.$updatedAt,
-        }));
+        // Try full-text search first
+        let response;
+        try {
+            response = await databases.listDocuments(
+                config.databaseID!,
+                config.groupsCollectionID!,
+                [
+                    Query.equal('isPublic', true),
+                    Query.search('title', searchTerm)
+                ]
+            );
+            console.log(`searchPublicGroups: Full-text search found ${response.documents.length} groups`);
+        } catch (searchError) {
+            console.log('searchPublicGroups: Full-text search failed, falling back to contains search');
+            // Fallback: Get all public groups and filter client-side
+            response = await databases.listDocuments(
+                config.databaseID!,
+                config.groupsCollectionID!,
+                [Query.equal('isPublic', true)]
+            );
+
+            // Filter client-side for partial matches
+            const searchLower = searchTerm.toLowerCase();
+            response.documents = response.documents.filter(doc =>
+                doc.title?.toLowerCase().includes(searchLower) ||
+                doc.description?.toLowerCase().includes(searchLower)
+            );
+
+            console.log(`searchPublicGroups: Client-side search found ${response.documents.length} groups`);
+        }
+
+        // For search results, use the optimized approach without loading full profiles
+        const searchResults = response.documents.map(doc => {
+            return {
+                $id: doc.$id,
+                id: doc.id || doc.$id,
+                title: doc.title,
+                description: doc.description || '',
+                creatorId: doc.creatorId,
+                isPrivate: !doc.isPublic, // Database uses isPublic, convert to app logic
+                users: doc.users || [], // Keep legacy for membership checks
+                events: doc.events || [],
+                memberCount: doc.memberCount || (doc.users || []).length, // Use denormalized count
+                $createdAt: doc.$createdAt,
+                $updatedAt: doc.$updatedAt,
+            } as Group;
+        });
+
+        return searchResults;
     } catch (error) {
         console.error('Error searching public groups:', error);
+        console.error('Search error details:', {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            searchTerm
+        });
+
+        // Return empty array instead of throwing to allow UI fallback
         return [];
     }
 };
@@ -258,6 +406,42 @@ export const searchPublicGroups = async (searchTerm: string): Promise<Group[]> =
  * Join a public group
  */
 export const joinGroup = async (groupId: string, userId: string): Promise<boolean> => {
+    try {
+        console.log(`joinGroup: User ${userId} attempting to join group ${groupId}`);
+
+        const group = await getGroupById(groupId);
+        if (!group) {
+            console.error('Group not found');
+            return false;
+        }
+
+        // Check if group is public
+        if (group.isPrivate) {
+            console.error('Cannot join private group without invitation');
+            return false;
+        }
+
+        // Use junction table to add user
+        const success = await addGroupMember(groupId, userId, 'member');
+
+        if (success) {
+            console.log(`joinGroup: User ${userId} successfully joined group ${groupId}`);
+        } else {
+            console.error(`joinGroup: Failed to add user ${userId} to group ${groupId}`);
+        }
+
+        return success;
+    } catch (error) {
+        console.error('Error joining group:', error);
+        // Fallback to legacy implementation
+        return await joinGroupLegacy(groupId, userId);
+    }
+};
+
+/**
+ * Legacy join group implementation as fallback
+ */
+const joinGroupLegacy = async (groupId: string, userId: string): Promise<boolean> => {
     try {
         const group = await getGroupById(groupId);
         if (!group) return false;
@@ -284,15 +468,52 @@ export const joinGroup = async (groupId: string, userId: string): Promise<boolea
         );
         return true;
     } catch (error) {
-        console.error('Error joining group:', error);
+        console.error('Error joining group (legacy):', error);
         return false;
     }
 };
 
 /**
  * Leave a group
+ * UPDATED: Now uses junction table
  */
 export const leaveGroup = async (groupId: string, userId: string): Promise<boolean> => {
+    try {
+        console.log(`leaveGroup: User ${userId} attempting to leave group ${groupId}`);
+
+        const group = await getGroupById(groupId);
+        if (!group) {
+            console.error('Group not found');
+            return false;
+        }
+
+        // Don't allow creator to leave their own group
+        if (group.creatorId === userId) {
+            console.error('Group creator cannot leave the group');
+            return false;
+        }
+
+        // Use junction table to remove user
+        const success = await removeGroupMember(groupId, userId);
+
+        if (success) {
+            console.log(`leaveGroup: User ${userId} successfully left group ${groupId}`);
+        } else {
+            console.error(`leaveGroup: Failed to remove user ${userId} from group ${groupId}`);
+        }
+
+        return success;
+    } catch (error) {
+        console.error('Error leaving group:', error);
+        // Fallback to legacy implementation
+        return await leaveGroupLegacy(groupId, userId);
+    }
+};
+
+/**
+ * Legacy leave group implementation as fallback
+ */
+const leaveGroupLegacy = async (groupId: string, userId: string): Promise<boolean> => {
     try {
         const group = await getGroupById(groupId);
         if (!group) return false;
@@ -316,7 +537,7 @@ export const leaveGroup = async (groupId: string, userId: string): Promise<boole
         );
         return true;
     } catch (error) {
-        console.error('Error leaving group:', error);
+        console.error('Error leaving group (legacy):', error);
         return false;
     }
 };
@@ -475,8 +696,33 @@ export const getGroupEvents = async (groupId: string) => {
 
 /**
  * Add a user to a group
+ * UPDATED: Now uses junction table
  */
 export const addUserToGroup = async (groupId: string, userId: string): Promise<boolean> => {
+    try {
+        console.log(`addUserToGroup: Adding user ${userId} to group ${groupId}`);
+
+        // Use junction table to add user
+        const success = await addGroupMember(groupId, userId, 'member');
+
+        if (success) {
+            console.log(`addUserToGroup: User ${userId} successfully added to group ${groupId}`);
+        } else {
+            console.error(`addUserToGroup: Failed to add user ${userId} to group ${groupId}`);
+        }
+
+        return success;
+    } catch (error) {
+        console.error('Error adding user to group:', error);
+        // Fallback to legacy implementation
+        return await addUserToGroupLegacy(groupId, userId);
+    }
+};
+
+/**
+ * Legacy add user to group implementation as fallback
+ */
+const addUserToGroupLegacy = async (groupId: string, userId: string): Promise<boolean> => {
     try {
         // Get current group data
         const group = await databases.getDocument(
@@ -516,131 +762,21 @@ export const addUserToGroup = async (groupId: string, userId: string): Promise<b
             }
         );
 
-        console.log('User added to group successfully');
+        console.log('User added to group successfully (legacy)');
         return true;
 
     } catch (error) {
-        console.error('Error adding user to group:', error);
+        console.error('Error adding user to group (legacy):', error);
         return false;
     }
 };
 
 /**
- * Send a group invite to a user
+ * UNIFIED INVITE SYSTEM - Re-export from groupMembership.ts
+ * These functions now use the groupMemberships collection with 'invited' status
+ * instead of a separate groupInvites collection
  */
-export const sendGroupInvite = async (groupId: string, fromUserId: string, toUserId: string): Promise<boolean> => {
-    try {
-        // Check if invite already exists
-        const existingInvites = await databases.listDocuments(
-            config.databaseID!,
-            config.groupInvitesCollectionID!,
-            [
-                Query.equal('groupId', groupId),
-                Query.equal('toUserId', toUserId),
-                Query.equal('status', 'pending')
-            ]
-        );
 
-        if (existingInvites.documents.length > 0) {
-            console.log('Group invite already exists');
-            return false;
-        }
+// Re-export the new unified invite functions from groupMembership
+export { acceptGroupInvite, declineGroupInvite, getUserGroupInvites, sendGroupInvite } from './groupMembership';
 
-        // Create new group invite
-        await databases.createDocument(
-            config.databaseID!,
-            config.groupInvitesCollectionID!,
-            ID.unique(),
-            {
-                groupId,
-                fromUserId,
-                toUserId,
-                status: 'pending'
-            }
-        );
-
-        // Get group and inviter details for notification
-        const [group, inviterProfile] = await Promise.all([
-            getGroupById(groupId),
-            getUserProfile(fromUserId)
-        ]);
-
-        if (group && inviterProfile) {
-            const inviterName = `${inviterProfile.firstName} ${inviterProfile.lastName}`;
-            await sendGroupInviteNotification([toUserId], group.title, inviterName, groupId);
-        }
-
-        return true;
-    } catch (error) {
-        console.error('Error sending group invite:', error);
-        return false;
-    }
-};
-
-/**
- * Get pending group invites for a user
- */
-export const getUserGroupInvites = async (userId: string) => {
-    try {
-        // Safety check: If collection ID is the temporary fallback, return empty array
-        if (config.groupInvitesCollectionID === 'temp_group_invites_id') {
-            console.warn('Group invites collection not configured. Please add EXPO_PUBLIC_APPWRITE_GROUP_INVITES_ID to your .env.local file');
-            return [];
-        }
-
-        const invites = await databases.listDocuments(
-            config.databaseID!,
-            config.groupInvitesCollectionID!,
-            [
-                Query.equal('toUserId', userId),
-                Query.equal('status', 'pending')
-            ]
-        );
-
-        return invites.documents;
-    } catch (error) {
-        console.error('Error fetching group invites:', error);
-        return [];
-    }
-};
-
-/**
- * Accept a group invite
- */
-export const acceptGroupInvite = async (inviteId: string, groupId: string, userId: string): Promise<boolean> => {
-    try {
-        // Update invite status
-        await databases.updateDocument(
-            config.databaseID!,
-            config.groupInvitesCollectionID!,
-            inviteId,
-            { status: 'accepted' }
-        );
-
-        // Add user to group
-        const success = await addUserToGroup(groupId, userId);
-        return success;
-    } catch (error) {
-        console.error('Error accepting group invite:', error);
-        return false;
-    }
-};
-
-/**
- * Decline a group invite
- */
-export const declineGroupInvite = async (inviteId: string): Promise<boolean> => {
-    try {
-        await databases.updateDocument(
-            config.databaseID!,
-            config.groupInvitesCollectionID!,
-            inviteId,
-            { status: 'declined' }
-        );
-
-        return true;
-    } catch (error) {
-        console.error('Error declining group invite:', error);
-        return false;
-    }
-};

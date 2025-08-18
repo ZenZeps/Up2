@@ -1,6 +1,6 @@
 import { getEventEmoji } from '@/constants/categories';
 import icons from '@/constants/icons';
-import { updateEvent } from '@/lib/api/event';
+import { isUserAttendingEvent, updateEvent } from '@/lib/api/event';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriends, getUsersByIds } from '@/lib/api/user';
 import { sendEventInviteNotification } from '@/lib/notifications/notificationUtils';
@@ -46,6 +46,56 @@ const EventDetailsModal = ({
   const [friends, setFriends] = useState<any[]>([]);
   const [friendPhotoUrls, setFriendPhotoUrls] = useState<Record<string, string | null>>({});
   const [inviting, setInviting] = useState(false);
+  const [isAttending, setIsAttending] = useState<boolean>(false);
+  const [checkingAttendance, setCheckingAttendance] = useState<boolean>(true);
+
+  // Check attendance status using junction table
+  useEffect(() => {
+    const checkAttendance = async () => {
+      if (!currentUserId || !event?.$id) {
+        setCheckingAttendance(false);
+        return;
+      }
+
+      try {
+        const attending = await isUserAttendingEvent(currentUserId, event.$id);
+        setIsAttending(attending);
+      } catch (error) {
+        console.error('Error checking attendance:', error);
+        setIsAttending(false);
+      } finally {
+        setCheckingAttendance(false);
+      }
+    };
+
+    checkAttendance();
+  }, [currentUserId, event?.$id]);
+
+  // Refresh attendance status
+  const refreshAttendanceStatus = async () => {
+    if (!currentUserId || !event?.$id) return;
+
+    try {
+      const attending = await isUserAttendingEvent(currentUserId, event.$id);
+      setIsAttending(attending);
+    } catch (error) {
+      console.error('Error refreshing attendance status:', error);
+    }
+  };
+
+  // Enhanced attend handler
+  const handleAttendClick = async () => {
+    await onAttend();
+    // Refresh attendance status after a brief delay to ensure backend is updated
+    setTimeout(refreshAttendanceStatus, 500);
+  };
+
+  // Enhanced not attend handler
+  const handleNotAttendClick = async () => {
+    await onNotAttend();
+    // Refresh attendance status after a brief delay to ensure backend is updated
+    setTimeout(refreshAttendanceStatus, 500);
+  };
 
   useEffect(() => {
     const fetchAttendeeProfiles = async () => {
@@ -92,8 +142,6 @@ const EventDetailsModal = ({
   }, [event?.creatorId]);
 
   if (!event) return null;
-
-  const isAttending = event.attendees?.includes(currentUserId);
 
   const handleInviteFriend = async () => {
     try {
@@ -289,13 +337,13 @@ const EventDetailsModal = ({
                     styles.button,
                     isAttending ? styles.notAttendingButton : styles.attendingButton
                   ]}
-                  onPress={isAttending ? onNotAttend : onAttend}
+                  onPress={isAttending ? handleNotAttendClick : handleAttendClick}
                 >
                   <Text style={[
                     styles.buttonText,
                     isAttending ? styles.notAttendingText : styles.attendingText
                   ]}>
-                    {isAttending ? 'Not Attending' : 'Attend Event'}
+                    {checkingAttendance ? 'Loading...' : (isAttending ? 'Not Attending' : 'Attend Event')}
                   </Text>
                 </TouchableOpacity>
               )}

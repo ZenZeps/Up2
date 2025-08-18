@@ -1,11 +1,13 @@
 import { getCategoriesByValues, getEventEmoji } from '@/constants/categories';
-import { updateEvent } from '@/lib/api/event';
+import { isUserAttendingEvent, updateEvent } from '@/lib/api/event';
+import { getUserFriends } from '@/lib/api/friendship';
+import { getUserGroups } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
-import { getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { getUsersByIds } from '@/lib/api/user';
 import { account, config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
-import { batchProcess, createOptimizedQuery, dbConnectionPool } from '@/lib/utils/dbOptimization';
+import { batchProcess, dbConnectionPool } from '@/lib/utils/dbOptimization';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -50,22 +52,47 @@ export default function Feed() {
       if (!user?.$id) return;
 
       setCurrentUserId(user.$id);
-      const profile = await getUserProfile(user.$id);
-      const userFriends = profile?.friends ?? [];
+
+      // Use proper junction table approach to get friends
+      const userFriends = await getUserFriends(user.$id);
       setFriends(userFriends);
 
-      if (userFriends.length > 0) {
-        // Use optimized queries and connection pooling for scalability
-        const friendEvents = await dbConnectionPool.acquire(async () => {
-          return await databases.listDocuments(
-            config.databaseID!,
-            config.eventsCollectionID!,
-            createOptimizedQuery.events.friendEvents(userFriends, 50)
-          );
-        });
+      console.log('Feed: User friends loaded:', userFriends.length);
+
+      // Also get user's groups to show events from groups
+      const userGroups = await getUserGroups(user.$id);
+      const userGroupIds = userGroups.map(group => group.$id);
+
+      console.log('Feed: User groups loaded:', userGroupIds.length);
+
+      if (userFriends.length > 0 || userGroupIds.length > 0) {
+        // Fetch ALL events and filter for friends' events and group events
+        console.log('Feed: Fetching events from friends and groups');
+
+        const allEvents = await databases.listDocuments(
+          config.databaseID!,
+          config.eventsCollectionID!,
+          [
+            // Query.greaterThan('endTime', new Date().toISOString()), // Only upcoming events
+            // Query.orderDesc('$createdAt'), // Most recent first
+            // Query.limit(100) // Reasonable limit
+          ]
+        );
+
+        console.log('Feed: Total events fetched:', allEvents.documents.length);
+
+        // Filter events created by friends OR events from user's groups
+        const relevantEvents = {
+          documents: allEvents.documents.filter(event =>
+            userFriends.includes(event.creatorId) || // Events from friends
+            (event.groupId && userGroupIds.includes(event.groupId)) // Events from user's groups
+          )
+        };
+
+        console.log('Feed: Events from friends and groups:', relevantEvents.documents.length);
 
         // Batch process creator profiles for better performance
-        const uniqueCreatorIds = [...new Set(friendEvents.documents.map(event => event.creatorId))];
+        const uniqueCreatorIds = [...new Set(relevantEvents.documents.map((event: any) => event.creatorId))];
         const creatorProfiles = await batchProcess(
           uniqueCreatorIds,
           async (batch) => await getUsersByIds(batch),
@@ -79,7 +106,7 @@ export default function Feed() {
         // Fetch creator profile photos
         const creatorPhotoMap: Record<string, string | null> = {};
         await Promise.all(
-          uniqueCreatorIds.map(async (creatorId) => {
+          uniqueCreatorIds.map(async (creatorId: string) => {
             try {
               const photoUrl = await getUserProfilePhotoUrl(creatorId);
               creatorPhotoMap[creatorId] = photoUrl;
@@ -90,26 +117,39 @@ export default function Feed() {
         );
         setCreatorPhotoUrls(creatorPhotoMap);
 
-        const filteredAndMappedEvents = friendEvents.documents
-          .filter(event => {
-            // Only show upcoming events that the user is NOT attending
-            const eventDate = new Date(event.date);
-            const now = new Date();
-            const isUpcoming = eventDate >= now;
-            const isNotAttending = !event.attendees?.includes(user.$id ?? '');
-            return isUpcoming && isNotAttending;
-          })
-          .map(event => ({
-            ...(event as unknown as AppEvent),
-            creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
-            isAttending: event.attendees?.includes(user.$id ?? ''),
-          }));
-        setEventsWithCreatorNames(filteredAndMappedEvents as AppEvent[]);
+        const filteredAndMappedEvents = await Promise.all(
+          relevantEvents.documents
+            .filter((event: any) => {
+              // Show all upcoming events from friends and groups
+              const eventDate = new Date(event.endTime || event.date); // Use endTime if available, fallback to date
+              const now = new Date();
+              const isUpcoming = eventDate >= now;
+              return isUpcoming;
+            })
+            .map(async (event: any) => {
+              // Check if user is attending using junction table
+              const isAttending = await isUserAttendingEvent(user.$id, event.$id);
+
+              return {
+                ...(event as unknown as AppEvent),
+                creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
+                isAttending,
+              };
+            })
+        );
+
+        // Filter out events the user is already attending (based on requirement)
+        const nonAttendingEvents = filteredAndMappedEvents.filter((event: any) => !event.isAttending);
+
+        setEventsWithCreatorNames(nonAttendingEvents as AppEvent[]);
 
         // Fetch travel announcements with connection pooling
         await dbConnectionPool.acquire(async () => {
           await fetchTravelAnnouncements(userFriends);
         });
+      } else {
+        // No friends or groups - show empty feed
+        setEventsWithCreatorNames([]);
       }
     } catch (err: any) {
       if (err?.message?.includes('missing scope (account)')) return;

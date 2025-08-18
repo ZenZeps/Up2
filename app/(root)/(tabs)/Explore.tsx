@@ -1,4 +1,4 @@
-import { enrichEventsWithGroupNames, updateEvent } from '@/lib/api/event';
+import { enrichEventsWithGroupNames, isUserAttendingEvent, updateEvent } from '@/lib/api/event';
 import { cancelFriendRequest, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
@@ -14,6 +14,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Linking,
   ScrollView,
@@ -156,25 +157,60 @@ const Explore = () => {
 
   useEffect(() => {
     const addCreatorNames = async () => {
-      // Filter events: only upcoming and accessible events
+      // Filter events for Explore: events from OTHER users that current user is NOT attending
       const now = new Date();
-      const filteredEvents = events.filter(event => {
+
+      // First filter out basic criteria (past events, user's own events)
+      const basicFilteredEvents = events.filter(event => {
         // Filter out past events
         if (new Date(event.endTime) <= now) return false;
 
-        // If event is private, only show if user has access
-        if (event.isPrivate) {
-          return event.creatorId === userId || // User is creator
-            (event.inviteeIds && event.inviteeIds.includes(userId)) || // User is invited
-            (event.attendees && event.attendees.includes(userId)); // User is attending
-        }
+        // Filter out events created by current user (we want events from OTHER users)
+        if (event.creatorId === userId) return false;
 
-        // Show all public events
         return true;
       });
 
+      // Now check attendance status using junction table for remaining events
+      const eventsWithAttendanceCheck = await Promise.all(
+        basicFilteredEvents.map(async (event) => {
+          // Check if user is attending using junction table
+          const isAttending = await isUserAttendingEvent(userId, event.$id);
+
+          return {
+            event,
+            isAttending
+          };
+        })
+      );
+
+      // Filter out events the user is attending
+      const finalFilteredEvents = eventsWithAttendanceCheck
+        .filter(({ isAttending }) => !isAttending)
+        .map(({ event }) => event)
+        .filter(event => {
+          // For private events, only show if user has access (invited but not attending)
+          if (event.isPrivate) {
+            return (event.inviteeIds && event.inviteeIds.includes(userId)); // User is invited but not attending
+          }
+
+          // Show all public events from other users that user is not attending
+          return true;
+        });
+
+      console.log('Explore Events Filter:', {
+        totalEvents: events.length,
+        basicFiltered: basicFilteredEvents.length,
+        finalFiltered: finalFilteredEvents.length,
+        userId,
+        sampleEvent: finalFilteredEvents[0] ? {
+          title: finalFilteredEvents[0].title,
+          creator: finalFilteredEvents[0].creatorId,
+        } : null
+      });
+
       // Enrich events with group names
-      const eventsWithGroupNames = await enrichEventsWithGroupNames(filteredEvents);
+      const eventsWithGroupNames = await enrichEventsWithGroupNames(finalFilteredEvents);
 
       const uniqueCreatorIds = [...new Set(eventsWithGroupNames.map(event => event.creatorId))];
       const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
@@ -374,30 +410,36 @@ const Explore = () => {
   }, [userId, profile]);
 
   const handleDeleteFriend = async (friendId: string) => {
-    showConfirm(
+    showAlert(
       'Remove Friend',
       'Are you sure you want to remove this friend?',
-      async () => {
-        try {
-          // Use the new unfriend API that properly deletes from database
-          const result = await unfriendUser(userId, friendId);
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Use the new unfriend API that properly deletes from database
+              const result = await unfriendUser(userId, friendId);
 
-          if (!result.success) {
-            showAlert('Error', result.message, [{ text: 'OK' }], 'error');
-            return;
+              if (!result.success) {
+                showAlert('Error', result.message, [{ text: 'OK' }], 'error');
+                return;
+              }
+
+              // Update the UI state after successful database deletion
+              setFriends((prev) => prev.filter((id) => id !== friendId));
+              console.log('✅ Friend removed successfully from database and UI');
+
+            } catch (err) {
+              console.error('Delete friend error:', err);
+              showAlert('Error', 'Failed to remove friend', [{ text: 'OK' }], 'error');
+            }
           }
-
-          // Update the UI state after successful database deletion
-          setFriends((prev) => prev.filter((id) => id !== friendId));
-          console.log('✅ Friend removed successfully from database and UI');
-
-        } catch (err) {
-          console.error('Delete friend error:', err);
-          showAlert('Error', 'Failed to remove friend', [{ text: 'OK' }], 'error');
         }
-      },
-      'Remove',
-      'cancel'
+      ],
+      'warning'
     );
   };
 
@@ -422,6 +464,9 @@ const Explore = () => {
   const filteredUsers = useMemo(() => {
     return users
       .filter((u) =>
+        // Filter out users who are already friends
+        !friends.includes(u.$id) &&
+        // Filter by search query
         userDisplayUtils.getSearchableText(u).includes(query.toLowerCase())
       )
       .sort((a, b) => {
@@ -429,7 +474,14 @@ const Explore = () => {
         const nameB = userDisplayUtils.getFullName(b).toLowerCase();
         return nameA.localeCompare(nameB);
       });
-  }, [query, users]);
+  }, [query, users, friends]);
+
+  // Filter users to exclude friends (for main display when no search query)
+  const nonFriendUsers = useMemo(() => {
+    const filtered = users.filter((u) => !friends.includes(u.$id));
+    console.log(`Explore: Filtering ${users.length} users, excluding ${friends.length} friends, showing ${filtered.length} users`);
+    return filtered;
+  }, [users, friends]);
 
   const filteredEvents = useMemo(() => {
     return eventsWithCreatorNames.filter(
@@ -619,7 +671,7 @@ const Explore = () => {
               )
             ) : (
               <FlatList
-                data={users}
+                data={nonFriendUsers}
                 renderItem={renderUserItem}
                 keyExtractor={(item) => item.$id}
                 onEndReached={loadMoreUsers}

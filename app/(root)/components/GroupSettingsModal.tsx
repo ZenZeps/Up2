@@ -79,8 +79,20 @@ const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
 
     const addSelectedUser = async (userToAdd: any) => {
         try {
-            // Check if user is already a member
-            if (group.users?.includes(userToAdd.$id)) {
+            // Check if user is already a member - handle both junction table and legacy formats
+            let isAlreadyMember = false;
+            if (group.users && group.users.length > 0) {
+                const firstUser = group.users[0];
+                if (typeof firstUser === 'string') {
+                    // Legacy format: users is string[]
+                    isAlreadyMember = group.users.includes(userToAdd.$id);
+                } else if (firstUser && typeof firstUser === 'object' && '$id' in firstUser) {
+                    // Junction table format: users is UserProfile[]
+                    isAlreadyMember = (group.users as any[]).some(member => member.$id === userToAdd.$id);
+                }
+            }
+
+            if (isAlreadyMember) {
                 Alert.alert('Already Member', 'This user is already a member of the group');
                 return;
             }

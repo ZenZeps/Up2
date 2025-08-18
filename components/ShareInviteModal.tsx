@@ -35,9 +35,7 @@ interface ShareOption {
 
 export default function ShareInviteModal({ visible, onClose, eventId }: ShareInviteModalProps) {
     const [loading, setLoading] = useState(false);
-    const [inviteData, setInviteData] = useState<InviteData | null>(null);
-
-    const shareOptions: ShareOption[] = [
+    const [inviteData, setInviteData] = useState<InviteData | null>(null); const shareOptions: ShareOption[] = [
         {
             id: 'whatsapp',
             name: 'WhatsApp',

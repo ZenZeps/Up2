@@ -95,8 +95,20 @@ const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                 return;
             }
 
-            // Check if friend is already in the group
-            if (group.users?.includes(friendToInvite.$id)) {
+            // Check if friend is already in the group - handle both junction table and legacy formats
+            let isAlreadyMember = false;
+            if (group.users && group.users.length > 0) {
+                const firstUser = group.users[0];
+                if (typeof firstUser === 'string') {
+                    // Legacy format: users is string[]
+                    isAlreadyMember = group.users.includes(friendToInvite.$id);
+                } else if (firstUser && typeof firstUser === 'object' && '$id' in firstUser) {
+                    // Junction table format: users is UserProfile[]
+                    isAlreadyMember = (group.users as any[]).some(member => member.$id === friendToInvite.$id);
+                }
+            }
+
+            if (isAlreadyMember) {
                 Alert.alert('Info', 'This friend is already a member of the group');
                 return;
             }

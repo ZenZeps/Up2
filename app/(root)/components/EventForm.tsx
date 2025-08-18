@@ -161,7 +161,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setDescription(event.description || '');
       setTags(event.tags || []);
       setInviteeIds(event.inviteeIds || []);
-      setIsPrivate(event.isPrivate || false);
+      setIsPrivate(event.isPrivate === true); // Fix: properly handle boolean value
 
       // Safely set dates with validation
       try {
@@ -362,13 +362,17 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
         startTime: startDate.toISOString(),
         endTime: endDate.toISOString(),
         creatorId: currentUserId,
-        inviteeIds: inviteeIds.filter(id => id && id.trim()), // Filter out empty IDs
-        attendees: event?.attendees || [],
         description: description.trim(),
         tags: tags.filter(tag => tag && tag.trim()), // Filter out empty tags
         isPrivate: isPrivate,
         groupId: groupId || undefined, // Include group ID if provided
       };
+
+      // Only include these array fields when creating new events
+      if (!event || !event.$id) {
+        (eventData as any).inviteeIds = inviteeIds.filter(id => id && id.trim());
+        (eventData as any).attendees = [];
+      }
 
       console.log("Saving event with data:", eventData);
 

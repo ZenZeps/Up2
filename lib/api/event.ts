@@ -109,10 +109,11 @@ export async function fetchEvents(): Promise<Event[]> {
         startTime,
         endTime,
         creatorId: doc.creatorId,
-        inviteeIds: [], // Will be populated from junction table
+        inviteeIds: doc.inviteeIds || [], // Keep original data
         description: doc.description || '',
-        attendees: [], // Will be populated from junction table
+        attendees: doc.attendees || [], // Keep original data
         tags: Array.isArray(doc.tags) ? doc.tags : [], // Include tags field
+        isPrivate: doc.isPrivate || false, // Include privacy field
         // Include new optimized fields
         attendeeCount: doc.attendeeCount || 0,
         inviteCount: doc.inviteCount || 0,
@@ -125,25 +126,21 @@ export async function fetchEvents(): Promise<Event[]> {
     const enhancedEvents = await Promise.all(events.map(async (event) => {
       try {
         // Get attendees and invitees from junction tables in parallel
-        const [attendees, inviteeIds] = await Promise.all([
+        const [junctionAttendees, junctionInviteeIds] = await Promise.all([
           getEventAttendees(event.$id),
           getEventInvitees(event.$id)
         ]);
 
-        // Return event with reconstructed arrays for app compatibility
+        // Use junction table data if available, otherwise fallback to original document data
         return {
           ...event,
-          attendees,
-          inviteeIds,
+          attendees: junctionAttendees.length > 0 ? junctionAttendees : event.attendees,
+          inviteeIds: junctionInviteeIds.length > 0 ? junctionInviteeIds : event.inviteeIds,
         };
       } catch (error) {
-        // If junction table lookup fails, use empty arrays
-        authDebug.warn(`Failed to load relationships for event ${event.$id}:`, error);
-        return {
-          ...event,
-          attendees: [],
-          inviteeIds: [],
-        };
+        // If junction table lookup fails, use original document data
+        authDebug.warn(`Failed to load relationships for event ${event.$id}, using document data:`, error);
+        return event;
       }
     }));
 
@@ -189,10 +186,11 @@ export async function fetchEventById(id: string): Promise<Event | null> {
       startTime: doc.startTime,
       endTime: doc.endTime,
       creatorId: doc.creatorId,
-      inviteeIds: [], // Will be populated from junction table
+      inviteeIds: doc.inviteeIds || [], // Keep original data
       description: doc.description || '',
-      attendees: [], // Will be populated from junction table
+      attendees: doc.attendees || [], // Keep original data
       tags: Array.isArray(doc.tags) ? doc.tags : [], // Include tags field
+      isPrivate: doc.isPrivate || false, // Include privacy field
       // Include optimized fields
       attendeeCount: doc.attendeeCount || 0,
       inviteCount: doc.inviteCount || 0,
@@ -201,15 +199,16 @@ export async function fetchEventById(id: string): Promise<Event | null> {
     };
 
     // Get attendees and invitees from junction tables
-    const [attendees, inviteeIds] = await Promise.all([
+    const [junctionAttendees, junctionInviteeIds] = await Promise.all([
       getEventAttendees(id),
       getEventInvitees(id)
     ]);
 
     const event = {
       ...baseEvent,
-      attendees,
-      inviteeIds,
+      // Use junction table data if available, otherwise fallback to original document data
+      attendees: junctionAttendees.length > 0 ? junctionAttendees : baseEvent.attendees,
+      inviteeIds: junctionInviteeIds.length > 0 ? junctionInviteeIds : baseEvent.inviteeIds,
     };
 
     // Cache the enhanced event
@@ -301,7 +300,6 @@ export async function createEvent(event: Event) {
       viewCount: 0, // Start with 0 views
       popularityScore: 0.0, // Start with 0.0 popularity
       responseRate: true, // Default to true
-      lastActivtyAt: new Date().toISOString(), // Current timestamp
 
       // Optional fields - set defaults since they don't exist in Event type yet
       locationLat: 0.0, // Default location coordinates
@@ -334,6 +332,15 @@ export async function createEvent(event: Event) {
     );
 
     authDebug.info('Event created successfully:', createdEvent.$id);
+
+    // IMPORTANT: Automatically mark the creator as attending their own event
+    try {
+      await addEventAttendee(createdEvent.$id, sanitizedEvent.creatorId);
+      authDebug.info(`Creator ${sanitizedEvent.creatorId} automatically marked as attending event ${createdEvent.$id}`);
+    } catch (attendeeError) {
+      authDebug.warn('Failed to mark creator as attending their event:', attendeeError);
+      // Don't fail event creation if attendance marking fails
+    }
 
     // Cache the created event
     cacheManager.set(`event-${createdEvent.$id}`, createdEvent, EVENT_CACHE_TTL);
@@ -472,10 +479,18 @@ export async function migrateLegacyEventRelationships() {
  */
 export async function addEventAttendee(eventId: string, userId: string): Promise<boolean> {
   try {
+    const collectionId = config.eventAttendancesCollectionID;
+
+    // Check if junction table is properly configured
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
+      authDebug.info('Event attendances junction table not configured, skipping attendance recording');
+      return false;
+    }
+
     // Check if already attending
     const existingAttendance = await databases.listDocuments(
       config.databaseID!,
-      'event_attendance', // Junction table
+      collectionId,
       [
         Query.equal('eventId', eventId),
         Query.equal('userId', userId)
@@ -487,15 +502,14 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
       return true;
     }
 
-    // Create attendance record
+    // Create attendance record with only the required fields
     await databases.createDocument(
       config.databaseID!,
-      'event_attendance',
+      collectionId,
       ID.unique(),
       {
         eventId,
         userId,
-        joinedAt: new Date().toISOString(),
         status: 'attending'
       }
     );
@@ -509,8 +523,7 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
       config.eventsCollectionID!,
       eventId,
       {
-        attendeeCount: newCount,
-        lastActivtyAt: new Date().toISOString(),
+        attendeeCount: newCount
       }
     );
 
@@ -527,10 +540,18 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
  */
 export async function removeEventAttendee(eventId: string, userId: string): Promise<boolean> {
   try {
+    const collectionId = config.eventAttendancesCollectionID;
+
+    // Check if junction table is configured
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
+      authDebug.info('Event attendances junction table not configured, skipping attendance removal');
+      return false;
+    }
+
     // Find attendance record
     const attendanceRecords = await databases.listDocuments(
       config.databaseID!,
-      'event_attendance',
+      collectionId,
       [
         Query.equal('eventId', eventId),
         Query.equal('userId', userId)
@@ -546,7 +567,7 @@ export async function removeEventAttendee(eventId: string, userId: string): Prom
     for (const record of attendanceRecords.documents) {
       await databases.deleteDocument(
         config.databaseID!,
-        'event_attendance',
+        collectionId,
         record.$id
       );
     }
@@ -633,9 +654,19 @@ export async function addEventInvitation(eventId: string, userId: string): Promi
  */
 export async function getEventAttendees(eventId: string): Promise<string[]> {
   try {
+    // Check if we should use junction tables or fallback to traditional approach
+    const collectionId = config.eventAttendancesCollectionID;
+    authDebug.debug(`Checking attendees collection config: ${collectionId}`);
+
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
+      authDebug.info('Junction table not configured, skipping attendees lookup');
+      return [];
+    }
+
+    authDebug.debug(`Attempting to fetch attendees from collection: ${collectionId}`);
     const attendanceRecords = await databases.listDocuments(
       config.databaseID!,
-      'event_attendance',
+      collectionId,
       [
         Query.equal('eventId', eventId),
         Query.equal('status', 'attending'),
@@ -643,7 +674,9 @@ export async function getEventAttendees(eventId: string): Promise<string[]> {
       ]
     );
 
-    return attendanceRecords.documents.map((record: any) => record.userId);
+    const attendeeIds = attendanceRecords.documents.map((record: any) => record.userId);
+    authDebug.info(`Updated attendees: +${attendeeIds.length}, -0`);
+    return attendeeIds;
   } catch (error) {
     authDebug.error(`Failed to get attendees for event: ${eventId}`, error);
     return [];
@@ -655,17 +688,10 @@ export async function getEventAttendees(eventId: string): Promise<string[]> {
  */
 export async function getEventInvitees(eventId: string): Promise<string[]> {
   try {
-    const invitationRecords = await databases.listDocuments(
-      config.databaseID!,
-      'event_invitations',
-      [
-        Query.equal('eventId', eventId),
-        Query.equal('status', 'pending'),
-        Query.limit(1000) // Scalability limit
-      ]
-    );
-
-    return invitationRecords.documents.map((record: any) => record.userId);
+    // Always return empty array as we don't have invitations collection configured
+    // The system will fallback to using inviteeIds from the event document
+    authDebug.debug('Event invitations junction table not configured, skipping lookup');
+    return [];
   } catch (error) {
     authDebug.error(`Failed to get invitees for event: ${eventId}`, error);
     return [];
@@ -700,45 +726,52 @@ export async function updateEventAttendance(eventId: string, userId: string, isA
 
       // Handle attendees array update
       if (eventData.attendees && Array.isArray(eventData.attendees)) {
-        // Get current attendees from junction table
-        const currentAttendees = await getEventAttendees(id);
-        const newAttendees = eventData.attendees;
+        // Check if junction tables are properly configured
+        const collectionId = config.eventAttendancesCollectionID;
 
-        // Find users to add (in new but not in current)
-        const toAdd = newAttendees.filter(userId => !currentAttendees.includes(userId));
+        if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
+          authDebug.info('Junction table not configured, skipping attendees sync');
+        } else {
+          // Get current attendees from junction table
+          const currentAttendees = await getEventAttendees(id);
+          const newAttendees = eventData.attendees;
 
-        // Find users to remove (in current but not in new)
-        const toRemove = currentAttendees.filter(userId => !newAttendees.includes(userId));
+          // Find users to add (in new but not in current)
+          const toAdd = newAttendees.filter(userId => !currentAttendees.includes(userId));
 
-        // Execute changes
-        for (const userId of toAdd) {
-          await addEventAttendee(id, userId);
+          // Find users to remove (in current but not in new)
+          const toRemove = currentAttendees.filter(userId => !newAttendees.includes(userId));
+
+          // Execute changes
+          for (const userId of toAdd) {
+            await addEventAttendee(id, userId);
+          }
+          for (const userId of toRemove) {
+            await removeEventAttendee(id, userId);
+          }
+
+          authDebug.info(`Updated attendees: +${toAdd.length}, -${toRemove.length}`);
         }
-        for (const userId of toRemove) {
-          await removeEventAttendee(id, userId);
-        }
-
-        authDebug.info(`Updated attendees: +${toAdd.length}, -${toRemove.length}`);
       }
 
       // Handle invitees array update
       if ((eventData as any).inviteeIds && Array.isArray((eventData as any).inviteeIds)) {
-        const newInvitees = (eventData as any).inviteeIds;
-
-        // For invitations, we typically only add (don't remove existing invites)
-        // But let's implement full sync for consistency
-        const currentInvitees = await getEventInvitees(id);
-        const toAdd = newInvitees.filter((userId: string) => !currentInvitees.includes(userId));
-
-        // Execute additions
-        for (const userId of toAdd) {
-          await addEventInvitation(id, userId);
-        }
-
-        authDebug.info(`Updated invitees: +${toAdd.length}`);
+        // Since we don't have invitations collection configured, skip this for now
+        authDebug.info('Event invitations junction table not configured, skipping invitees sync');
+        authDebug.info(`Updated invitees: +0`);
       }
 
-      return; // Exit early as we've handled the array updates
+      // Check if there are other fields to update besides arrays
+      const otherFields = { ...eventData };
+      delete otherFields.attendees;
+      delete (otherFields as any).inviteeIds;
+
+      if (Object.keys(otherFields).length === 0) {
+        return; // Exit early if only array updates were needed
+      }
+
+      // Continue to update other fields
+      eventData = otherFields;
     }
 
     // Build sanitized data with computed fields (for non-array updates)
@@ -830,58 +863,59 @@ export async function fetchUserEvents(userId: string): Promise<Event[]> {
     authDebug.info(`Fetching events for user: ${userId}`);
     authDebug.debug(`Using cache key: ${cacheKey}`);
 
-    // Query for events where user is creator OR attendee OR invitee
-    // Since Appwrite might not support OR queries well, we'll fetch separately and merge
-    const [creatorEvents, attendeeEvents, inviteeEvents] = await Promise.all([
-      // Events where user is creator
-      databases.listDocuments(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        [Query.equal('creatorId', userId)]
-      ),
-      // Events where user is in attendees (if it's a simple array)
-      databases.listDocuments(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        [Query.search('attendees', userId)]
-      ).catch(() => ({ documents: [] })), // Fallback if search fails
-      // Events where user is in inviteeIds
-      databases.listDocuments(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        [Query.search('inviteeIds', userId)]
-      ).catch(() => ({ documents: [] })) // Fallback if search fails
-    ]);
+    // Get events user created
+    const creatorEvents = await databases.listDocuments(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      [Query.equal('creatorId', userId)]
+    );
 
-    // Merge and deduplicate events
+    // Get events user is attending using junction table
+    const attendingEvents = await getUserAttendingEvents(userId);
+
+    // Get events where user is invited (legacy support)
+    const inviteeEvents = await databases.listDocuments(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      [Query.search('inviteeIds', userId)]
+    ).catch(() => ({ documents: [] })); // Fallback if search fails
+
+    // Merge created and attending events
     const allDocuments = [
       ...creatorEvents.documents,
-      ...attendeeEvents.documents,
+      ...attendingEvents, // Already Event objects
       ...inviteeEvents.documents
     ];
 
-    // Remove duplicates based on $id
-    const uniqueDocuments = allDocuments.filter((doc, index, self) =>
-      self.findIndex(d => d.$id === doc.$id) === index
-    );
+    // Remove duplicates based on $id and convert to Event objects
+    const uniqueEvents = new Map<string, Event>();
 
-    const events = uniqueDocuments.map((doc: any): Event => ({
-      $id: doc.$id,
-      title: doc.title,
-      location: doc.location,
-      startTime: doc.startTime,
-      endTime: doc.endTime,
-      creatorId: doc.creatorId,
-      inviteeIds: doc.inviteeIds || [],
-      description: doc.description || '',
-      attendees: doc.attendees || [],
-      tags: Array.isArray(doc.tags) ? doc.tags : [], // Include tags field
-    }));
+    allDocuments.forEach((doc: any) => {
+      if (!uniqueEvents.has(doc.$id)) {
+        // If it's already an Event object from attendingEvents, use as is
+        // Otherwise convert document to Event object
+        const event: Event = doc.title ? doc : {
+          $id: doc.$id,
+          title: doc.title,
+          location: doc.location,
+          startTime: doc.startTime,
+          endTime: doc.endTime,
+          creatorId: doc.creatorId,
+          inviteeIds: doc.inviteeIds || [],
+          description: doc.description || '',
+          attendees: doc.attendees || [],
+          tags: Array.isArray(doc.tags) ? doc.tags : [],
+        };
+        uniqueEvents.set(doc.$id, event);
+      }
+    });
+
+    const events = Array.from(uniqueEvents.values());
 
     // Cache user events
     cacheManager.set<Event[]>(cacheKey, events, EVENT_CACHE_TTL);
 
-    authDebug.info(`Successfully fetched ${events.length} events for user: ${userId}`);
+    authDebug.info(`Successfully fetched ${events.length} events for user: ${userId} (${creatorEvents.documents.length} created, ${attendingEvents.length} attending, ${inviteeEvents.documents.length} invited)`);
 
     // Also cache individual events
     events.forEach((event: Event) => {
@@ -892,5 +926,107 @@ export async function fetchUserEvents(userId: string): Promise<Event[]> {
   } catch (err) {
     authDebug.error(`Error fetching user events for: ${userId}`, err);
     return [];
+  }
+}
+
+/**
+ * Get events that the user is attending (using junction table)
+ */
+export async function getUserAttendingEvents(userId: string): Promise<Event[]> {
+  try {
+    authDebug.info(`Fetching events user is attending: ${userId}`);
+
+    // Get event IDs from event_attendances junction table
+    const attendanceRecords = await databases.listDocuments(
+      config.databaseID!,
+      config.eventAttendancesCollectionID!,
+      [Query.equal('userId', userId)]
+    );
+
+    if (attendanceRecords.documents.length === 0) {
+      authDebug.info(`No attendance records found for user: ${userId}`);
+      return [];
+    }
+
+    const eventIds = attendanceRecords.documents.map(record => record.eventId);
+    authDebug.debug(`Found ${eventIds.length} events user is attending`);
+
+    // Fetch the actual event documents
+    const events = await Promise.all(
+      eventIds.map(async (eventId) => {
+        try {
+          const eventDoc = await databases.getDocument(
+            config.databaseID!,
+            config.eventsCollectionID!,
+            eventId
+          );
+          return eventDoc as any;
+        } catch (error) {
+          authDebug.warn(`Could not fetch event ${eventId}:`, error);
+          return null;
+        }
+      })
+    );
+
+    // Filter out null events and map to Event type
+    const validEvents = events
+      .filter(event => event !== null)
+      .map((doc: any): Event => ({
+        $id: doc.$id,
+        title: doc.title,
+        location: doc.location,
+        startTime: doc.startTime,
+        endTime: doc.endTime,
+        creatorId: doc.creatorId,
+        inviteeIds: doc.inviteeIds || [],
+        description: doc.description || '',
+        attendees: doc.attendees || [],
+        tags: Array.isArray(doc.tags) ? doc.tags : [],
+      }));
+
+    authDebug.info(`Successfully fetched ${validEvents.length} attending events for user: ${userId}`);
+    return validEvents;
+  } catch (err) {
+    authDebug.error(`Error fetching attending events for user: ${userId}`, err);
+    return [];
+  }
+}
+
+/**
+ * Check if user is attending a specific event (using junction table)
+ */
+export async function isUserAttendingEvent(userId: string, eventId: string): Promise<boolean> {
+  try {
+    const attendanceRecords = await databases.listDocuments(
+      config.databaseID!,
+      config.eventAttendancesCollectionID!,
+      [
+        Query.equal('userId', userId),
+        Query.equal('eventId', eventId)
+      ]
+    );
+
+    return attendanceRecords.documents.length > 0;
+  } catch (err) {
+    authDebug.error(`Error checking attendance for user ${userId} and event ${eventId}:`, err);
+    return false;
+  }
+}
+
+/**
+ * Get the number of attendees for an event (using junction table)
+ */
+export async function getEventAttendeeCount(eventId: string): Promise<number> {
+  try {
+    const attendanceRecords = await databases.listDocuments(
+      config.databaseID!,
+      config.eventAttendancesCollectionID!,
+      [Query.equal('eventId', eventId)]
+    );
+
+    return attendanceRecords.documents.length;
+  } catch (err) {
+    authDebug.error(`Error getting attendee count for event ${eventId}:`, err);
+    return 0;
   }
 }

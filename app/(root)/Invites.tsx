@@ -151,11 +151,13 @@ export default function Invites() {
         const invites = await getUserGroupInvites(userId);
 
         // Enrich invites with group and sender details
+        // Note: New system uses groupId, userId, and invitedBy fields
         const enrichedInvites = await Promise.all(
           invites.map(async (invite: any) => {
             const [group, senderProfile] = await Promise.all([
               getGroupById(invite.groupId),
-              getUserProfile(invite.fromUserId)
+              // Use invitedBy field instead of fromUserId
+              getUserProfile(invite.invitedBy)
             ]);
 
             return {
@@ -177,20 +179,22 @@ export default function Invites() {
 
   const handleAcceptGroupInvite = async (invite: any) => {
     try {
-      const success = await acceptGroupInvite(invite.$id, invite.groupId, userId);
+      // New signature: acceptGroupInvite now takes only the membership ID
+      const success = await acceptGroupInvite(invite.$id);
       if (success) {
         setGroupInvites(prev => prev.filter(i => i.$id !== invite.$id));
-        showSuccess('Group invite accepted!');
+        Alert.alert('Success', 'You have joined the group!');
+
+        // Reload user groups to show the new group
+        router.push('/(tabs)/Home');
       } else {
-        showError('Failed to accept group invite');
+        Alert.alert('Error', 'Failed to join group');
       }
     } catch (error) {
       console.error('Error accepting group invite:', error);
-      showError('Failed to accept group invite');
+      Alert.alert('Error', 'Failed to join group');
     }
-  };
-
-  const handleDeclineGroupInvite = async (invite: any) => {
+  }; const handleDeclineGroupInvite = async (invite: any) => {
     try {
       const success = await declineGroupInvite(invite.$id);
       if (success) {

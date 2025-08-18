@@ -1,5 +1,5 @@
 import { getEventColor } from '@/constants/categories';
-import { enrichEventsWithGroupNames } from '@/lib/api/event';
+import { addEventAttendee, enrichEventsWithGroupNames, getEventAttendeeCount, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
 import { getUserGroupInvites } from '@/lib/api/group';
 import { getActiveTravelForUser } from '@/lib/api/travel';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
@@ -104,6 +104,7 @@ export default function Home() {
   const [groupInvites, setGroupInvites] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('calendar');
   const [enrichedEvents, setEnrichedEvents] = useState<AppEvent[]>([]);
+  const [agendaEvents, setAgendaEvents] = useState<AppEvent[]>([]);
   const [messageModalVisible, setMessageModalVisible] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
@@ -191,16 +192,51 @@ export default function Home() {
     return creatorNameCache.get(creatorId) || 'Unknown Creator';
   }, [creatorProfiles]);
 
-  // Filter events for the current user
+  // Filter events for the current user using junction table system
   const userEvents = useMemo(() => {
     // Early return if no user or events to prevent unnecessary updates
     if (!currentUser?.$id || !events || events.length === 0) return [];
 
-    return events.filter((e: AppEvent) =>
-      e.creatorId === currentUser.$id ||
-      (e.inviteeIds && Array.isArray(e.inviteeIds) && e.inviteeIds.includes(currentUser.$id)) ||
-      (e.attendees && Array.isArray(e.attendees) && e.attendees.includes(currentUser.$id))
-    );
+    // For calendar display, we want to show events the user created OR is attending
+    // We'll filter these asynchronously below
+    return events.filter((e: AppEvent) => e.creatorId === currentUser.$id);
+  }, [events, currentUser]);
+
+  // Get events user is attending via junction table and merge with created events
+  const [userAttendingEvents, setUserAttendingEvents] = useState<AppEvent[]>([]);
+
+  useEffect(() => {
+    const fetchUserAttendingEvents = async () => {
+      if (!currentUser?.$id) {
+        setUserAttendingEvents([]);
+        return;
+      }
+
+      try {
+        // Get events user is attending via junction table
+        const attendingEvents = await getUserAttendingEvents(currentUser.$id);
+
+        // Also include events user created (if not already in attending list)
+        const createdEvents = events.filter((e: AppEvent) => e.creatorId === currentUser.$id);
+
+        // Merge and deduplicate by $id
+        const allUserEvents = [...attendingEvents];
+        createdEvents.forEach(createdEvent => {
+          if (!attendingEvents.some(attending => attending.$id === createdEvent.$id)) {
+            allUserEvents.push(createdEvent);
+          }
+        });
+
+        authDebug.debug(`Home: User has ${allUserEvents.length} total events (${attendingEvents.length} attending, ${createdEvents.length} created)`);
+        setUserAttendingEvents(allUserEvents);
+      } catch (error) {
+        authDebug.error('Error fetching user attending events for calendar:', error);
+        // Fallback to just created events
+        setUserAttendingEvents(events.filter((e: AppEvent) => e.creatorId === currentUser.$id));
+      }
+    };
+
+    fetchUserAttendingEvents();
   }, [events, currentUser]);
 
   // Check for pending invites (both event and group invites)
@@ -228,23 +264,74 @@ export default function Home() {
 
       try {
         const invites = await getUserGroupInvites(currentUser.$id);
-        setGroupInvites(invites);
+        setGroupInvites(Array.isArray(invites) ? invites : []);
       } catch (error) {
         console.error('Error fetching group invites:', error);
+        setGroupInvites([]);
       }
     };
 
     fetchGroupInvites();
-  }, [currentUser]);  // Enrich events with group names
+  }, [currentUser]);
+
+  // Fetch agenda events (events user is attending)
+  useEffect(() => {
+    const fetchAgendaEvents = async () => {
+      if (!currentUser?.$id) return;
+
+      try {
+        authDebug.debug('Fetching agenda events for user:', currentUser.$id);
+        const attendingEvents = await getUserAttendingEvents(currentUser.$id);
+
+        // Filter for upcoming events only
+        const upcomingEvents = attendingEvents.filter(event => {
+          const eventEndTime = new Date(event.endTime || event.startTime);
+          return eventEndTime > new Date();
+        });
+
+        // Sort by start time
+        upcomingEvents.sort((a, b) =>
+          new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+        );
+
+        // Enrich events with creator names and accurate attendee counts
+        const enrichedAgendaEvents = await Promise.all(
+          upcomingEvents.map(async (event) => {
+            // Get creator name
+            const creatorName = getCreatorName(event.creatorId);
+
+            // Get accurate attendee count from junction table
+            const attendeeCount = await getEventAttendeeCount(event.$id);
+
+            return {
+              ...event,
+              creatorName,
+              attendeeCount
+            };
+          })
+        );
+
+        authDebug.debug(`Found ${enrichedAgendaEvents.length} upcoming events user is attending`);
+        setAgendaEvents(enrichedAgendaEvents);
+      } catch (error) {
+        authDebug.error('Error fetching agenda events:', error);
+        setAgendaEvents([]);
+      }
+    };
+
+    fetchAgendaEvents();
+  }, [currentUser, events, getCreatorName]); // Refetch when events change
+
+  // Enrich events with group names
   useEffect(() => {
     const enrichEvents = async () => {
-      if (userEvents && userEvents.length > 0) {
+      if (userAttendingEvents && userAttendingEvents.length > 0) {
         try {
-          const enriched = await enrichEventsWithGroupNames(userEvents);
+          const enriched = await enrichEventsWithGroupNames(userAttendingEvents);
           setEnrichedEvents(enriched);
         } catch (error) {
           authDebug.error('Failed to enrich events with group names:', error);
-          setEnrichedEvents(userEvents); // Fallback to original events
+          setEnrichedEvents(userAttendingEvents); // Fallback to original events
         }
       } else {
         setEnrichedEvents([]);
@@ -252,7 +339,7 @@ export default function Home() {
     };
 
     enrichEvents();
-  }, [userEvents]);
+  }, [userAttendingEvents]);
 
   // Format events for the calendar with date validation
   const calendarEvents = useMemo(() => {
@@ -609,21 +696,33 @@ export default function Home() {
     setDetailsModalVisible(false);
   }, []);
 
-  const handleEventAttend = useCallback(() => {
-    // Handle attend logic
-    setDetailsModalVisible(false);
-    if (eventsContext) {
-      smartRefetchEvents('manual');
-    }
-  }, [eventsContext, smartRefetchEvents]);
+  const handleEventAttend = useCallback(async () => {
+    if (!selectedEvent || !currentUser?.$id) return;
 
-  const handleEventNotAttend = useCallback(() => {
-    // Handle not attend logic
-    setDetailsModalVisible(false);
-    if (eventsContext) {
-      smartRefetchEvents('manual');
+    try {
+      await addEventAttendee(selectedEvent.$id, currentUser.$id);
+      setDetailsModalVisible(false);
+      if (eventsContext) {
+        smartRefetchEvents('manual');
+      }
+    } catch (error) {
+      console.error('Error attending event:', error);
     }
-  }, [eventsContext, smartRefetchEvents]);
+  }, [selectedEvent, currentUser?.$id, eventsContext, smartRefetchEvents]);
+
+  const handleEventNotAttend = useCallback(async () => {
+    if (!selectedEvent || !currentUser?.$id) return;
+
+    try {
+      await removeEventAttendee(selectedEvent.$id, currentUser.$id);
+      setDetailsModalVisible(false);
+      if (eventsContext) {
+        smartRefetchEvents('manual');
+      }
+    } catch (error) {
+      console.error('Error not attending event:', error);
+    }
+  }, [selectedEvent, currentUser?.$id, eventsContext, smartRefetchEvents]);
 
   const handleEventChat = useCallback((event: AppEvent) => {
     setSelectedEvent(event);
@@ -833,40 +932,46 @@ export default function Home() {
           /* Modern Agenda View */
           <FlatList
             style={[styles.agendaList, { backgroundColor: colors.background }]}
-            data={calendarEvents
-              .filter((item): item is NonNullable<typeof item> => item !== null && new Date(item.start) > new Date())
-              .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())}
-            keyExtractor={(item) => item.id}
+            data={agendaEvents}
+            keyExtractor={(item) => item.$id}
             renderItem={({ item }) => (
-              <TouchableOpacity onPress={() => handlePressEvent(item)}>
+              <TouchableOpacity onPress={() => handlePressEvent({
+                id: item.$id,
+                title: item.title,
+                start: new Date(item.startTime),
+                end: new Date(item.endTime),
+                location: item.location,
+                color: getEventColor(item.tags || []),
+                rawEvent: item
+              })}>
                 <View style={[styles.agendaCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={styles.agendaHeader}>
                     <Text style={[styles.agendaTitle, { color: colors.text }]} numberOfLines={2}>
                       {item.title}
                     </Text>
-                    <View style={[styles.eventColorDot, { backgroundColor: item.color || colors.primary }]} />
+                    <View style={[styles.eventColorDot, { backgroundColor: getEventColor(item.tags || []) || colors.primary }]} />
                   </View>
 
                   <View style={styles.agendaMeta}>
                     <View style={styles.agendaMetaRow}>
                       <MaterialIcons name="access-time" size={16} color={colors.primary} />
                       <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                        {new Date(item.start).toLocaleDateString()} at {new Date(item.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(item.startTime).toLocaleDateString()} at {new Date(item.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </Text>
                     </View>
 
                     <View style={styles.agendaMetaRow}>
                       <MaterialIcons name="people" size={16} color={colors.primary} />
                       <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                        {item.rawEvent?.attendees?.length || 0} attending
+                        {(item as any).attendeeCount || 0} attending
                       </Text>
                     </View>
 
-                    {item.rawEvent?.groupName && (
+                    {(item as any).creatorName && (
                       <View style={styles.agendaMetaRow}>
-                        <MaterialIcons name="group" size={16} color={colors.primary} />
-                        <Text style={[styles.agendaGroupText, { color: colors.primary }]}>
-                          {item.rawEvent.groupName}
+                        <MaterialIcons name="person" size={16} color={colors.primary} />
+                        <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
+                          By {(item as any).creatorName}
                         </Text>
                       </View>
                     )}
@@ -887,20 +992,11 @@ export default function Home() {
               <View style={styles.emptyState}>
                 <MaterialIcons name="event" size={64} color={colors.textSecondary} />
                 <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
-                  No Events Yet
+                  No Upcoming Events
                 </Text>
                 <Text style={[styles.emptyStateDescription, { color: colors.textSecondary }]}>
-                  Create your first event to get started!
+                  You're not attending any upcoming events. Join some events to see them here!
                 </Text>
-                <TouchableOpacity
-                  onPress={handleCreateEventPress}
-                  style={[styles.createEventButton, { backgroundColor: colors.primary }]}
-                >
-                  <MaterialIcons name="add" size={20} color="white" />
-                  <Text style={styles.createEventButtonText}>
-                    Create First Event
-                  </Text>
-                </TouchableOpacity>
               </View>
             }
             showsVerticalScrollIndicator={false}

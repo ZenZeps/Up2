@@ -1,5 +1,5 @@
 import { getEventColor } from '@/constants/categories';
-import { getAllEvents, updateEvent } from '@/lib/api/event';
+import { getAllEvents, isUserAttendingEvent, updateEvent } from '@/lib/api/event';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { account } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
@@ -56,35 +56,46 @@ export default function UserCalendar() {
                 const allEvents = await getAllEvents();
 
                 // Filter events for this user (created by them or they're attending)
-                // Also filter out private events unless current user is creator, invitee, or attendee
-                const userEvents = allEvents.filter(event => {
+                // Use junction table to check attendance
+                const userEventPromises = allEvents.map(async (event) => {
                     const isEventRelatedToUser = event.creatorId === userId ||
-                        (event.attendees && event.attendees.includes(userId));
+                        await isUserAttendingEvent(userId, event.$id);
 
-                    if (!isEventRelatedToUser) return false;
+                    if (!isEventRelatedToUser) return null;
 
                     // If event is private, only show if current user has access
                     if (event.isPrivate) {
-                        return event.creatorId === user.$id || // User is creator
+                        const currentUserHasAccess = event.creatorId === user.$id || // User is creator
                             (event.inviteeIds && event.inviteeIds.includes(user.$id)) || // User is invited
-                            (event.attendees && event.attendees.includes(user.$id)); // User is attending
+                            await isUserAttendingEvent(user.$id, event.$id); // User is attending
+
+                        if (!currentUserHasAccess) return null;
                     }
 
-                    return true; // Public event, show it
+                    return event;
                 });
+
+                const userEventsResults = await Promise.all(userEventPromises);
+                const userEvents = userEventsResults.filter((event): event is AppEvent => event !== null);
 
                 // Add creator names to events
                 const uniqueCreatorIds = [...new Set(userEvents.map(event => event.creatorId))];
                 const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
                 const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, userDisplayUtils.getFullName(profile)]));
 
-                const eventsWithNames = userEvents.map(event => ({
-                    ...event,
-                    creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
-                    isAttending: event.attendees?.includes(user.$id),
-                }));
+                // Check attendance for each event using junction table
+                const eventsWithAttendance = await Promise.all(
+                    userEvents.map(async (event) => {
+                        const isAttending = await isUserAttendingEvent(user.$id, event.$id);
+                        return {
+                            ...event,
+                            creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
+                            isAttending,
+                        };
+                    })
+                );
 
-                setEvents(eventsWithNames);
+                setEvents(eventsWithAttendance);
             } catch (error) {
                 console.error('Error fetching user data:', error);
             }
@@ -97,7 +108,11 @@ export default function UserCalendar() {
 
     const handleAttend = async (event: AppEvent) => {
         if (!currentUserId) return;
-        if (event.attendees?.includes(currentUserId)) {
+
+        // Check current attendance status using junction table
+        const isCurrentlyAttending = await isUserAttendingEvent(currentUserId, event.$id);
+
+        if (isCurrentlyAttending) {
             Alert.alert('Info', 'You are already attending this event.');
             return;
         }

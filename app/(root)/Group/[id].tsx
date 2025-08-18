@@ -105,21 +105,19 @@ const GroupPage = () => {
                 }));
                 setEvents(formattedEvents);
 
-                // Load member details
+                // Load member details - handle both junction table (UserProfile[]) and legacy (string[]) formats
                 if (groupData.users && groupData.users.length > 0) {
-                    // Extract user IDs
-                    const userIds = groupData.users.map((user: any) => {
-                        if (typeof user === 'string') {
-                            return user;
-                        } else if (user && typeof user === 'object' && user.$id) {
-                            return user.$id;
-                        }
-                        return null;
-                    }).filter((id: any) => id && typeof id === 'string');
-
-                    if (userIds.length > 0) {
-                        const memberProfiles = await getUsersByIds(userIds);
+                    // Check if we have UserProfile objects (from junction table) or string IDs (legacy fallback)
+                    const firstUser = groupData.users[0];
+                    if (typeof firstUser === 'string') {
+                        // Legacy format: users is string[]
+                        console.log('Using legacy user format, fetching profiles');
+                        const memberProfiles = await getUsersByIds(groupData.users as string[]);
                         setMembers(memberProfiles);
+                    } else if (firstUser && typeof firstUser === 'object' && '$id' in firstUser) {
+                        // Junction table format: users is already UserProfile[]
+                        console.log('Using junction table user format');
+                        setMembers(groupData.users as unknown as UserProfile[]);
                     }
                 }
             }
@@ -335,7 +333,7 @@ const GroupPage = () => {
                             <Text style={styles.headerTitle}>{group.title}</Text>
                             <TouchableOpacity onPress={() => setMembersModalVisible(true)}>
                                 <Text style={styles.headerSubtitle}>
-                                    {group.users?.length || 0} members
+                                    {group.memberCount || group.users?.length || 0} members
                                 </Text>
                             </TouchableOpacity>
                         </View>
