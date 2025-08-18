@@ -3,9 +3,10 @@ import { enrichEventsWithGroupNames, isUserAttendingEvent, updateEvent } from '@
 import { cancelFriendRequest, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
-import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
+import { config, databases } from '@/lib/appwrite/appwrite';
 import { useAlert } from '@/lib/context/AlertContext';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { useGlobalContext } from '@/lib/global-provider';
 import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -35,6 +36,7 @@ const Explore = () => {
   const insets = useSafeAreaInsets();
   const { events, refetchEvents } = useEvents();
   const { showAlert } = useAlert();
+  const { user: globalUser } = useGlobalContext();
 
   // State variables
   const [query, setQuery] = useState(''); // Search query
@@ -64,23 +66,22 @@ const Explore = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Get current user and their profile
-        const currentUser = await getCurrentUser();  // Gets the current user from Appwrite
-        if (!currentUser?.$id) {
+        // Get current user from global context
+        if (!globalUser?.$id) {
           console.error('No current user found');
           return;
         }
 
-        setUserId(currentUser.$id); // Function to define the currentUser statd with information form Appwrite
-        const userProfile = await getUserProfile(currentUser.$id); // Fetches the user profile for the specified user from Appwrite
+        setUserId(globalUser.$id); // Function to define the currentUser statd with information form Appwrite
+        const userProfile = await getUserProfile(globalUser.$id); // Fetches the user profile for the specified user from Appwrite
         setProfile(userProfile); // Sets the profile state to the found user profile
 
         // Use new friendship API to get friends from junction table
-        const userFriendIds = await getUserFriends(currentUser.$id);
+        const userFriendIds = await getUserFriends(globalUser.$id);
         setFriends(userFriendIds); // Sets the friends state to the users friend IDs from junction table
 
         // Get current user's profile photo
-        const currentUserPhoto = await getUserProfilePhotoUrl(currentUser.$id);
+        const currentUserPhoto = await getUserProfilePhotoUrl(globalUser.$id);
         setCurrentUserPhotoUrl(currentUserPhoto);
 
         // Get paginated users instead of ALL users - CRITICAL FIX
@@ -91,7 +92,7 @@ const Explore = () => {
           [
             Query.limit(USER_PAGE_SIZE),
             Query.offset(0),
-            Query.notEqual('$id', currentUser.$id), // Exclude current user
+            Query.notEqual('$id', globalUser.$id), // Exclude current user
             Query.orderDesc('$createdAt') // Most recent users first
           ]
         );
@@ -123,14 +124,14 @@ const Explore = () => {
           config.databaseID!,
           config.userFriendshipsCollectionID,
           [
-            Query.equal('requesterId', currentUser.$id),
+            Query.equal('requesterId', globalUser.$id),
             Query.equal('status', 'pending'),
           ]
         );
         // Extract the other user ID from the friendship records
         setRequestedUsers(requestsRes.documents.map((req: any) => {
-          // If currentUser is userId1, then the recipient is userId2, and vice versa
-          return req.userId1 === currentUser.$id ? req.userId2 : req.userId1;
+          // If globalUser is userId1, then the recipient is userId2, and vice versa
+          return req.userId1 === globalUser.$id ? req.userId2 : req.userId1;
         }));
 
       } catch (err) {
@@ -139,9 +140,11 @@ const Explore = () => {
         setLoading(false);
       }
     };
-    fetchData();
-    refetchEvents(); // Fetch latest events on mount
-  }, []);
+    if (globalUser) {
+      fetchData();
+      refetchEvents(); // Fetch latest events on mount
+    }
+  }, [globalUser]);
 
   // Refresh friends list when screen comes into focus
   const refreshFriends = useCallback(async () => {
@@ -851,26 +854,6 @@ const Explore = () => {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 70 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Filter Results Summary - Only show for events mode when filters are active */}
-        {mode === 'events' && (dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any' || query.trim()) && (
-          <View style={[styles.resultsHeader, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.resultsText, { color: colors.textSecondary }]}>
-              {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} found
-              {query.trim() && ` for "${query}"`}
-            </Text>
-            {(dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') && (
-              <TouchableOpacity
-                onPress={() => setShowFilters(!showFilters)}
-                style={styles.toggleFiltersButton}
-              >
-                <Text style={[styles.toggleFiltersText, { color: colors.primary }]}>
-                  {showFilters ? 'Hide' : 'Show'} Filters
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
         {/* Content based on mode */}
         {loading ? (
           <View style={styles.loadingContainer}>
@@ -1135,29 +1118,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     marginLeft: 6,
-  },
-  resultsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  resultsText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  toggleFiltersButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  toggleFiltersText: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   // Existing styles
   content: {

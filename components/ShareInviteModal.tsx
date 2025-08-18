@@ -4,6 +4,7 @@ import {
     ActivityIndicator,
     Alert,
     Modal,
+    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
@@ -152,7 +153,11 @@ export default function ShareInviteModal({ visible, onClose, eventId }: ShareInv
                         </TouchableOpacity>
                     </View>
 
-                    <View style={styles.content}>
+                    <ScrollView
+                        style={styles.content}
+                        contentContainerStyle={styles.scrollContent}
+                        showsVerticalScrollIndicator={false}
+                    >
                         {loading ? (
                             <View style={styles.loadingContainer}>
                                 <ActivityIndicator size="large" color="#0061FF" />
@@ -241,7 +246,7 @@ export default function ShareInviteModal({ visible, onClose, eventId }: ShareInv
                                 </Text>
                             </View>
                         )}
-                    </View>
+                    </ScrollView>
                 </View>
             </View>
         </Modal>
@@ -259,7 +264,8 @@ const styles = StyleSheet.create({
         backgroundColor: 'white',
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
-        maxHeight: '90%',
+        maxHeight: '95%', // Increased from 90% to give more space
+        minHeight: '50%', // Ensure minimum height for content visibility
     },
     header: {
         backgroundColor: '#000000',
@@ -283,8 +289,12 @@ const styles = StyleSheet.create({
     },
     content: {
         paddingHorizontal: 16,
-        paddingVertical: 20,
-        paddingBottom: 32,
+        paddingTop: 20,
+        paddingBottom: 40, // Increased bottom padding to prevent cutoff
+        maxHeight: '100%', // Allow full height usage
+    },
+    scrollContent: {
+        paddingBottom: 20, // Additional padding for scroll content
     },
     loadingContainer: {
         paddingVertical: 48,

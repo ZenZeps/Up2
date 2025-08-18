@@ -3,9 +3,10 @@ import { acceptFriendRequest, declineFriendRequest } from '@/lib/api/friendship'
 import { acceptGroupInvite, declineGroupInvite, getGroupById, getUserGroupInvites } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile } from '@/lib/api/user';
-import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
+import { config, databases } from '@/lib/appwrite/appwrite';
 import { useAlert, useAlertHelpers } from '@/lib/context/AlertContext';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { useGlobalContext } from '@/lib/global-provider';
 import { sendFriendRequestAcceptedNotification } from '@/lib/notifications/notificationUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -21,6 +22,7 @@ import { useEvents } from './context/EventContext';
 
 export default function Invites() {
   const { events, refetchEvents } = useEvents();
+  const { user: globalUser } = useGlobalContext();
   const [userId, setUserId] = useState('');
   const router = useRouter();
   const [friendRequests, setFriendRequests] = useState<any[]>([]);
@@ -32,14 +34,12 @@ export default function Invites() {
   const { showError, showSuccess } = useAlertHelpers();
 
 
-  // Fetch current user ID
+  // Set user ID from global context
   useEffect(() => {
-    const fetchUser = async () => {
-      const user = await getCurrentUser();
-      setUserId(user?.$id ?? '');
-    };
-    fetchUser();
-  }, []);
+    if (globalUser?.$id) {
+      setUserId(globalUser.$id);
+    }
+  }, [globalUser]);
 
   // Fetch friend requests for this user
   useEffect(() => {

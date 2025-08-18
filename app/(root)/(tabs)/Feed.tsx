@@ -5,8 +5,9 @@ import { getUserGroups } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
 import { getUsersByIds } from '@/lib/api/user';
-import { account, config, databases } from '@/lib/appwrite/appwrite';
+import { config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { useGlobalContext } from '@/lib/global-provider';
 import { batchProcess, dbConnectionPool } from '@/lib/utils/dbOptimization';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -34,6 +35,7 @@ export default function Feed() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { events, refetchEvents } = useEvents();
+  const { user: globalUser } = useGlobalContext();
   const params = useLocalSearchParams();
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<AppEvent[]>([]);
   const [travelAnnouncements, setTravelAnnouncements] = useState<TravelAnnouncementWithUserInfo[]>([]);
@@ -48,19 +50,18 @@ export default function Feed() {
   // Optimized fetch function for scalability
   const fetchFeedData = useCallback(async () => {
     try {
-      const user = await account.get();
-      if (!user?.$id) return;
+      if (!globalUser?.$id) return;
 
-      setCurrentUserId(user.$id);
+      setCurrentUserId(globalUser.$id);
 
       // Use proper junction table approach to get friends
-      const userFriends = await getUserFriends(user.$id);
+      const userFriends = await getUserFriends(globalUser.$id);
       setFriends(userFriends);
 
       console.log('Feed: User friends loaded:', userFriends.length);
 
       // Also get user's groups to show events from groups
-      const userGroups = await getUserGroups(user.$id);
+      const userGroups = await getUserGroups(globalUser.$id);
       const userGroupIds = userGroups.map(group => group.$id);
 
       console.log('Feed: User groups loaded:', userGroupIds.length);
@@ -128,7 +129,7 @@ export default function Feed() {
             })
             .map(async (event: any) => {
               // Check if user is attending using junction table
-              const isAttending = await isUserAttendingEvent(user.$id, event.$id);
+              const isAttending = await isUserAttendingEvent(globalUser.$id, event.$id);
 
               return {
                 ...(event as unknown as AppEvent),

@@ -3,9 +3,9 @@ import { getEventById, updateEvent } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
-import { getCurrentUser } from '@/lib/appwrite/appwrite';
 import { useAlert, useAlertHelpers } from '@/lib/context/AlertContext';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { useGlobalContext } from '@/lib/global-provider';
 import { sendEventInviteNotification } from '@/lib/notifications/notificationUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -26,6 +26,7 @@ const EventDetail = () => {
   const { colors } = useTheme();
   const { showAlert } = useAlert();
   const { showSuccess, showError, showInfo, showConfirm } = useAlertHelpers();
+  const { user: globalUser } = useGlobalContext();
   const insets = useSafeAreaInsets();
   const [event, setEvent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -54,9 +55,12 @@ const EventDetail = () => {
         }
         setEvent(res);
 
-        const user = await getCurrentUser();
-        setUserId(user?.$id || '');
-        setAttending(res.attendees?.includes(user?.$id));
+        if (!globalUser?.$id) {
+          console.error('No current user found');
+          return;
+        }
+        setUserId(globalUser.$id);
+        setAttending(res.attendees?.includes(globalUser.$id));
 
         // Fetch creator's profile and photo
         const creatorProfile = await getUserProfile(res.creatorId);

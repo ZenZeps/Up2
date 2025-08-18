@@ -1,6 +1,7 @@
 import icons from '@/constants/icons';
-import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
+import { config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { useGlobalContext } from '@/lib/global-provider';
 import { Tabs } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
@@ -12,15 +13,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Hook to check for unread notifications
 const useNotificationCount = () => {
   const [hasNotifications, setHasNotifications] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
+  const { user: globalUser } = useGlobalContext();
 
   useEffect(() => {
     const checkNotifications = async () => {
       try {
-        const currentUser = await getCurrentUser();
-        if (!currentUser) return;
-
-        setUserId(currentUser.$id);
+        if (!globalUser?.$id) return;
 
         // Check for pending friend requests
         const friendRequests = await databases.listDocuments(
@@ -29,11 +27,11 @@ const useNotificationCount = () => {
           [
             Query.and([
               Query.or([
-                Query.equal('userId1', currentUser.$id),
-                Query.equal('userId2', currentUser.$id)
+                Query.equal('userId1', globalUser.$id),
+                Query.equal('userId2', globalUser.$id)
               ]),
               Query.equal('status', 'pending'),
-              Query.notEqual('requesterId', currentUser.$id) // Exclude requests we sent
+              Query.notEqual('requesterId', globalUser.$id) // Exclude requests we sent
             ]),
             Query.limit(1) // Just check if any exist
           ]
@@ -51,7 +49,7 @@ const useNotificationCount = () => {
     const interval = setInterval(checkNotifications, 30000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [globalUser?.$id]);
 
   return hasNotifications;
 };

@@ -17,7 +17,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import images from '../../constants/images';
 import { updateEvent } from '../../lib/api/event';
 import { getUserProfile } from '../../lib/api/user';
-import { config, databases, getCurrentUser } from '../../lib/appwrite/appwrite';
+import { config, databases } from '../../lib/appwrite/appwrite';
+import { useGlobalContext } from '../../lib/global-provider';
 import { userDisplayUtils } from '../../lib/utils/userDisplay';
 
 interface EventDetails {
@@ -43,6 +44,7 @@ export default function Invite() {
         eventId: string;
         inviter: string;
     }>();
+    const { user: globalUser } = useGlobalContext();
 
     useEffect(() => {
         if (Platform.OS !== 'web') {
@@ -75,9 +77,8 @@ export default function Invite() {
                 return;
             }
 
-            // Get current user to check if they're logged in
-            const user = await getCurrentUser();
-            setCurrentUser(user);
+            // Set current user from global context
+            setCurrentUser(globalUser);
 
             // Fetch event details
             const eventData = await databases.getDocument(
@@ -94,9 +95,9 @@ export default function Invite() {
             }
 
             // Check if user is already invited or attending
-            if (user) {
-                const alreadyInvited = eventData.inviteeIds?.includes(user.$id) ||
-                    eventData.attendees?.includes(user.$id);
+            if (globalUser) {
+                const alreadyInvited = eventData.inviteeIds?.includes(globalUser.$id) ||
+                    eventData.attendees?.includes(globalUser.$id);
                 setIsAlreadyInvited(alreadyInvited);
             }
 

@@ -2,11 +2,11 @@ import { getEventColor } from '@/constants/categories';
 import { addEventAttendee, enrichEventsWithGroupNames, getEventAttendeeCount, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
 import { getUserGroupInvites } from '@/lib/api/group';
 import { getActiveTravelForUser } from '@/lib/api/travel';
-import { getUserProfile, getUsersByIds } from '@/lib/api/user';
-import { account } from '@/lib/appwrite/appwrite';
+import { getUsersByIds } from '@/lib/api/user';
 import { useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { authDebug } from '@/lib/debug/authDebug';
+import { useGlobalContext } from '@/lib/global-provider';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
@@ -162,23 +162,12 @@ export default function Home() {
   // Get route params (for user calendar view)
   const params = useLocalSearchParams();
 
-  // Efficiently fetch current user with caching
-  const { data: currentUser } = useAppwrite({
-    fn: async () => await account.get(),
-    cacheKey: 'current-user',
-    cacheTTL: 30 * 60 * 1000, // 30 minute cache for current user
-  });
+  // Get user from global context (already handles authentication and caching)
+  const { user: globalUser } = useGlobalContext();
+  const currentUser = globalUser; // Use the already-authenticated user from global context
 
-  // Fetch user profile with friends list - only when currentUser changes
-  const { data: userProfile } = useAppwrite({
-    fn: async () => {
-      if (!currentUser?.$id) return null;
-      return await getUserProfile(currentUser.$id);
-    },
-    cacheKey: currentUser?.$id ? `user-profile-${currentUser.$id}` : undefined,
-    dependencies: [currentUser?.$id],
-    skip: !currentUser?.$id,
-  });
+  // Use profile data from global context (already includes profile)
+  const userProfile = currentUser?.profile;
 
   // Fetch user's travel data for calendar highlighting
   const { data: travelData } = useAppwrite({
