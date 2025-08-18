@@ -372,6 +372,419 @@ export async function getGroupMemberRole(groupId: string, userId: string): Promi
 }
 
 /**
+ * Update user's role in group (Admin/Owner only)
+ */
+export async function updateGroupMemberRole(
+    groupId: string,
+    userId: string,
+    newRole: 'member' | 'admin',
+    updatedBy: string
+): Promise<boolean> {
+    try {
+        // Check if the person updating has permission (must be owner or admin)
+        const updaterRole = await getGroupMemberRole(groupId, updatedBy);
+        if (!updaterRole || !['owner', 'admin'].includes(updaterRole)) {
+            authDebug.warn(`User ${updatedBy} attempted to update role without permission`);
+            return false;
+        }
+
+        // Get group to check owner
+        const group = await databases.getDocument(
+            config.databaseID!,
+            config.groupsCollectionID!,
+            groupId
+        );
+
+        // Only owner can demote admins or change owner role
+        if (updaterRole === 'admin' && group.creatorId !== updatedBy) {
+            const targetRole = await getGroupMemberRole(groupId, userId);
+            if (targetRole === 'admin' || userId === group.creatorId) {
+                authDebug.warn(`Admin ${updatedBy} attempted to modify admin/owner role`);
+                return false;
+            }
+        }
+
+        // Find membership record
+        const membershipRecords = await databases.listDocuments(
+            config.databaseID!,
+            config.groupMembershipsCollectionID!,
+            [
+                Query.equal('groupId', groupId),
+                Query.equal('userId', userId),
+                Query.equal('status', 'active'),
+                Query.limit(1)
+            ]
+        );
+
+        if (membershipRecords.documents.length === 0) {
+            authDebug.warn(`User ${userId} not found in group ${groupId}`);
+            return false;
+        }
+
+        // Update the role
+        await databases.updateDocument(
+            config.databaseID!,
+            config.groupMembershipsCollectionID!,
+            membershipRecords.documents[0].$id,
+            {
+                role: newRole,
+                updatedAt: new Date().toISOString()
+            }
+        );
+
+        // Clear caches
+        cacheManager.remove(`group-members-${groupId}`);
+        cacheManager.remove(`user-groups-${userId}`);
+
+        authDebug.info(`User ${userId} role updated to ${newRole} in group ${groupId} by ${updatedBy}`);
+        return true;
+    } catch (error) {
+        authDebug.error(`Failed to update member role: ${groupId}/${userId}`, error);
+        return false;
+    }
+}
+
+/**
+ * Ban user from group (Admin/Owner only)
+ */
+export async function banGroupMember(
+    groupId: string,
+    userId: string,
+    bannedBy: string
+): Promise<boolean> {
+    try {
+        // Check permissions
+        const bannerRole = await getGroupMemberRole(groupId, bannedBy);
+        if (!bannerRole || !['owner', 'admin'].includes(bannerRole)) {
+            authDebug.warn(`User ${bannedBy} attempted to ban without permission`);
+            return false;
+        }
+
+        // Get group to check owner
+        const group = await databases.getDocument(
+            config.databaseID!,
+            config.groupsCollectionID!,
+            groupId
+        );
+
+        // Cannot ban the owner
+        if (userId === group.creatorId) {
+            authDebug.warn(`Attempted to ban group owner ${userId}`);
+            return false;
+        }
+
+        // Admins cannot ban other admins (only owner can)
+        if (bannerRole === 'admin' && group.creatorId !== bannedBy) {
+            const targetRole = await getGroupMemberRole(groupId, userId);
+            if (targetRole === 'admin') {
+                authDebug.warn(`Admin ${bannedBy} attempted to ban another admin`);
+                return false;
+            }
+        }
+
+        // Find membership record
+        const membershipRecords = await databases.listDocuments(
+            config.databaseID!,
+            config.groupMembershipsCollectionID!,
+            [
+                Query.equal('groupId', groupId),
+                Query.equal('userId', userId),
+                Query.equal('status', 'active'),
+                Query.limit(1)
+            ]
+        );
+
+        if (membershipRecords.documents.length === 0) {
+            authDebug.warn(`User ${userId} not found in group ${groupId}`);
+            return false;
+        }
+
+        // Update status to banned
+        await databases.updateDocument(
+            config.databaseID!,
+            config.groupMembershipsCollectionID!,
+            membershipRecords.documents[0].$id,
+            {
+                status: 'banned',
+                bannedBy: bannedBy,
+                bannedAt: new Date().toISOString()
+            }
+        );
+
+        // Update group member count
+        await updateGroupMemberCount(groupId);
+
+        // Clear caches
+        cacheManager.remove(`group-members-${groupId}`);
+        cacheManager.remove(`user-groups-${userId}`);
+
+        authDebug.info(`User ${userId} banned from group ${groupId} by ${bannedBy}`);
+        return true;
+    } catch (error) {
+        authDebug.error(`Failed to ban member: ${groupId}/${userId}`, error);
+        return false;
+    }
+}
+
+/**
+ * Check if user has permission to perform action in group
+ */
+export async function checkGroupPermission(
+    groupId: string,
+    userId: string,
+    action: 'view' | 'post_events' | 'invite_users' | 'manage_members' | 'manage_group' | 'delete_group'
+): Promise<boolean> {
+    try {
+        // Get group details
+        const group = await databases.getDocument(
+            config.databaseID!,
+            config.groupsCollectionID!,
+            groupId
+        );
+
+        // Get user's role in group
+        const userRole = await getGroupMemberRole(groupId, userId);
+        const isOwner = group.creatorId === userId;
+        const isAdmin = userRole === 'admin' || isOwner;
+        const isMember = userRole === 'member' || isAdmin;
+
+        switch (action) {
+            case 'view':
+                // Public groups: anyone can view
+                // Private groups: only members can view
+                return !group.isPrivate || isMember;
+
+            case 'post_events':
+                // Only admins and owners can post events
+                return isAdmin;
+
+            case 'invite_users':
+                // All members can invite users
+                return isMember;
+
+            case 'manage_members':
+                // Only admins and owners can manage members (approve requests, ban users)
+                return isAdmin;
+
+            case 'manage_group':
+                // Only admins and owners can change group description, settings
+                return isAdmin;
+
+            case 'delete_group':
+                // Only owner can delete group
+                return isOwner;
+
+            default:
+                return false;
+        }
+    } catch (error) {
+        authDebug.error(`Failed to check permission: ${groupId}/${userId}/${action}`, error);
+        return false;
+    }
+}
+
+/**
+ * Request to join private group
+ */
+export async function requestToJoinGroup(
+    groupId: string,
+    userId: string
+): Promise<boolean> {
+    try {
+        // Check if group is private
+        const group = await databases.getDocument(
+            config.databaseID!,
+            config.groupsCollectionID!,
+            groupId
+        );
+
+        if (!group.isPrivate) {
+            authDebug.warn(`Attempted to request join for public group ${groupId}`);
+            return false;
+        }
+
+        // Check if user already has a membership record
+        const existingMembership = await databases.listDocuments(
+            config.databaseID!,
+            config.groupMembershipsCollectionID!,
+            [
+                Query.equal('groupId', groupId),
+                Query.equal('userId', userId),
+                Query.limit(1)
+            ]
+        );
+
+        if (existingMembership.documents.length > 0) {
+            const membership = existingMembership.documents[0];
+            if (membership.status === 'active') {
+                authDebug.info(`User ${userId} already member of group ${groupId}`);
+                return false;
+            } else if (membership.status === 'requested') {
+                authDebug.info(`User ${userId} already has pending request for group ${groupId}`);
+                return false;
+            } else if (membership.status === 'banned') {
+                authDebug.warn(`Banned user ${userId} attempted to request join group ${groupId}`);
+                return false;
+            }
+        }
+
+        // Create join request
+        await databases.createDocument(
+            config.databaseID!,
+            config.groupMembershipsCollectionID!,
+            ID.unique(),
+            {
+                groupId,
+                userId,
+                role: 'member',
+                status: 'requested',
+                requestedAt: new Date().toISOString()
+            }
+        );
+
+        authDebug.info(`User ${userId} requested to join private group ${groupId}`);
+        return true;
+    } catch (error) {
+        authDebug.error(`Failed to request join: ${groupId}/${userId}`, error);
+        return false;
+    }
+}
+
+/**
+ * Get pending join requests for a group (Admin/Owner only)
+ */
+export async function getGroupJoinRequests(groupId: string, requesterId: string): Promise<any[]> {
+    try {
+        // Check permissions
+        const hasPermission = await checkGroupPermission(groupId, requesterId, 'manage_members');
+        if (!hasPermission) {
+            authDebug.warn(`User ${requesterId} attempted to view join requests without permission`);
+            return [];
+        }
+
+        // Get pending requests
+        const requests = await databases.listDocuments(
+            config.databaseID!,
+            config.groupMembershipsCollectionID!,
+            [
+                Query.equal('groupId', groupId),
+                Query.equal('status', 'requested'),
+                Query.orderDesc('requestedAt')
+            ]
+        );
+
+        // Enrich with user details
+        if (requests.documents.length === 0) {
+            return [];
+        }
+
+        const userIds = requests.documents.map((req: any) => req.userId);
+        const { getUsersByIds } = await import('./user');
+        const userProfiles = await getUsersByIds(userIds);
+
+        const enrichedRequests = requests.documents.map((request: any) => {
+            const userProfile = userProfiles.find(user => user.$id === request.userId);
+            return {
+                ...request,
+                user: userProfile
+            };
+        });
+
+        return enrichedRequests;
+    } catch (error) {
+        authDebug.error(`Failed to get join requests: ${groupId}`, error);
+        return [];
+    }
+}
+
+/**
+ * Approve join request for private group (Admin/Owner only)
+ */
+export async function approveJoinRequest(
+    membershipId: string,
+    approvedBy: string
+): Promise<boolean> {
+    try {
+        // Get the membership request
+        const membership = await databases.getDocument(
+            config.databaseID!,
+            config.groupMembershipsCollectionID!,
+            membershipId
+        );
+
+        // Check permissions
+        const hasPermission = await checkGroupPermission(membership.groupId, approvedBy, 'manage_members');
+        if (!hasPermission) {
+            authDebug.warn(`User ${approvedBy} attempted to approve request without permission`);
+            return false;
+        }
+
+        // Update status to active
+        await databases.updateDocument(
+            config.databaseID!,
+            config.groupMembershipsCollectionID!,
+            membershipId,
+            {
+                status: 'active',
+                joinedAt: new Date().toISOString(),
+                approvedBy: approvedBy,
+                approvedAt: new Date().toISOString()
+            }
+        );
+
+        // Update group member count
+        await updateGroupMemberCount(membership.groupId);
+
+        // Clear caches
+        cacheManager.remove(`group-members-${membership.groupId}`);
+        cacheManager.remove(`user-groups-${membership.userId}`);
+
+        authDebug.info(`Join request ${membershipId} approved by ${approvedBy}`);
+        return true;
+    } catch (error) {
+        authDebug.error(`Failed to approve join request: ${membershipId}`, error);
+        return false;
+    }
+}
+
+/**
+ * Reject join request for private group (Admin/Owner only)
+ */
+export async function rejectJoinRequest(
+    membershipId: string,
+    rejectedBy: string
+): Promise<boolean> {
+    try {
+        // Get the membership request
+        const membership = await databases.getDocument(
+            config.databaseID!,
+            config.groupMembershipsCollectionID!,
+            membershipId
+        );
+
+        // Check permissions
+        const hasPermission = await checkGroupPermission(membership.groupId, rejectedBy, 'manage_members');
+        if (!hasPermission) {
+            authDebug.warn(`User ${rejectedBy} attempted to reject request without permission`);
+            return false;
+        }
+
+        // Delete the request
+        await databases.deleteDocument(
+            config.databaseID!,
+            config.groupMembershipsCollectionID!,
+            membershipId
+        );
+
+        authDebug.info(`Join request ${membershipId} rejected by ${rejectedBy}`);
+        return true;
+    } catch (error) {
+        authDebug.error(`Failed to reject join request: ${membershipId}`, error);
+        return false;
+    }
+}
+
+/**
  * UNIFIED INVITE SYSTEM - Using GroupMemberships Collection Only
  * Eliminates the need for a separate group invites collection
  */

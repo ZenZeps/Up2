@@ -72,11 +72,11 @@ const TabIcon = ({ focused, icon, title, colors, hasNotifications = false }: {
         style={{
           width: 24,
           height: 24,
-          tintColor: hasNotifications && title === 'Feed' ? '#ef4444' : (focused ? '#000000' : colors.textSecondary)
+          tintColor: focused ? '#000000' : colors.textSecondary
         }}
         resizeMode="contain"
       />
-      {/* Notification badge */}
+      {/* Notification badge for Feed tab only */}
       {hasNotifications && title === 'Feed' && (
         <View className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-white" />
       )}
@@ -85,7 +85,7 @@ const TabIcon = ({ focused, icon, title, colors, hasNotifications = false }: {
     <Text
       className={`${focused ? 'font-rubik-medium' : 'font-rubik'} text-xs w-full text-center mt-1`}
       style={{
-        color: hasNotifications && title === 'Feed' ? '#ef4444' : (focused ? '#000000' : colors.textSecondary)
+        color: focused ? '#000000' : colors.textSecondary
       }}
     >
       {title}
@@ -156,7 +156,7 @@ const TabsLayout = () => {
             title: 'Profile',
             headerShown: false,
             tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.person} focused={focused} title="Profile" colors={colors} hasNotifications={false} />
+              <TabIcon icon={icons.bell} focused={focused} title="Profile" colors={colors} hasNotifications={hasNotifications} />
             )
           }}
         />

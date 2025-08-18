@@ -1,4 +1,5 @@
-import { getPublicGroups, joinGroup, leaveGroup, searchPublicGroups } from '@/lib/api/group';
+import { getDiscoverableGroups, joinGroup, leaveGroup, searchPublicGroups } from '@/lib/api/group';
+import { isGroupMember } from '@/lib/api/groupMembership';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Group } from '@/lib/types/Groups';
@@ -28,11 +29,12 @@ const GroupsExplore = () => {
     const [refreshing, setRefreshing] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [joinLoading, setJoinLoading] = useState<{ [key: string]: boolean }>({});
+    const [userMemberships, setUserMemberships] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         // Only load groups if user is authenticated
         if (user && userId) {
-            loadPublicGroups();
+            loadDiscoverableGroups();
         } else {
             console.log('GroupsExplore: Waiting for user authentication before loading groups');
         }
@@ -46,20 +48,25 @@ const GroupsExplore = () => {
         }
     }, [searchTerm, groups]);
 
-    const loadPublicGroups = async () => {
+    const loadDiscoverableGroups = async () => {
         try {
-            console.log('GroupsExplore: Starting to load public groups...');
+            console.log('GroupsExplore: Starting to load discoverable groups...');
             console.log('GroupsExplore: User authenticated:', !!user);
             console.log('GroupsExplore: User ID:', userId);
 
             setLoading(true);
-            const publicGroups = await getPublicGroups();
-            console.log('GroupsExplore: Loaded', publicGroups.length, 'public groups');
+            const discoverableGroups = await getDiscoverableGroups();
+            console.log('GroupsExplore: Loaded', discoverableGroups.length, 'discoverable groups');
 
-            setGroups(publicGroups);
-            setFilteredGroups(publicGroups);
+            setGroups(discoverableGroups);
+            setFilteredGroups(discoverableGroups);
+
+            // Load user memberships for accurate membership checking
+            if (userId && discoverableGroups.length > 0) {
+                await loadUserMemberships(discoverableGroups);
+            }
         } catch (error) {
-            console.error('Error loading public groups:', error);
+            console.error('Error loading discoverable groups:', error);
             console.error('Error details:', {
                 message: error instanceof Error ? error.message : 'Unknown error',
                 userId: userId,
@@ -68,6 +75,28 @@ const GroupsExplore = () => {
             Alert.alert('Error', 'Failed to load groups. Please try again.');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const loadUserMemberships = async (groupsToCheck: Group[]) => {
+        if (!userId) return;
+
+        try {
+            const membershipPromises = groupsToCheck.map(group =>
+                isGroupMember(group.$id, userId)
+            );
+            const membershipResults = await Promise.all(membershipPromises);
+
+            const membershipSet = new Set<string>();
+            groupsToCheck.forEach((group, index) => {
+                if (membershipResults[index]) {
+                    membershipSet.add(group.$id);
+                }
+            });
+
+            setUserMemberships(membershipSet);
+        } catch (error) {
+            console.error('Error loading user memberships:', error);
         }
     };
 
@@ -100,22 +129,28 @@ const GroupsExplore = () => {
 
         setJoinLoading(prev => ({ ...prev, [group.$id]: true }));
         try {
-            const success = await joinGroup(group.$id, userId);
-            if (success) {
-                Alert.alert('Success', `You have joined ${group.title}!`, [
+            const result = await joinGroup(group.$id, userId);
+
+            if (result.success) {
+                Alert.alert('Success', result.message, [
                     {
-                        text: 'View Group',
-                        onPress: () => router.push(`/Group/${group.$id}`)
+                        text: group.isPrivate ? 'OK' : 'View Group',
+                        onPress: () => {
+                            if (!group.isPrivate) {
+                                router.push(`/Group/${group.$id}`);
+                            }
+                        }
                     },
-                    {
+                    ...(group.isPrivate ? [] : [{
                         text: 'OK',
-                        style: 'cancel'
-                    }
+                        style: 'cancel' as const
+                    }])
                 ]);
+
                 // Refresh the groups to update membership status
-                loadPublicGroups();
+                loadDiscoverableGroups();
             } else {
-                Alert.alert('Error', 'Failed to join group');
+                Alert.alert('Error', result.message || 'Failed to join group');
             }
         } catch (error) {
             console.error('Error joining group:', error);
@@ -145,7 +180,7 @@ const GroupsExplore = () => {
                             const success = await leaveGroup(group.$id, userId);
                             if (success) {
                                 Alert.alert('Success', `You have left ${group.title}`);
-                                loadPublicGroups();
+                                loadDiscoverableGroups();
                             } else {
                                 Alert.alert('Error', 'Failed to leave group');
                             }
@@ -163,20 +198,12 @@ const GroupsExplore = () => {
 
     const onRefresh = async () => {
         setRefreshing(true);
-        await loadPublicGroups();
+        await loadDiscoverableGroups();
         setRefreshing(false);
     };
 
     const isUserMember = (group: Group): boolean => {
-        if (!userId || !group.users) return false;
-        return group.users.some((memberId: any) => {
-            if (typeof memberId === 'string') {
-                return memberId === userId;
-            } else if (memberId && typeof memberId === 'object' && memberId.$id) {
-                return memberId.$id === userId;
-            }
-            return false;
-        });
+        return userMemberships.has(group.$id);
     };
 
     const renderGroupItem = ({ item: group }: { item: Group }) => {
@@ -191,13 +218,31 @@ const GroupsExplore = () => {
                     backgroundColor: colors.card,
                     borderColor: colors.border
                 }}
-                onPress={() => router.push(`/Group/${group.$id}`)}
+                onPress={() => {
+                    // Only allow navigation if user is a member (for private) or group is public
+                    if (!group.isPrivate || isMember) {
+                        router.push(`/Group/${group.$id}`);
+                    } else {
+                        Alert.alert(
+                            'Private Group',
+                            'This is a private group. You need to join first to view its content.',
+                            [{ text: 'OK' }]
+                        );
+                    }
+                }}
             >
                 <View className="flex-row items-center justify-between mb-2">
                     <View className="flex-1">
-                        <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>
-                            {group.title}
-                        </Text>
+                        <View className="flex-row items-center">
+                            <Text className="text-lg font-rubik-semibold" style={{ color: colors.text }}>
+                                {group.title}
+                            </Text>
+                            {group.isPrivate && (
+                                <View className="ml-2 bg-amber-100 px-2 py-0.5 rounded">
+                                    <Text className="text-amber-800 font-rubik-medium text-xs">Private</Text>
+                                </View>
+                            )}
+                        </View>
                         <Text className="text-sm font-rubik mt-1" style={{ color: colors.textSecondary }}>
                             {group.memberCount || 0} members
                         </Text>
@@ -212,7 +257,7 @@ const GroupsExplore = () => {
                         {isMember ? (
                             isCreator ? (
                                 <View className="bg-blue-500 px-3 py-1 rounded-lg">
-                                    <Text className="text-white font-rubik-medium text-sm">Creator</Text>
+                                    <Text className="text-white font-rubik-medium text-sm">Owner</Text>
                                 </View>
                             ) : (
                                 <TouchableOpacity
@@ -231,12 +276,14 @@ const GroupsExplore = () => {
                             <TouchableOpacity
                                 onPress={() => handleJoinGroup(group)}
                                 disabled={isJoinButtonLoading}
-                                className="bg-blue-500 px-3 py-1 rounded-lg"
+                                className={group.isPrivate ? "bg-amber-500 px-3 py-1 rounded-lg" : "bg-blue-500 px-3 py-1 rounded-lg"}
                             >
                                 {isJoinButtonLoading ? (
                                     <ActivityIndicator size="small" color="white" />
                                 ) : (
-                                    <Text className="text-white font-rubik-medium text-sm">Join</Text>
+                                    <Text className="text-white font-rubik-medium text-sm">
+                                        {group.isPrivate ? 'Request' : 'Join'}
+                                    </Text>
                                 )}
                             </TouchableOpacity>
                         )}
@@ -266,7 +313,7 @@ const GroupsExplore = () => {
                 <TextInput
                     value={searchTerm}
                     onChangeText={setSearchTerm}
-                    placeholder="Search public groups..."
+                    placeholder="Search groups..."
                     placeholderTextColor={colors.textSecondary}
                     className="p-3 rounded-lg border font-rubik"
                     style={{
@@ -296,12 +343,12 @@ const GroupsExplore = () => {
                     ListEmptyComponent={
                         <View className="flex-1 justify-center items-center py-12">
                             <Text className="text-lg font-rubik-semibold mb-2" style={{ color: colors.text }}>
-                                {searchTerm ? 'No groups found' : 'No public groups yet'}
+                                {searchTerm ? 'No groups found' : 'No groups yet'}
                             </Text>
                             <Text className="text-center font-rubik mb-6" style={{ color: colors.textSecondary }}>
                                 {searchTerm
                                     ? `No groups match "${searchTerm}"`
-                                    : 'Be the first to create a public group!'
+                                    : 'Be the first to create a group!'
                                 }
                             </Text>
                             {!searchTerm && (

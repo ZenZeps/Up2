@@ -81,8 +81,15 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
       eventsCount: fetchedEvents?.length || 0,
       userId
     });
-    if (fetchedEvents) {
-      setEvents(fetchedEvents);
+    if (fetchedEvents && Array.isArray(fetchedEvents)) {
+      // Ensure all events have proper array fields
+      const sanitizedEvents = fetchedEvents.map(event => ({
+        ...event,
+        inviteeIds: Array.isArray(event.inviteeIds) ? event.inviteeIds : [],
+        attendees: Array.isArray(event.attendees) ? event.attendees : [],
+        tags: Array.isArray(event.tags) ? event.tags : []
+      }));
+      setEvents(sanitizedEvents);
     } else if (!loading && userId) {
       // If we have a user but no events and not loading, it means no events found
       setEvents([]);

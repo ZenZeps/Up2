@@ -649,7 +649,7 @@ const GroupPage = () => {
                     visible={settingsVisible}
                     onClose={() => setSettingsVisible(false)}
                     group={group}
-                    isCreator={group.creatorId === user?.$id}
+                    currentUserId={user?.$id || ''}
                     onUpdateGroup={reloadGroupData}
                 />
             )}

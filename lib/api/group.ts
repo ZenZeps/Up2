@@ -172,8 +172,8 @@ export const createGroup = async (
         const allMembers = Array.from(new Set([creatorId, ...(members || [])]));
 
         try {
-            // Add creator as admin/owner
-            await addGroupMember(groupId, creatorId, 'admin');
+            // Add creator as owner
+            await addGroupMember(groupId, creatorId, 'owner');
 
             // Add other members as regular members
             for (const memberId of members || []) {
@@ -334,6 +334,49 @@ export const getPublicGroups = async (): Promise<Group[]> => {
 };
 
 /**
+ * Get all discoverable groups (both public and private) for explore page
+ * Private groups are visible but show "Request to Join" button
+ */
+export const getDiscoverableGroups = async (): Promise<Group[]> => {
+    try {
+        console.log('getDiscoverableGroups: Fetching all discoverable groups');
+
+        const response = await databases.listDocuments(
+            config.databaseID!,
+            config.groupsCollectionID!,
+            [
+                Query.orderDesc('$createdAt'), // Most recent first
+                Query.limit(100) // Reasonable limit for explore page
+            ]
+        );
+
+        console.log(`getDiscoverableGroups: Found ${response.documents.length} groups`);
+
+        const groupsWithMemberCounts = response.documents.map(doc => {
+            return {
+                $id: doc.$id,
+                id: doc.id || doc.$id,
+                title: doc.title,
+                description: doc.description || '',
+                creatorId: doc.creatorId,
+                isPrivate: !doc.isPublic, // Database uses isPublic, convert to app logic
+                users: doc.users || [], // Keep legacy for membership checks
+                events: doc.events || [],
+                memberCount: doc.memberCount || (doc.users || []).length,
+                $createdAt: doc.$createdAt,
+                $updatedAt: doc.$updatedAt,
+            } as Group;
+        });
+
+        console.log('getDiscoverableGroups: Returning all discoverable groups');
+        return groupsWithMemberCounts;
+    } catch (error) {
+        console.error('Error fetching discoverable groups:', error);
+        return [];
+    }
+};
+
+/**
  * Search public groups by title - Optimized for explore page
  * UPDATED: Uses denormalized member counts for performance
  */
@@ -403,38 +446,44 @@ export const searchPublicGroups = async (searchTerm: string): Promise<Group[]> =
 };
 
 /**
- * Join a public group
+ * Join a public group or request to join private group
  */
-export const joinGroup = async (groupId: string, userId: string): Promise<boolean> => {
+export const joinGroup = async (groupId: string, userId: string): Promise<{ success: boolean, message?: string }> => {
     try {
         console.log(`joinGroup: User ${userId} attempting to join group ${groupId}`);
 
         const group = await getGroupById(groupId);
         if (!group) {
             console.error('Group not found');
-            return false;
+            return { success: false, message: 'Group not found' };
         }
 
-        // Check if group is public
+        // If group is private, create a join request instead
         if (group.isPrivate) {
-            console.error('Cannot join private group without invitation');
-            return false;
+            const { requestToJoinGroup } = await import('./groupMembership');
+            const requestSuccess = await requestToJoinGroup(groupId, userId);
+
+            if (requestSuccess) {
+                console.log(`joinGroup: User ${userId} requested to join private group ${groupId}`);
+                return { success: true, message: 'Join request sent! Group admins will review your request.' };
+            } else {
+                return { success: false, message: 'Unable to send join request. You may already have a pending request.' };
+            }
         }
 
-        // Use junction table to add user
+        // For public groups, add user directly
         const success = await addGroupMember(groupId, userId, 'member');
 
         if (success) {
             console.log(`joinGroup: User ${userId} successfully joined group ${groupId}`);
+            return { success: true, message: 'Successfully joined the group!' };
         } else {
             console.error(`joinGroup: Failed to add user ${userId} to group ${groupId}`);
+            return { success: false, message: 'Failed to join group. You may already be a member.' };
         }
-
-        return success;
     } catch (error) {
         console.error('Error joining group:', error);
-        // Fallback to legacy implementation
-        return await joinGroupLegacy(groupId, userId);
+        return { success: false, message: 'An error occurred while joining the group.' };
     }
 };
 
@@ -772,6 +821,92 @@ const addUserToGroupLegacy = async (groupId: string, userId: string): Promise<bo
 };
 
 /**
+ * Delete group (Owner only)
+ */
+export const deleteGroup = async (groupId: string, userId: string): Promise<boolean> => {
+    try {
+        // Import permission function
+        const { checkGroupPermission } = await import('./groupMembership');
+
+        // Check if user has permission to delete
+        const canDelete = await checkGroupPermission(groupId, userId, 'delete_group');
+        if (!canDelete) {
+            console.error('User does not have permission to delete group');
+            return false;
+        }
+
+        // Delete all group memberships first
+        const memberships = await databases.listDocuments(
+            config.databaseID!,
+            config.groupMembershipsCollectionID!,
+            [
+                Query.equal('groupId', groupId),
+                Query.limit(1000) // Should handle most groups
+            ]
+        );
+
+        // Delete all membership records
+        for (const membership of memberships.documents) {
+            await databases.deleteDocument(
+                config.databaseID!,
+                config.groupMembershipsCollectionID!,
+                membership.$id
+            );
+        }
+
+        // Delete the group itself
+        await databases.deleteDocument(
+            config.databaseID!,
+            config.groupsCollectionID!,
+            groupId
+        );
+
+        console.log(`Group ${groupId} deleted successfully by user ${userId}`);
+        return true;
+    } catch (error) {
+        console.error('Error deleting group:', error);
+        return false;
+    }
+};
+
+/**
+ * Update group description (Admin/Owner only)
+ */
+export const updateGroupDescription = async (
+    groupId: string,
+    description: string,
+    userId: string
+): Promise<boolean> => {
+    try {
+        // Import permission function
+        const { checkGroupPermission } = await import('./groupMembership');
+
+        // Check if user has permission to manage group
+        const canManage = await checkGroupPermission(groupId, userId, 'manage_group');
+        if (!canManage) {
+            console.error('User does not have permission to update group');
+            return false;
+        }
+
+        await databases.updateDocument(
+            config.databaseID!,
+            config.groupsCollectionID!,
+            groupId,
+            {
+                description: description,
+                lastActivityAt: new Date().toISOString()
+            }
+        );
+
+        console.log(`Group ${groupId} description updated by user ${userId}`);
+        return true;
+    } catch (error) {
+        console.error('Error updating group description:', error);
+        return false;
+    }
+};
+
+/**
  * UNIFIED INVITE SYSTEM - Re-export from groupMembership.ts
  * These functions now use the groupMemberships collection with 'invited' status
  * instead of a separate groupInvites collection
@@ -779,4 +914,9 @@ const addUserToGroupLegacy = async (groupId: string, userId: string): Promise<bo
 
 // Re-export the new unified invite functions from groupMembership
 export { acceptGroupInvite, declineGroupInvite, getUserGroupInvites, sendGroupInvite } from './groupMembership';
+
+// Re-export the new role management functions
+export {
+    approveJoinRequest, banGroupMember, checkGroupPermission, getGroupJoinRequests, getGroupMemberRole, rejectJoinRequest, requestToJoinGroup, updateGroupMemberRole
+} from './groupMembership';
 

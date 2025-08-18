@@ -90,6 +90,12 @@ export async function createUserProfile(profile: UserProfile) {
  * Fetch a single user profile by document ID with caching.
  */
 export async function getUserProfile(id: string): Promise<UserProfile | null> {
+  // Validate input
+  if (!id || typeof id !== 'string' || id.trim() === '') {
+    authDebug.error('getUserProfile: Invalid user ID provided:', id);
+    return null;
+  }
+
   // Check cache first
   const cacheKey = `user-${id}`;
   const cachedProfile = cacheManager.get<UserProfile>(cacheKey);
@@ -108,12 +114,25 @@ export async function getUserProfile(id: string): Promise<UserProfile | null> {
       id
     ) as unknown as UserProfile;
 
+    // Validate that we got a valid profile back
+    if (!profile || typeof profile !== 'object') {
+      authDebug.warn(`getUserProfile: Invalid profile returned for ID: ${id}`);
+      return null;
+    }
+
     // Cache the profile
     cacheManager.set<UserProfile>(cacheKey, profile, USER_CACHE_TTL);
 
     return profile;
-  } catch (err) {
-    authDebug.error(`Error fetching user profile: ${id}`, err);
+  } catch (err: any) {
+    // Provide more specific error messages
+    if (err?.code === 404) {
+      authDebug.warn(`User profile not found: ${id}`);
+    } else if (err?.code === 401) {
+      authDebug.error(`Access denied when fetching user profile: ${id}`);
+    } else {
+      authDebug.error(`Error fetching user profile: ${id}`, err);
+    }
     return null;
   }
 }

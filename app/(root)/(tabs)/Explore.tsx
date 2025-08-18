@@ -1,3 +1,4 @@
+import { CATEGORIES } from '@/constants/categories';
 import { enrichEventsWithGroupNames, isUserAttendingEvent, updateEvent } from '@/lib/api/event';
 import { cancelFriendRequest, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
@@ -9,7 +10,6 @@ import { sendFriendRequestNotification } from '@/lib/notifications/notificationU
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -43,6 +43,13 @@ const Explore = () => {
   const [userOffset, setUserOffset] = useState(0); // Pagination offset
   const [loadingMoreUsers, setLoadingMoreUsers] = useState(false); // Loading more users
   const [mode, setMode] = useState<'events' | 'users' | 'groups'>('events'); // 'events', 'users', or 'groups' - default to events
+
+  // New filtering state
+  const [dateFilter, setDateFilter] = useState<'any' | 'today' | 'tomorrow' | 'week'>('any');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
+  const [priceFilter, setPriceFilter] = useState<'any' | 'free' | 'paid'>('any');
+  const [locationFilter, setLocationFilter] = useState<'any' | 'near'>('any');
 
   const [loading, setLoading] = useState(true); // Loading state
   const [userId, setUserId] = useState(''); // Current user ID
@@ -484,12 +491,69 @@ const Explore = () => {
   }, [users, friends]);
 
   const filteredEvents = useMemo(() => {
-    return eventsWithCreatorNames.filter(
-      (e) =>
-        e.title?.toLowerCase().includes(query.toLowerCase()) ||
-        e.location?.toLowerCase().includes(query.toLowerCase())
-    );
-  }, [query, eventsWithCreatorNames]);
+    let filtered = eventsWithCreatorNames;
+
+    // Text search filter
+    if (query.trim()) {
+      filtered = filtered.filter(
+        (e) =>
+          e.title?.toLowerCase().includes(query.toLowerCase()) ||
+          e.location?.toLowerCase().includes(query.toLowerCase()) ||
+          e.description?.toLowerCase().includes(query.toLowerCase())
+      );
+    }
+
+    // Date filter
+    if (dateFilter !== 'any') {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+      const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      filtered = filtered.filter(event => {
+        const eventStart = new Date(event.startTime);
+        const eventDate = new Date(eventStart.getFullYear(), eventStart.getMonth(), eventStart.getDate());
+
+        switch (dateFilter) {
+          case 'today':
+            return eventDate.getTime() === today.getTime();
+          case 'tomorrow':
+            return eventDate.getTime() === tomorrow.getTime();
+          case 'week':
+            return eventDate >= today && eventDate <= weekFromNow;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Tags filter
+    if (selectedTags.length > 0) {
+      filtered = filtered.filter(event => {
+        const eventTags = event.tags || [];
+        return selectedTags.some(tag => eventTags.includes(tag));
+      });
+    }
+
+    // Price filter
+    if (priceFilter !== 'any') {
+      filtered = filtered.filter(event => {
+        const hasPrice = event.price && event.price > 0;
+        if (priceFilter === 'free') return !hasPrice;
+        if (priceFilter === 'paid') return hasPrice;
+        return true;
+      });
+    }
+
+    // Location filter - simple check for events with location
+    if (locationFilter === 'near') {
+      filtered = filtered.filter(event => {
+        return event.location && event.location !== 'No location' && event.location.trim() !== '';
+      });
+    }
+
+    return filtered;
+  }, [query, eventsWithCreatorNames, dateFilter, selectedTags, priceFilter, locationFilter]);
 
   // Handler for attending an event (not used in UI here, but available)
   const handleAttendEvent = async (event: any) => {
@@ -513,265 +577,428 @@ const Explore = () => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.content}>
-        {/* Enhanced Header with Black Gradient */}
-        <View style={styles.header}>
-          <LinearGradient
-            colors={['#000000', '#1a1a1a', '#2d2d2d']}
-            start={[0, 0]}
-            end={[1, 1]}
-            style={styles.headerGradient}
-          >
-            <View style={styles.headerContent}>
-              <View style={styles.profileSection}>
-                <UserAvatar
-                  photoUrl={currentUserPhotoUrl}
-                  firstName={profile?.firstName}
-                  lastName={profile?.lastName}
-                  name={userDisplayUtils.getFullName(profile, 'User')}
-                  size={48}
-                />
-                <View style={styles.welcomeSection}>
-                  <Text style={styles.welcomeText}>Welcome back,</Text>
-                  <Text style={styles.headerUserName}>{userDisplayUtils.getFullName(profile, 'User')}</Text>
-                </View>
-              </View>
-            </View>
-          </LinearGradient>
+      {/* Header with Search */}
+      <View style={[styles.searchHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <View style={styles.searchContainer}>
+          <MaterialIcons name="search" size={20} color={colors.textSecondary} />
+          <TextInput
+            placeholder={`Search ${mode}...`}
+            value={query}
+            onChangeText={setQuery}
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholderTextColor={colors.textSecondary}
+          />
         </View>
 
-        <ScrollView
-          style={styles.scrollContainer}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 70 + insets.bottom }]}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Mode Selection Card */}
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardTitleContainer}>
-                <MaterialIcons name="explore" size={20} color={colors.primary} />
-                <Text style={[styles.cardTitle, { color: colors.text }]}>Explore</Text>
+        {/* Filter button for events */}
+        {mode === 'events' && (
+          <TouchableOpacity
+            onPress={() => setShowFilters(!showFilters)}
+            style={[
+              styles.filterButton,
+              {
+                backgroundColor: showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any'
+                  ? colors.primary
+                  : colors.background,
+                borderColor: colors.border
+              }
+            ]}
+          >
+            <MaterialIcons
+              name="tune"
+              size={20}
+              color={showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any'
+                ? 'white'
+                : colors.text}
+            />
+            {/* Filter count badge */}
+            {(dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') && (
+              <View style={[styles.filterBadge, { backgroundColor: 'white' }]}>
+                <Text style={[styles.filterBadgeText, { color: colors.primary }]}>
+                  {(dateFilter !== 'any' ? 1 : 0) + selectedTags.length + (priceFilter !== 'any' ? 1 : 0) + (locationFilter !== 'any' ? 1 : 0)}
+                </Text>
               </View>
-            </View>
-            <View style={styles.modeToggle}>
-              <TouchableOpacity
-                onPress={() => setMode('events')}
-                style={[
-                  styles.modeButton,
-                  {
-                    backgroundColor: mode === 'events' ? colors.primary : colors.background,
-                    borderColor: colors.border,
-                  }
-                ]}
-              >
-                <MaterialIcons
-                  name="event"
-                  size={18}
-                  color={mode === 'events' ? 'white' : colors.text}
-                />
-                <Text
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Mode Selection */}
+      <View style={[styles.modeContainer, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <TouchableOpacity
+          onPress={() => setMode('events')}
+          style={[
+            styles.modeButton,
+            {
+              backgroundColor: mode === 'events' ? colors.primary : 'transparent',
+            }
+          ]}
+        >
+          <MaterialIcons
+            name="event"
+            size={18}
+            color={mode === 'events' ? 'white' : colors.text}
+          />
+          <Text
+            style={[
+              styles.modeButtonText,
+              { color: mode === 'events' ? 'white' : colors.text }
+            ]}
+          >
+            Events
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setMode('users')}
+          style={[
+            styles.modeButton,
+            {
+              backgroundColor: mode === 'users' ? colors.primary : 'transparent',
+            }
+          ]}
+        >
+          <MaterialIcons
+            name="people"
+            size={18}
+            color={mode === 'users' ? 'white' : colors.text}
+          />
+          <Text
+            style={[
+              styles.modeButtonText,
+              { color: mode === 'users' ? 'white' : colors.text }
+            ]}
+          >
+            Users
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setMode('groups')}
+          style={[
+            styles.modeButton,
+            {
+              backgroundColor: mode === 'groups' ? colors.primary : 'transparent',
+            }
+          ]}
+        >
+          <MaterialIcons
+            name="group"
+            size={18}
+            color={mode === 'groups' ? 'white' : colors.text}
+          />
+          <Text
+            style={[
+              styles.modeButtonText,
+              { color: mode === 'groups' ? 'white' : colors.text }
+            ]}
+          >
+            Groups
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Filter Panel for Events */}
+      {mode === 'events' && showFilters && (
+        <View style={[styles.filterPanel, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          {/* Date Filter */}
+          <View style={styles.filterSection}>
+            <Text style={[styles.filterTitle, { color: colors.text }]}>When</Text>
+            <View style={styles.filterOptions}>
+              {[
+                { label: 'Any time', value: 'any' },
+                { label: 'Today', value: 'today' },
+                { label: 'Tomorrow', value: 'tomorrow' },
+                { label: 'This week', value: 'week' }
+              ].map(option => (
+                <TouchableOpacity
+                  key={option.value}
+                  onPress={() => setDateFilter(option.value as any)}
                   style={[
-                    styles.modeButtonText,
-                    { color: mode === 'events' ? 'white' : colors.text }
+                    styles.filterChip,
+                    {
+                      backgroundColor: dateFilter === option.value ? colors.primary : colors.background,
+                      borderColor: colors.border
+                    }
                   ]}
                 >
-                  Events
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setMode('users')}
-                style={[
-                  styles.modeButton,
-                  {
-                    backgroundColor: mode === 'users' ? colors.primary : colors.background,
-                    borderColor: colors.border,
-                  }
-                ]}
-              >
-                <MaterialIcons
-                  name="people"
-                  size={18}
-                  color={mode === 'users' ? 'white' : colors.text}
-                />
-                <Text
-                  style={[
-                    styles.modeButtonText,
-                    { color: mode === 'users' ? 'white' : colors.text }
-                  ]}
-                >
-                  Users
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setMode('groups')}
-                style={[
-                  styles.modeButton,
-                  {
-                    backgroundColor: mode === 'groups' ? colors.primary : colors.background,
-                    borderColor: colors.border,
-                  }
-                ]}
-              >
-                <MaterialIcons
-                  name="group"
-                  size={18}
-                  color={mode === 'groups' ? 'white' : colors.text}
-                />
-                <Text
-                  style={[
-                    styles.modeButtonText,
-                    { color: mode === 'groups' ? 'white' : colors.text }
-                  ]}
-                >
-                  Groups
-                </Text>
-              </TouchableOpacity>
+                  <Text style={[
+                    styles.filterChipText,
+                    { color: dateFilter === option.value ? 'white' : colors.text }
+                  ]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
 
-          {/* Search Card */}
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.searchContainer}>
-              <MaterialIcons name="search" size={20} color={colors.textSecondary} />
-              <TextInput
-                placeholder={`Search ${mode}...`}
-                value={query}
-                onChangeText={setQuery}
-                style={[styles.searchInput, { color: colors.text }]}
-                placeholderTextColor={colors.textSecondary}
-              />
+          {/* Price Filter */}
+          <View style={styles.filterSection}>
+            <Text style={[styles.filterTitle, { color: colors.text }]}>Price</Text>
+            <View style={styles.filterOptions}>
+              {[
+                { label: 'Any price', value: 'any' },
+                { label: 'Free', value: 'free' },
+                { label: 'Paid', value: 'paid' }
+              ].map(option => (
+                <TouchableOpacity
+                  key={option.value}
+                  onPress={() => setPriceFilter(option.value as any)}
+                  style={[
+                    styles.filterChip,
+                    {
+                      backgroundColor: priceFilter === option.value ? colors.primary : colors.background,
+                      borderColor: colors.border
+                    }
+                  ]}
+                >
+                  <Text style={[
+                    styles.filterChipText,
+                    { color: priceFilter === option.value ? 'white' : colors.text }
+                  ]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
 
-          {/* Content based on mode */}
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
+          {/* Location Filter */}
+          <View style={styles.filterSection}>
+            <Text style={[styles.filterTitle, { color: colors.text }]}>Location</Text>
+            <View style={styles.filterOptions}>
+              {[
+                { label: 'Any location', value: 'any' },
+                { label: 'With location', value: 'near' }
+              ].map(option => (
+                <TouchableOpacity
+                  key={option.value}
+                  onPress={() => setLocationFilter(option.value as any)}
+                  style={[
+                    styles.filterChip,
+                    {
+                      backgroundColor: locationFilter === option.value ? colors.primary : colors.background,
+                      borderColor: colors.border
+                    }
+                  ]}
+                >
+                  <Text style={[
+                    styles.filterChipText,
+                    { color: locationFilter === option.value ? 'white' : colors.text }
+                  ]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          ) : mode === 'users' ? (
-            query.trim() ? (
-              filteredUsers.length > 0 ? (
-                <FlatList
-                  data={filteredUsers}
-                  renderItem={renderUserItem}
-                  keyExtractor={(item) => item.$id}
-                  onEndReached={loadMoreUsers}
-                  onEndReachedThreshold={0.5}
-                  ListFooterComponent={renderListFooter}
-                  showsVerticalScrollIndicator={false}
-                  scrollEnabled={false} // Disable internal scrolling as it's inside ScrollView
-                />
-              ) : (
-                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <View style={styles.emptyState}>
-                    <MaterialIcons name="person-search" size={48} color={colors.textSecondary} />
-                    <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No users found</Text>
-                  </View>
-                </View>
-              )
-            ) : (
+          </View>
+
+          {/* Tags Filter */}
+          <View style={styles.filterSection}>
+            <Text style={[styles.filterTitle, { color: colors.text }]}>Categories</Text>
+            <View style={styles.filterTagsGrid}>
+              {CATEGORIES.map(category => (
+                <TouchableOpacity
+                  key={category.value}
+                  onPress={() => {
+                    if (selectedTags.includes(category.value)) {
+                      setSelectedTags(selectedTags.filter(tag => tag !== category.value));
+                    } else {
+                      setSelectedTags([...selectedTags, category.value]);
+                    }
+                  }}
+                  style={[
+                    styles.filterTagChip,
+                    {
+                      backgroundColor: selectedTags.includes(category.value) ? colors.primary : colors.background,
+                      borderColor: colors.border
+                    }
+                  ]}
+                >
+                  <Text style={styles.filterTagEmoji}>{category.emoji}</Text>
+                  <Text style={[
+                    styles.filterTagText,
+                    { color: selectedTags.includes(category.value) ? 'white' : colors.text }
+                  ]}>
+                    {category.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Clear Filters Button */}
+          {(dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') && (
+            <TouchableOpacity
+              onPress={() => {
+                setDateFilter('any');
+                setSelectedTags([]);
+                setPriceFilter('any');
+                setLocationFilter('any');
+              }}
+              style={[styles.clearFiltersButton, { borderColor: colors.border }]}
+            >
+              <MaterialIcons name="clear" size={16} color={colors.textSecondary} />
+              <Text style={[styles.clearFiltersText, { color: colors.textSecondary }]}>
+                Clear filters
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      <ScrollView
+        style={styles.scrollContainer}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 70 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Filter Results Summary - Only show for events mode when filters are active */}
+        {mode === 'events' && (dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any' || query.trim()) && (
+          <View style={[styles.resultsHeader, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.resultsText, { color: colors.textSecondary }]}>
+              {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} found
+              {query.trim() && ` for "${query}"`}
+            </Text>
+            {(dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') && (
+              <TouchableOpacity
+                onPress={() => setShowFilters(!showFilters)}
+                style={styles.toggleFiltersButton}
+              >
+                <Text style={[styles.toggleFiltersText, { color: colors.primary }]}>
+                  {showFilters ? 'Hide' : 'Show'} Filters
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* Content based on mode */}
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : mode === 'users' ? (
+          query.trim() ? (
+            filteredUsers.length > 0 ? (
               <FlatList
-                data={nonFriendUsers}
+                data={filteredUsers}
                 renderItem={renderUserItem}
                 keyExtractor={(item) => item.$id}
                 onEndReached={loadMoreUsers}
                 onEndReachedThreshold={0.5}
                 ListFooterComponent={renderListFooter}
                 showsVerticalScrollIndicator={false}
-                scrollEnabled={false}
-                ListEmptyComponent={() => (
-                  <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <View style={styles.emptyState}>
-                      <MaterialIcons name="people" size={48} color={colors.primary} />
-                      <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>
-                        Find Friends
-                      </Text>
-                      <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8 }]}>
-                        Use the search bar above to discover and connect with other users in your community
-                      </Text>
-                    </View>
-                  </View>
-                )}
+                scrollEnabled={false} // Disable internal scrolling as it's inside ScrollView
               />
-            )
-          ) : mode === 'events' ? (
-            filteredEvents.length > 0 ? (
-              filteredEvents.map((event) => (
-                <View key={event.$id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <TouchableOpacity
-                    onPress={() => router.push(`/event/${event.$id}`)}
-                    style={styles.eventItem}
-                  >
-                    <Text style={[styles.eventTitle, { color: colors.text }]}>
-                      {event.title}
-                    </Text>
-                    <View style={styles.eventDetails}>
-                      <View style={styles.eventDetailRow}>
-                        <MaterialIcons name="person" size={16} color={colors.primary} />
-                        <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
-                          {event.creatorName}
-                        </Text>
-                      </View>
-                      {event.groupName && (
-                        <View style={styles.eventDetailRow}>
-                          <MaterialIcons name="group" size={16} color={colors.primary} />
-                          <Text style={[styles.eventDetailText, { color: colors.primary }]}>
-                            {event.groupName}
-                          </Text>
-                        </View>
-                      )}
-                      <View style={styles.eventDetailRow}>
-                        <MaterialIcons name="location-on" size={16} color={colors.primary} />
-                        <TouchableOpacity onPress={() => openInMaps(event.location)}>
-                          <Text style={[styles.eventDetailText, { color: '#000000', textDecorationLine: 'underline' }]}>
-                            {event.location}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                      <View style={styles.eventDetailRow}>
-                        <MaterialIcons name="access-time" size={16} color={colors.primary} />
-                        <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
-                          {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={[styles.eventDescription, { color: colors.text }]} numberOfLines={2}>
-                      {event.description}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ))
             ) : (
               <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.emptyState}>
-                  <MaterialIcons name="event" size={48} color={colors.textSecondary} />
-                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No events found</Text>
+                  <MaterialIcons name="person-search" size={48} color={colors.textSecondary} />
+                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No users found</Text>
                 </View>
               </View>
             )
           ) : (
-            // Groups mode
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.emptyState}>
-                <MaterialIcons name="group-add" size={48} color={colors.primary} />
-                <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>
-                  Create Groups
-                </Text>
-                <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8, marginBottom: 16 }]}>
-                  Start your own group and bring together people who share your interests and passions
-                </Text>
+            <FlatList
+              data={nonFriendUsers}
+              renderItem={renderUserItem}
+              keyExtractor={(item) => item.$id}
+              onEndReached={loadMoreUsers}
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={renderListFooter}
+              showsVerticalScrollIndicator={false}
+              scrollEnabled={false}
+              ListEmptyComponent={() => (
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={styles.emptyState}>
+                    <MaterialIcons name="people" size={48} color={colors.primary} />
+                    <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>
+                      Find Friends
+                    </Text>
+                    <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8 }]}>
+                      Use the search bar above to discover and connect with other users in your community
+                    </Text>
+                  </View>
+                </View>
+              )}
+            />
+          )
+        ) : mode === 'events' ? (
+          filteredEvents.length > 0 ? (
+            filteredEvents.map((event) => (
+              <View key={event.$id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <TouchableOpacity
-                  onPress={() => router.push('/CreateGroup')}
-                  style={[styles.actionButton, { backgroundColor: '#000000' }]}
+                  onPress={() => router.push(`/event/${event.$id}`)}
+                  style={styles.eventItem}
                 >
-                  <MaterialIcons name="add" size={16} color="white" />
-                  <Text style={[styles.actionButtonText, { color: 'white' }]}>Create Group</Text>
+                  <Text style={[styles.eventTitle, { color: colors.text }]}>
+                    {event.title}
+                  </Text>
+                  <View style={styles.eventDetails}>
+                    <View style={styles.eventDetailRow}>
+                      <MaterialIcons name="person" size={16} color={colors.primary} />
+                      <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
+                        {event.creatorName}
+                      </Text>
+                    </View>
+                    {event.groupName && (
+                      <View style={styles.eventDetailRow}>
+                        <MaterialIcons name="group" size={16} color={colors.primary} />
+                        <Text style={[styles.eventDetailText, { color: colors.primary }]}>
+                          {event.groupName}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.eventDetailRow}>
+                      <MaterialIcons name="location-on" size={16} color={colors.primary} />
+                      <TouchableOpacity onPress={() => openInMaps(event.location)}>
+                        <Text style={[styles.eventDetailText, { color: '#000000', textDecorationLine: 'underline' }]}>
+                          {event.location}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.eventDetailRow}>
+                      <MaterialIcons name="access-time" size={16} color={colors.primary} />
+                      <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
+                        {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.eventDescription, { color: colors.text }]} numberOfLines={2}>
+                    {event.description}
+                  </Text>
                 </TouchableOpacity>
               </View>
+            ))
+          ) : (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.emptyState}>
+                <MaterialIcons name="event" size={48} color={colors.textSecondary} />
+                <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No events found</Text>
+              </View>
             </View>
-          )}
-        </ScrollView>
-      </View>
+          )
+        ) : (
+          // Groups mode
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.emptyState}>
+              <MaterialIcons name="group-add" size={48} color={colors.primary} />
+              <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>
+                Create Groups
+              </Text>
+              <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8, marginBottom: 16 }]}>
+                Start your own group and bring together people who share your interests and passions
+              </Text>
+              <TouchableOpacity
+                onPress={() => router.push('/CreateGroup')}
+                style={[styles.actionButton, { backgroundColor: '#000000' }]}
+              >
+                <MaterialIcons name="add" size={16} color="white" />
+                <Text style={[styles.actionButtonText, { color: 'white' }]}>Create Group</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -780,6 +1007,159 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  // New styles for updated layout
+  searchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  searchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    marginLeft: 8,
+  },
+  filterButton: {
+    marginLeft: 12,
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    position: 'relative',
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  filterBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  modeContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  modeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginHorizontal: 4,
+  },
+  modeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  filterPanel: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  filterSection: {
+    marginBottom: 16,
+  },
+  filterTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  filterOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  filterChipText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  filterTagsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  filterTagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  filterTagEmoji: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  filterTagText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  clearFiltersButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  clearFiltersText: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  resultsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  resultsText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  toggleFiltersButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  toggleFiltersText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Existing styles
   content: {
     flex: 1,
   },
@@ -853,32 +1233,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     borderRadius: 12,
     padding: 4,
-  },
-  modeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginHorizontal: 2,
-    borderWidth: 1,
-  },
-  modeButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginLeft: 6,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    marginLeft: 12,
-    fontFamily: 'Rubik-Regular',
   },
   loadingContainer: {
     alignItems: 'center',

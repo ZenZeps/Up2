@@ -892,19 +892,20 @@ export async function fetchUserEvents(userId: string): Promise<Event[]> {
 
     allDocuments.forEach((doc: any) => {
       if (!uniqueEvents.has(doc.$id)) {
-        // If it's already an Event object from attendingEvents, use as is
-        // Otherwise convert document to Event object
-        const event: Event = doc.title ? doc : {
+        // Always convert to proper Event object to ensure all fields are properly handled
+        const event: Event = {
           $id: doc.$id,
-          title: doc.title,
-          location: doc.location,
+          title: doc.title || '',
+          location: doc.location || '',
           startTime: doc.startTime,
           endTime: doc.endTime,
           creatorId: doc.creatorId,
-          inviteeIds: doc.inviteeIds || [],
+          inviteeIds: Array.isArray(doc.inviteeIds) ? doc.inviteeIds : [],
           description: doc.description || '',
-          attendees: doc.attendees || [],
+          attendees: Array.isArray(doc.attendees) ? doc.attendees : [],
           tags: Array.isArray(doc.tags) ? doc.tags : [],
+          groupId: doc.groupId || undefined,
+          groupName: doc.groupName || undefined,
         };
         uniqueEvents.set(doc.$id, event);
       }

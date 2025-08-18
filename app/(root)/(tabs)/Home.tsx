@@ -31,6 +31,52 @@ type TabType = 'calendar' | 'agenda';
 // Cache for creator names
 const creatorNameCache = new Map<string, string>();
 
+// Helper functions for date formatting
+const formatDateHeader = (date: Date): string => {
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  // Check if it's today
+  if (date.toDateString() === today.toDateString()) {
+    return 'Today';
+  }
+
+  // Check if it's tomorrow
+  if (date.toDateString() === tomorrow.toDateString()) {
+    return 'Tomorrow';
+  }
+
+  // Otherwise, format like "Thu, Sept 4"
+  return date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
+// Group events by day
+const groupEventsByDay = (events: AppEvent[]) => {
+  const grouped: { [key: string]: { date: Date; events: AppEvent[] } } = {};
+
+  events.forEach(event => {
+    const eventDate = new Date(event.startTime);
+    const dateKey = eventDate.toDateString();
+
+    if (!grouped[dateKey]) {
+      grouped[dateKey] = {
+        date: eventDate,
+        events: []
+      };
+    }
+
+    grouped[dateKey].events.push(event);
+  });
+
+  // Sort by date and return as array
+  return Object.values(grouped).sort((a, b) => a.date.getTime() - b.date.getTime());
+};
+
 export default function Home() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -102,7 +148,7 @@ export default function Home() {
   const [calendarHeight, setCalendarHeight] = useState(0);
   const [userTravelData, setUserTravelData] = useState<TravelAnnouncement[]>([]);
   const [groupInvites, setGroupInvites] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<TabType>('calendar');
+  const [activeTab, setActiveTab] = useState<TabType>('agenda');
   const [enrichedEvents, setEnrichedEvents] = useState<AppEvent[]>([]);
   const [agendaEvents, setAgendaEvents] = useState<AppEvent[]>([]);
   const [messageModalVisible, setMessageModalVisible] = useState(false);
@@ -760,11 +806,17 @@ export default function Home() {
             <Text style={styles.headerTitle}>UP2</Text>
             <View style={styles.headerButtonsContainer}>
               <TouchableOpacity
-                onPress={() => router.push('/(root)/Invites')}
+                onPress={handleCreateEventPress}
                 style={[
                   styles.headerButton,
                   { marginRight: 12 }
                 ]}
+              >
+                <MaterialIcons name="add" size={24} color="white" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => router.push('/(root)/Invites')}
+                style={styles.headerButton}
               >
                 <MaterialIcons
                   name="notifications"
@@ -775,12 +827,6 @@ export default function Home() {
                   <View style={styles.notificationDot} />
                 )}
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleCreateEventPress}
-                style={styles.headerButton}
-              >
-                <MaterialIcons name="add" size={24} color="white" />
-              </TouchableOpacity>
             </View>
           </View>
         </LinearGradient>
@@ -788,28 +834,6 @@ export default function Home() {
 
       {/* Modern Tab Navigation */}
       <View style={[styles.tabContainer, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity
-          onPress={() => setActiveTab('calendar')}
-          style={[
-            styles.tabButton,
-            { borderBottomColor: activeTab === 'calendar' ? colors.primary : 'transparent' }
-          ]}
-        >
-          <MaterialIcons
-            name="calendar-today"
-            size={20}
-            color={activeTab === 'calendar' ? colors.primary : colors.textSecondary}
-          />
-          <Text
-            style={[
-              styles.tabText,
-              { color: activeTab === 'calendar' ? colors.primary : colors.textSecondary }
-            ]}
-          >
-            Calendar
-          </Text>
-        </TouchableOpacity>
-
         <TouchableOpacity
           onPress={() => setActiveTab('agenda')}
           style={[
@@ -831,11 +855,123 @@ export default function Home() {
             Agenda
           </Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setActiveTab('calendar')}
+          style={[
+            styles.tabButton,
+            { borderBottomColor: activeTab === 'calendar' ? colors.primary : 'transparent' }
+          ]}
+        >
+          <MaterialIcons
+            name="calendar-today"
+            size={20}
+            color={activeTab === 'calendar' ? colors.primary : colors.textSecondary}
+          />
+          <Text
+            style={[
+              styles.tabText,
+              { color: activeTab === 'calendar' ? colors.primary : colors.textSecondary }
+            ]}
+          >
+            Calendar
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Content */}
       <View style={styles.content}>
-        {activeTab === 'calendar' ? (
+        {activeTab === 'agenda' ? (
+          /* Modern Agenda View with Day Groupings */
+          <FlatList
+            style={[styles.agendaList, { backgroundColor: colors.background }]}
+            data={groupEventsByDay(agendaEvents)}
+            keyExtractor={(item) => item.date.toDateString()}
+            renderItem={({ item: dayGroup }) => (
+              <View style={styles.dayGroup}>
+                {/* Day Header */}
+                <View style={[styles.dayHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+                  <Text style={[styles.dayHeaderText, { color: colors.text }]}>
+                    {formatDateHeader(dayGroup.date)}
+                  </Text>
+                </View>
+
+                {/* Events for this day */}
+                {dayGroup.events.map(item => (
+                  <TouchableOpacity
+                    key={item.$id}
+                    onPress={() => handlePressEvent({
+                      id: item.$id,
+                      title: item.title,
+                      start: new Date(item.startTime),
+                      end: new Date(item.endTime),
+                      location: item.location,
+                      color: getEventColor(item.tags || []),
+                      rawEvent: item
+                    })}
+                  >
+                    <View style={[styles.agendaCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <View style={styles.agendaHeader}>
+                        <Text style={[styles.agendaTitle, { color: colors.text }]} numberOfLines={2}>
+                          {item.title}
+                        </Text>
+                        <View style={[styles.eventColorDot, { backgroundColor: getEventColor(item.tags || []) || colors.primary }]} />
+                      </View>
+
+                      <View style={styles.agendaMeta}>
+                        <View style={styles.agendaMetaRow}>
+                          <MaterialIcons name="access-time" size={16} color={colors.primary} />
+                          <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
+                            {new Date(item.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(item.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </Text>
+                        </View>
+
+                        <View style={styles.agendaMetaRow}>
+                          <MaterialIcons name="people" size={16} color={colors.primary} />
+                          <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
+                            {(item as any).attendeeCount || 0} attending
+                          </Text>
+                        </View>
+
+                        {(item as any).creatorName && (
+                          <View style={styles.agendaMetaRow}>
+                            <MaterialIcons name="person" size={16} color={colors.primary} />
+                            <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
+                              By {(item as any).creatorName}
+                            </Text>
+                          </View>
+                        )}
+
+                        {item.location && item.location !== 'No location' && (
+                          <View style={styles.agendaMetaRow}>
+                            <MaterialIcons name="location-on" size={16} color={colors.primary} />
+                            <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
+                              {item.location}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <MaterialIcons name="event" size={64} color={colors.textSecondary} />
+                <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
+                  No Upcoming Events
+                </Text>
+                <Text style={[styles.emptyStateDescription, { color: colors.textSecondary }]}>
+                  You're not attending any upcoming events. Join some events to see them here!
+                </Text>
+              </View>
+            }
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[styles.agendaContent, { paddingBottom: 70 + insets.bottom }]}
+          />
+        ) : (
+          /* Modern Calendar View */
           <View style={styles.calendarContainer}>
             {/* Modern Calendar Controls */}
             <View style={[styles.controlsContainer, { backgroundColor: colors.card }]}>
@@ -928,80 +1064,6 @@ export default function Home() {
               )}
             </View>
           </View>
-        ) : (
-          /* Modern Agenda View */
-          <FlatList
-            style={[styles.agendaList, { backgroundColor: colors.background }]}
-            data={agendaEvents}
-            keyExtractor={(item) => item.$id}
-            renderItem={({ item }) => (
-              <TouchableOpacity onPress={() => handlePressEvent({
-                id: item.$id,
-                title: item.title,
-                start: new Date(item.startTime),
-                end: new Date(item.endTime),
-                location: item.location,
-                color: getEventColor(item.tags || []),
-                rawEvent: item
-              })}>
-                <View style={[styles.agendaCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <View style={styles.agendaHeader}>
-                    <Text style={[styles.agendaTitle, { color: colors.text }]} numberOfLines={2}>
-                      {item.title}
-                    </Text>
-                    <View style={[styles.eventColorDot, { backgroundColor: getEventColor(item.tags || []) || colors.primary }]} />
-                  </View>
-
-                  <View style={styles.agendaMeta}>
-                    <View style={styles.agendaMetaRow}>
-                      <MaterialIcons name="access-time" size={16} color={colors.primary} />
-                      <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                        {new Date(item.startTime).toLocaleDateString()} at {new Date(item.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </Text>
-                    </View>
-
-                    <View style={styles.agendaMetaRow}>
-                      <MaterialIcons name="people" size={16} color={colors.primary} />
-                      <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                        {(item as any).attendeeCount || 0} attending
-                      </Text>
-                    </View>
-
-                    {(item as any).creatorName && (
-                      <View style={styles.agendaMetaRow}>
-                        <MaterialIcons name="person" size={16} color={colors.primary} />
-                        <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                          By {(item as any).creatorName}
-                        </Text>
-                      </View>
-                    )}
-
-                    {item.location && item.location !== 'No location' && (
-                      <View style={styles.agendaMetaRow}>
-                        <MaterialIcons name="location-on" size={16} color={colors.primary} />
-                        <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                          {item.location}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              </TouchableOpacity>
-            )}
-            ListEmptyComponent={
-              <View style={styles.emptyState}>
-                <MaterialIcons name="event" size={64} color={colors.textSecondary} />
-                <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
-                  No Upcoming Events
-                </Text>
-                <Text style={[styles.emptyStateDescription, { color: colors.textSecondary }]}>
-                  You're not attending any upcoming events. Join some events to see them here!
-                </Text>
-              </View>
-            }
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.agendaContent, { paddingBottom: 70 + insets.bottom }]}
-          />
         )}
       </View>
 
@@ -1022,11 +1084,11 @@ export default function Home() {
         <EventDetailsModal
           event={selectedEvent}
           isCreator={selectedEvent.creatorId === currentUser?.$id}
-          onClose={handleDetailsModalClose}
+          onClose={() => setDetailsModalVisible(false)}
           onEdit={() => handleEditEvent(selectedEvent)}
           onAttend={handleEventAttend}
           onNotAttend={handleEventNotAttend}
-          onChat={handleEventChat}
+          onChat={() => handleEventChat(selectedEvent)}
           currentUserId={currentUser?.$id || ''}
         />
       )}
@@ -1035,13 +1097,10 @@ export default function Home() {
       {messageModalVisible && selectedEvent && (
         <MessageModal
           visible={messageModalVisible}
-          onClose={() => {
-            setMessageModalVisible(false);
-            setSelectedEvent(null);
-          }}
+          onClose={() => setMessageModalVisible(false)}
           eventId={selectedEvent.$id}
           title={`${selectedEvent.title} Chat`}
-          currentUserId={currentUserId ?? ''}
+          currentUserId={currentUser?.$id || ''}
         />
       )}
     </SafeAreaView>
@@ -1255,5 +1314,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'white',
     marginLeft: 8,
+  },
+  dayGroup: {
+    marginBottom: 16,
+  },
+  dayHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    marginHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  dayHeaderText: {
+    fontSize: 18,
+    fontWeight: '700',
   },
 });

@@ -4,7 +4,7 @@ import { acceptGroupInvite, declineGroupInvite, getGroupById, getUserGroupInvite
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile } from '@/lib/api/user';
 import { config, databases, getCurrentUser } from '@/lib/appwrite/appwrite';
-import { useAlert } from '@/lib/context/AlertContext';
+import { useAlert, useAlertHelpers } from '@/lib/context/AlertContext';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { sendFriendRequestAcceptedNotification } from '@/lib/notifications/notificationUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
@@ -12,7 +12,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Query } from 'react-native-appwrite';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import UserAvatar from './components/UserAvatar';
@@ -28,7 +28,8 @@ export default function Invites() {
   const [senderPhotoUrls, setSenderPhotoUrls] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
   const { colors } = useTheme();
-  const { showAlert, showSuccess, showError } = useAlert();
+  const { showAlert } = useAlert();
+  const { showError, showSuccess } = useAlertHelpers();
 
 
   // Fetch current user ID
@@ -64,12 +65,44 @@ export default function Invites() {
         );
         const requestsWithSenderNames = await Promise.all(
           res.documents.map(async (req: any) => {
+            // Debug the request structure
+            console.log('Processing friend request:', {
+              id: req.$id,
+              userId1: req.userId1,
+              userId2: req.userId2,
+              requesterId: req.requesterId,
+              status: req.status
+            });
+
             // Get the requester ID (the person who sent the request)
-            const senderProfile = await getUserProfile(req.requesterId);
+            // The requesterId should be the person who initiated the friendship
+            let senderProfile = null;
+            let actualSenderId = req.requesterId;
+
+            // Fallback logic: if requesterId is missing, determine who sent the request
+            if (!actualSenderId) {
+              // If userId1 != current user, then userId1 sent the request
+              // If userId2 != current user, then userId2 sent the request
+              if (req.userId1 && req.userId1 !== userId) {
+                actualSenderId = req.userId1;
+              } else if (req.userId2 && req.userId2 !== userId) {
+                actualSenderId = req.userId2;
+              }
+            }
+
+            if (actualSenderId && typeof actualSenderId === 'string') {
+              try {
+                senderProfile = await getUserProfile(actualSenderId);
+              } catch (error) {
+                console.error('Error fetching sender profile:', actualSenderId, error);
+              }
+            }
+
             return {
               ...req,
+              requesterId: actualSenderId, // Ensure we have the correct requester ID
               senderName: userDisplayUtils.getFullName(senderProfile || {}, 'Unknown User'),
-              from: req.requesterId, // For backward compatibility with existing UI logic
+              from: actualSenderId, // For backward compatibility with existing UI logic
               to: userId
             };
           })
@@ -103,23 +136,35 @@ export default function Invites() {
       const result = await acceptFriendRequest(request.$id);
 
       if (!result.success) {
-        showError(`Could not accept friend request: ${result.message}`);
+        showError('Error', `Could not accept friend request: ${result.message}`);
         return;
       }
 
       // Send notification to the original sender that their request was accepted
-      const toProfile = await getUserProfile(request.to);
+      let toProfile = null;
+      if (request.to && typeof request.to === 'string') {
+        try {
+          toProfile = await getUserProfile(request.to);
+        } catch (error) {
+          console.error('Error fetching profile for notification:', request.to, error);
+        }
+      }
       if (toProfile) {
-        const accepterName = `${toProfile.firstName} ${toProfile.lastName}`;
-        await sendFriendRequestAcceptedNotification(request.from, accepterName, request.to);
+        try {
+          const accepterName = `${toProfile.firstName} ${toProfile.lastName}`;
+          await sendFriendRequestAcceptedNotification(request.from, accepterName, request.to);
+        } catch (error) {
+          console.error('Error sending friend request notification:', error);
+          // Don't fail the whole operation if notification fails
+        }
       }
 
       // Remove the request from the list
       setFriendRequests((prev) => prev.filter((req) => req.$id !== request.$id));
-      showSuccess('Friend request accepted!');
+      showSuccess('Success', 'Friend request accepted!');
     } catch (error) {
       console.error('Error accepting friend request:', error);
-      showError('Could not accept friend request.');
+      showError('Error', 'Could not accept friend request.');
     }
   };
 
@@ -129,7 +174,7 @@ export default function Invites() {
       const result = await declineFriendRequest(request.$id);
 
       if (!result.success) {
-        showError(`Could not decline friend request: ${result.message}`);
+        showError('Error', `Could not decline friend request: ${result.message}`);
         return;
       }
 
@@ -138,7 +183,7 @@ export default function Invites() {
       showAlert('Request Declined', 'Friend request declined.', [{ text: 'OK' }], 'info');
     } catch (error) {
       console.error('Error declining friend request:', error);
-      showError('Could not decline friend request.');
+      showError('Error', 'Could not decline friend request.');
     }
   };
 
@@ -152,13 +197,26 @@ export default function Invites() {
 
         // Enrich invites with group and sender details
         // Note: New system uses groupId, userId, and invitedBy fields
+        const invitesArray = Array.isArray(invites) ? invites : [];
         const enrichedInvites = await Promise.all(
-          invites.map(async (invite: any) => {
-            const [group, senderProfile] = await Promise.all([
-              getGroupById(invite.groupId),
-              // Use invitedBy field instead of fromUserId
-              getUserProfile(invite.invitedBy)
-            ]);
+          invitesArray.map(async (invite: any) => {
+            let group = null;
+            let senderProfile = null;
+
+            try {
+              group = await getGroupById(invite.groupId);
+            } catch (error) {
+              console.error('Error fetching group:', invite.groupId, error);
+            }
+
+            // Use invitedBy field instead of fromUserId
+            if (invite.invitedBy && typeof invite.invitedBy === 'string') {
+              try {
+                senderProfile = await getUserProfile(invite.invitedBy);
+              } catch (error) {
+                console.error('Error fetching invite sender profile:', invite.invitedBy, error);
+              }
+            }
 
             return {
               ...invite,
@@ -186,7 +244,7 @@ export default function Invites() {
         Alert.alert('Success', 'You have joined the group!');
 
         // Reload user groups to show the new group
-        router.push('/(tabs)/Home');
+        router.push('/(root)/(tabs)/Home' as any);
       } else {
         Alert.alert('Error', 'Failed to join group');
       }
@@ -201,11 +259,11 @@ export default function Invites() {
         setGroupInvites(prev => prev.filter(i => i.$id !== invite.$id));
         showAlert('Invite Declined', 'Group invite declined', [{ text: 'OK' }], 'info');
       } else {
-        showError('Failed to decline group invite');
+        showError('Error', 'Failed to decline group invite');
       }
     } catch (error) {
       console.error('Error declining group invite:', error);
-      showError('Failed to decline group invite');
+      showError('Error', 'Failed to decline group invite');
     }
   };
 
@@ -223,7 +281,14 @@ export default function Invites() {
     const fetchCreatorNames = async () => {
       const updatedInvites = await Promise.all(
         invites.map(async (event) => {
-          const creatorProfile = await getUserProfile(event.creatorId);
+          let creatorProfile = null;
+          if (event.creatorId && typeof event.creatorId === 'string') {
+            try {
+              creatorProfile = await getUserProfile(event.creatorId);
+            } catch (error) {
+              console.error('Error fetching event creator profile:', event.creatorId, error);
+            }
+          }
           return { ...event, creatorName: userDisplayUtils.getFullName(creatorProfile || {}, 'Unknown User') };
         })
       );
@@ -305,19 +370,19 @@ export default function Invites() {
 
                     <View style={styles.requestActions}>
                       <TouchableOpacity
-                        onPress={() => handleDeclineFriendRequest(req)}
-                        style={[styles.declineButton, { backgroundColor: colors.background, borderColor: colors.border }]}
-                      >
-                        <MaterialIcons name="close" size={16} color={colors.text} />
-                        <Text style={[styles.declineButtonText, { color: colors.text }]}>Decline</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
                         onPress={() => handleAcceptFriendRequest(req)}
                         style={[styles.acceptButton, { backgroundColor: colors.primary }]}
                       >
                         <MaterialIcons name="check" size={16} color="white" />
                         <Text style={styles.acceptButtonText}>Accept</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => handleDeclineFriendRequest(req)}
+                        style={[styles.declineButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+                      >
+                        <MaterialIcons name="close" size={16} color={colors.text} />
+                        <Text style={[styles.declineButtonText, { color: colors.text }]}>Decline</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -433,17 +498,18 @@ export default function Invites() {
 
                     <View style={styles.groupInviteActions}>
                       <TouchableOpacity
-                        onPress={() => handleDeclineGroupInvite(invite)}
-                        style={[styles.declineButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                      >
-                        <MaterialIcons name="close" size={16} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
                         onPress={() => handleAcceptGroupInvite(invite)}
                         style={[styles.acceptButton, { backgroundColor: colors.primary }]}
                       >
                         <MaterialIcons name="check" size={16} color="white" />
                         <Text style={styles.acceptButtonText}>Accept</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleDeclineGroupInvite(invite)}
+                        style={[styles.declineButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                      >
+                        <MaterialIcons name="close" size={16} color={colors.textSecondary} />
+                        <Text style={[styles.declineButtonText, { color: colors.textSecondary }]}>Decline</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -567,10 +633,10 @@ const styles = StyleSheet.create({
   acceptButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    marginLeft: 12,
   },
   acceptButtonText: {
     fontSize: 14,
@@ -579,9 +645,10 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   requestActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'stretch',
     gap: 8,
+    minWidth: 120,
   },
   declineButtonText: {
     fontSize: 14,
@@ -626,13 +693,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   groupInviteActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'stretch',
     gap: 8,
+    minWidth: 120,
   },
   declineButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
