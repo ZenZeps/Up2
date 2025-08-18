@@ -136,6 +136,17 @@ const TabsLayout = () => {
             )
           }}
         />
+        {/* Map tab */}
+        <Tabs.Screen
+          name="Map"
+          options={{
+            title: 'Map',
+            headerShown: false,
+            tabBarIcon: ({ focused }) => (
+              <TabIcon icon={icons.location} focused={focused} title="Map" colors={colors} hasNotifications={false} />
+            )
+          }}
+        />
         {/* Explore tab */}
         <Tabs.Screen
           name="Explore"
@@ -154,7 +165,7 @@ const TabsLayout = () => {
             title: 'Profile',
             headerShown: false,
             tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.bell} focused={focused} title="Profile" colors={colors} hasNotifications={hasNotifications} />
+              <TabIcon icon={icons.person} focused={focused} title="Profile" colors={colors} hasNotifications={false} />
             )
           }}
         />

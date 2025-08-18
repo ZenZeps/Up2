@@ -18,6 +18,8 @@
         "NSPhotoLibraryUsageDescription": "We need access to your photo library to allow you to select a profile photo.",
         "NSCameraUsageDescription": "We need access to your camera to allow you to take profile photos.",
         "NSMicrophoneUsageDescription": "We need access to your microphone for video recordings.",
+        "NSLocationWhenInUseUsageDescription": "We need access to your location to show nearby events and improve your experience.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "We need access to your location to show nearby events and improve your experience.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -50,7 +52,9 @@
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.RECORD_AUDIO",
         "android.permission.VIBRATE",
-        "android.permission.RECEIVE_BOOT_COMPLETED"
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {
