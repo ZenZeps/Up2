@@ -1,3 +1,4 @@
+import { DeleteAccountButton } from '@/components/DeleteAccountButton';
 import { CATEGORIES } from '@/constants/categories';
 import { getProfilePhotoUrl, pickProfilePhoto, uploadProfilePhoto } from '@/lib/api/profilePhoto';
 import { getUserProfile, updateUserProfile } from '@/lib/api/user';
@@ -390,6 +391,35 @@ const Settings = () => {
                         </Text>
                     </TouchableOpacity>
                 </View>
+
+                {/* Danger Zone - Delete Account */}
+                <View style={styles.dangerZone}>
+                    <Text style={[styles.sectionTitle, { color: '#FF3B30' }]}>
+                        Danger Zone
+                    </Text>
+                    <View style={styles.dangerZoneCard}>
+                        <View style={styles.dangerZoneHeader}>
+                            <MaterialIcons name="warning" size={24} color="#FF3B30" />
+                            <View style={styles.dangerZoneText}>
+                                <Text style={[styles.dangerZoneTitle, { color: colors.text }]}>
+                                    Delete Account
+                                </Text>
+                                <Text style={[styles.dangerZoneDescription, { color: colors.textSecondary }]}>
+                                    Permanently delete your account and all associated data. This action cannot be undone.
+                                </Text>
+                            </View>
+                        </View>
+                        {userId && (
+                            <DeleteAccountButton
+                                userId={userId}
+                                onDeleteComplete={() => {
+                                    // Handle any cleanup if needed
+                                    refetch();
+                                }}
+                            />
+                        )}
+                    </View>
+                </View>
             </ScrollView>
         </SafeAreaView>
     );
@@ -606,6 +636,39 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         marginLeft: 8,
+    },
+    dangerZone: {
+        paddingVertical: 20,
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 16,
+    },
+    dangerZoneCard: {
+        borderWidth: 2,
+        borderColor: '#FF3B30',
+        borderRadius: 12,
+        padding: 20,
+        backgroundColor: 'rgba(255, 59, 48, 0.05)',
+    },
+    dangerZoneHeader: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginBottom: 16,
+        gap: 12,
+    },
+    dangerZoneText: {
+        flex: 1,
+    },
+    dangerZoneTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginBottom: 4,
+    },
+    dangerZoneDescription: {
+        fontSize: 14,
+        lineHeight: 20,
     },
 });
 

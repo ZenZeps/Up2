@@ -9,6 +9,27 @@ import { config, databases } from "@/lib/appwrite/appwrite";
 import { ID, Query } from "react-native-appwrite";
 import { authDebug } from "../debug/authDebug";
 import { UserFriendship } from "../types/Database";
+import { getUserProfile, updateUserProfile } from "./user";
+
+/**
+ * Update the friend count for a user by counting their actual friendships
+ */
+async function updateUserFriendCount(userId: string): Promise<void> {
+    try {
+        const friendIds = await getUserFriends(userId);
+        const userProfile = await getUserProfile(userId);
+
+        if (userProfile && userProfile.friendCount !== friendIds.length) {
+            await updateUserProfile({
+                ...userProfile,
+                friendCount: friendIds.length
+            });
+            authDebug.info(`Updated friend count for user ${userId}: ${friendIds.length}`);
+        }
+    } catch (error) {
+        authDebug.error(`Error updating friend count for user ${userId}:`, error);
+    }
+}
 
 /**
  * Check if a friendship already exists between two users
@@ -108,6 +129,13 @@ export async function acceptFriendRequest(friendshipId: string): Promise<{ succe
     try {
         authDebug.info(`Accepting friend request: ${friendshipId}`);
 
+        // First get the friendship document to identify both users
+        const friendship = await databases.getDocument(
+            config.databaseID!,
+            config.userFriendshipsCollectionID!,
+            friendshipId
+        );
+
         await databases.updateDocument(
             config.databaseID!,
             config.userFriendshipsCollectionID!,
@@ -118,7 +146,13 @@ export async function acceptFriendRequest(friendshipId: string): Promise<{ succe
             }
         );
 
-        authDebug.info('Friend request accepted successfully');
+        // Update friend counts for both users
+        await Promise.all([
+            updateUserFriendCount(friendship.userId1),
+            updateUserFriendCount(friendship.userId2)
+        ]);
+
+        authDebug.info('Friend request accepted successfully and friend counts updated');
         return { success: true, message: 'Friend request accepted' };
 
     } catch (error) {
@@ -177,7 +211,13 @@ export async function unfriendUser(userId: string, friendId: string): Promise<{ 
             friendship.$id
         );
 
-        authDebug.info('Friendship deleted successfully from database');
+        // Update friend counts for both users after unfriending
+        await Promise.all([
+            updateUserFriendCount(userId),
+            updateUserFriendCount(friendId)
+        ]);
+
+        authDebug.info('Friendship deleted successfully from database and friend counts updated');
         return { success: true, message: 'Friendship ended' };
 
     } catch (error) {
@@ -293,5 +333,35 @@ export async function getPendingFriendRequests(userId: string): Promise<{
     } catch (error) {
         authDebug.error('Error getting pending friend requests:', error);
         return { sent: [], received: [] };
+    }
+}
+
+/**
+ * Fix friend count for a user by recalculating from actual friendships
+ * This can be used to repair inconsistent friend counts
+ */
+export async function fixUserFriendCount(userId: string): Promise<{ success: boolean; oldCount: number; newCount: number }> {
+    try {
+        const userProfile = await getUserProfile(userId);
+        if (!userProfile) {
+            return { success: false, oldCount: 0, newCount: 0 };
+        }
+
+        const friendIds = await getUserFriends(userId);
+        const oldCount = userProfile.friendCount || 0;
+        const newCount = friendIds.length;
+
+        if (oldCount !== newCount) {
+            await updateUserProfile({
+                ...userProfile,
+                friendCount: newCount
+            });
+            authDebug.info(`Fixed friend count for user ${userId}: ${oldCount} → ${newCount}`);
+        }
+
+        return { success: true, oldCount, newCount };
+    } catch (error) {
+        authDebug.error(`Error fixing friend count for user ${userId}:`, error);
+        return { success: false, oldCount: 0, newCount: 0 };
     }
 }

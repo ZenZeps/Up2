@@ -44,15 +44,26 @@ export const uploadProfilePhoto = async (userId: string, uri: string) => {
 
     // For React Native, we need to get file info first
     let fileSize = 0;
+    let fileInfo: any = null;
+
     try {
       console.log('Attempting to fetch file info...');
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      fileSize = blob.size;
-      console.log('File size determined:', fileSize);
+      // Try to get file info using React Native FileSystem if available
+      const response = await fetch(uri, { method: 'HEAD' });
+      const contentLength = response.headers.get('content-length');
+      if (contentLength) {
+        fileSize = parseInt(contentLength, 10);
+        console.log('File size determined from headers:', fileSize);
+      } else {
+        // Fallback to blob method
+        const fullResponse = await fetch(uri);
+        const blob = await fullResponse.blob();
+        fileSize = blob.size;
+        console.log('File size determined from blob:', fileSize);
+      }
     } catch (fetchError) {
       console.warn('Could not determine file size, using default:', fetchError);
-      fileSize = 1000000; // Default to 1MB if we can't determine size
+      fileSize = 100000; // Smaller default size (100KB)
     }
 
     // For React Native, create the file object with required properties
@@ -66,13 +77,37 @@ export const uploadProfilePhoto = async (userId: string, uri: string) => {
     console.log('File object created:', file);
     console.log('Attempting to upload to Appwrite...');
 
-    const uploadedFile = await storage.createFile(
-      config.profilePhotosBucketID!,
-      ID.unique(),
-      file
-    );
+    let uploadedFile;
+    let retryCount = 0;
+    const maxRetries = 3;
 
-    console.log('File uploaded successfully:', uploadedFile.$id);
+    while (retryCount < maxRetries) {
+      try {
+        uploadedFile = await storage.createFile(
+          config.profilePhotosBucketID!,
+          ID.unique(),
+          file
+        );
+        console.log('File uploaded successfully:', uploadedFile.$id);
+        break; // Success, exit retry loop
+      } catch (uploadError: any) {
+        retryCount++;
+        console.warn(`Upload attempt ${retryCount} failed:`, uploadError.message);
+
+        if (retryCount >= maxRetries) {
+          throw uploadError; // Max retries reached, throw the error
+        }
+
+        // Wait before retrying (exponential backoff)
+        const delay = Math.pow(2, retryCount) * 1000; // 2s, 4s, 8s
+        console.log(`Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    if (!uploadedFile) {
+      throw new Error('File upload failed after all retry attempts');
+    }
 
     // Get current user profile
     console.log('Fetching current user profile...');

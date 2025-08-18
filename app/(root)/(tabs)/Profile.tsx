@@ -169,7 +169,7 @@ const Profile = () => {
 
       // Launch image picker
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.7,
@@ -179,7 +179,7 @@ const Profile = () => {
         setIsUploadingPhoto(true);
 
         const asset = result.assets[0];
-        const photoId = await uploadProfilePhoto(asset.uri, userId!);
+        const photoId = await uploadProfilePhoto(userId!, asset.uri);
 
         if (photoId && user?.profile) {
           // Update user profile with new photo ID
