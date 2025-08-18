@@ -241,10 +241,8 @@ export default function Invites() {
       const success = await acceptGroupInvite(invite.$id);
       if (success) {
         setGroupInvites(prev => prev.filter(i => i.$id !== invite.$id));
-        Alert.alert('Success', 'You have joined the group!');
-
-        // Reload user groups to show the new group
-        router.push('/(root)/(tabs)/Home' as any);
+        showAlert('Success', 'You have joined the group!', [{ text: 'OK' }], 'success');
+        // The user can navigate to see their groups naturally - don't force navigation
       } else {
         Alert.alert('Error', 'Failed to join group');
       }
@@ -312,7 +310,7 @@ export default function Invites() {
           >
             <View style={styles.headerContent}>
               <TouchableOpacity
-                onPress={() => router.push('/(root)/(tabs)/Explore')}
+                onPress={() => router.back()}
                 style={styles.backButton}
               >
                 <MaterialIcons name="arrow-back" size={20} color="white" />

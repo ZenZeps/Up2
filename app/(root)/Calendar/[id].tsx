@@ -358,7 +358,7 @@ export default function FriendCalendar() {
                 >
                     <View style={styles.headerContent}>
                         <TouchableOpacity
-                            onPress={() => router.push('/(root)/(tabs)/Explore')}
+                            onPress={() => router.back()}
                             style={styles.headerButton}
                         >
                             <MaterialIcons name="arrow-back" size={24} color="white" />

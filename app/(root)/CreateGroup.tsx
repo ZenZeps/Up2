@@ -101,7 +101,7 @@ const CreateGroup = () => {
                 Alert.alert('Success', 'Group created successfully!', [
                     {
                         text: 'OK',
-                        onPress: () => router.replace(`/(root)/Group/${group.$id}`)
+                        onPress: () => router.push(`/(root)/Group/${group.$id}`)
                     }
                 ]);
             } else {

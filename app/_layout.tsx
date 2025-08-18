@@ -31,11 +31,26 @@ export default function RootLayout() {
   // Handle hardware back button for proper navigation
   useEffect(() => {
     const backAction = () => {
-      if (router.canGoBack()) {
-        router.back();
-        return true; // Prevent default behavior
+      try {
+        if (router.canGoBack()) {
+          router.back();
+          return true; // Prevent default behavior
+        }
+        // If we can't go back, allow the default behavior (which will exit the app)
+        return false;
+      } catch (error) {
+        console.error('Error handling back button:', error);
+        // Try emergency fallback
+        try {
+          if (router.canGoBack()) {
+            router.back();
+            return true;
+          }
+        } catch (fallbackError) {
+          console.error('Emergency back button fallback failed:', fallbackError);
+        }
+        return false; // Allow app exit if all else fails
       }
-      return false; // Allow default behavior (exit app)
     };
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
