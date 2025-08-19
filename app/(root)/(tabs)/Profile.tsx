@@ -5,6 +5,7 @@ import { getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Group } from '@/lib/types/Groups';
+import { on as onEvent } from '@/lib/utils/eventBus';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -156,6 +157,17 @@ const Profile = () => {
       loadUserData();
     }, [loadUserData])
   );
+
+  // Listen for global group membership changes and reload
+  useEffect(() => {
+    const cb = (_payload: any) => {
+      loadUserData();
+    };
+    const unsubscribe = onEvent('groups:changed', cb);
+    return () => {
+      unsubscribe && unsubscribe();
+    };
+  }, [loadUserData]);
 
   const handleUpdateProfilePhoto = async () => {
     try {
@@ -520,7 +532,7 @@ const Profile = () => {
                     {item.title}
                   </Text>
                   <Text style={[styles.groupMembers, { color: colors.textSecondary }]}>
-                    {item.users?.length || 0} members
+                    {item.memberCount ?? (Array.isArray(item.users) ? item.users.length : 0)} members
                   </Text>
                 </TouchableOpacity>
               )}

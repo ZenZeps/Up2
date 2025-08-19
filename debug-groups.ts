@@ -1,6 +1,5 @@
-import { Query } from 'appwrite';
-import { databases } from './lib/appwrite/client';
-import { config } from './lib/appwrite/config';
+import { Query } from 'react-native-appwrite';
+import { config, databases } from './lib/appwrite/appwrite';
 
 async function debugGroups() {
     try {

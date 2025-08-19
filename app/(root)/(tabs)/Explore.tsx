@@ -1,6 +1,7 @@
 import { CATEGORIES } from '@/constants/categories';
 import { enrichEventsWithGroupNames, isUserAttendingEvent, updateEvent } from '@/lib/api/event';
 import { cancelFriendRequest, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
+import { getPublicGroups, getUserGroups, joinGroup, searchPublicGroups } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { config, databases } from '@/lib/appwrite/appwrite';
@@ -8,6 +9,7 @@ import { useAlert } from '@/lib/context/AlertContext';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
+import { emit as emitEvent } from '@/lib/utils/eventBus';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -61,6 +63,11 @@ const Explore = () => {
   const [userPhotoUrls, setUserPhotoUrls] = useState<Record<string, string | null>>({}); // All users' profile photos
   const [requestedUsers, setRequestedUsers] = useState<string[]>([]); // Users who have sent friend requests
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<any[]>([]);
+  // Groups state
+  const [groups, setGroups] = useState<any[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
+  const [joinedGroupIds, setJoinedGroupIds] = useState<Set<string>>(new Set());
 
   // Fetch current user, profile, and all users on mount
   useEffect(() => {
@@ -238,6 +245,101 @@ const Explore = () => {
     }
   }, [events, userId]);
 
+  // Load public groups when entering groups mode (or on mount)
+  useEffect(() => {
+    const loadGroups = async () => {
+      try {
+        setLoadingGroups(true);
+        const publicGroups = await getPublicGroups();
+        setGroups(publicGroups || []);
+        setGroupsLoaded(true);
+        console.log(`Explore: Loaded ${publicGroups.length} public groups`);
+      } catch (err) {
+        console.error('Error loading groups for Explore:', err);
+        setGroups([]);
+      } finally {
+        setLoadingGroups(false);
+      }
+    };
+
+    // Only fetch once unless user explicitly searches
+    if (mode === 'groups' && !groupsLoaded) {
+      loadGroups();
+    }
+  }, [mode, groupsLoaded]);
+
+  // Load groups the current user is a member of to filter them out of Explore
+  useEffect(() => {
+    const loadUserJoinedGroups = async () => {
+      if (!userId) return;
+      try {
+        const userGroups = await getUserGroups(userId);
+        const ids = new Set<string>((userGroups || []).map((g: any) => String(g.$id || g.id || g.id)));
+        setJoinedGroupIds(ids as Set<string>);
+        console.log('Explore: loaded joined groups', ids.size);
+      } catch (err) {
+        console.error('Error loading user joined groups:', err);
+      }
+    };
+
+    // load when user is present or when entering groups mode
+    if (userId && mode === 'groups') {
+      loadUserJoinedGroups();
+    }
+  }, [userId, mode]);
+
+  // Run search against groups when user types and mode is groups
+  useEffect(() => {
+    let cancelled = false;
+    const runSearch = async () => {
+      if (mode !== 'groups') return;
+      const q = query.trim();
+      if (!q) {
+        // reset to cached public groups
+        return;
+      }
+
+      try {
+        setLoadingGroups(true);
+        const results = await searchPublicGroups(q);
+        if (!cancelled) setGroups(results || []);
+        console.log(`Explore: Found ${results.length} groups for "${q}"`);
+      } catch (err) {
+        console.error('Group search error:', err);
+      } finally {
+        if (!cancelled) setLoadingGroups(false);
+      }
+    };
+
+    // debounce simple 300ms
+    const t = setTimeout(runSearch, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [query, mode]);
+
+  // Exclude groups the current user is already a member of
+  const visibleGroups = useMemo(() => {
+    if (!groups || groups.length === 0) return groups || [];
+    // Prefer joinedGroupIds (junction table) for membership detection
+    if (joinedGroupIds && joinedGroupIds.size > 0) {
+      return groups.filter(g => !joinedGroupIds.has(g.$id));
+    }
+    // Fallback to legacy users array check
+    if (!userId) return groups || [];
+    return groups.filter((group) => {
+      const users = group.users || [];
+      if (!Array.isArray(users)) return true;
+      return !users.some((u: any) => {
+        if (!u) return false;
+        if (typeof u === 'string') return u === userId;
+        if (typeof u === 'object') return u.$id === userId || u.id === userId;
+        return false;
+      });
+    });
+  }, [groups, userId]);
+
   // Load more users for pagination - SCALABILITY FIX
   const loadMoreUsers = useCallback(async () => {
     if (loadingMoreUsers || !hasMoreUsers) return;
@@ -372,6 +474,58 @@ const Explore = () => {
                 </Text>
               </TouchableOpacity>
             )}
+          </View>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  // Render group item
+  const handleJoinGroup = async (groupId: string) => {
+    if (!userId) return;
+    try {
+      const res = await joinGroup(groupId, userId);
+      if (res.success) {
+        showAlert('Joined', res.message || 'Joined group', [{ text: 'OK' }], 'success');
+        // Add to local joined set so UI hides it immediately
+        setJoinedGroupIds(prev => new Set(prev).add(groupId));
+        // Emit a global event so other screens can refresh their group data
+        emitEvent('groups:changed', { userId, groupId });
+        // refresh groups to reflect membership changes (background)
+        getPublicGroups().then(p => setGroups(p || [])).catch(err => console.error('refresh groups failed', err));
+      } else {
+        showAlert('Notice', res.message || 'Request sent', [{ text: 'OK' }], 'info');
+      }
+    } catch (err) {
+      console.error('Error joining group:', err);
+      showAlert('Error', 'Failed to join group', [{ text: 'OK' }], 'error');
+    }
+  };
+
+  const renderGroupItem = ({ item: group }: { item: any }) => {
+    const isMember = Array.isArray(group.users) ? group.users.includes(userId) : false;
+    return (
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <TouchableOpacity onPress={() => router.push(`/Group/${group.$id}`)} style={styles.groupItem}>
+          <View style={styles.groupInfo}>
+            <View style={[styles.groupAvatar, { backgroundColor: colors.primary }]}>
+              <Text style={styles.groupAvatarText}>{(group.title || '').charAt(0).toUpperCase()}</Text>
+            </View>
+            <View style={styles.groupDetails}>
+              <Text style={[styles.groupName, { color: colors.text }]}>{group.title}</Text>
+              <Text style={[styles.groupDescription, { color: colors.textSecondary }]} numberOfLines={2}>{group.description}</Text>
+            </View>
+          </View>
+
+          <View>
+            <TouchableOpacity
+              onPress={() => handleJoinGroup(group.$id)}
+              style={[styles.actionButton, { backgroundColor: isMember ? colors.textSecondary : colors.primary }]}
+            >
+              <MaterialIcons name={isMember ? 'check' : 'group-add'} size={16} color={isMember ? colors.background : 'white'} />
+              <Text style={[styles.actionButtonText, { color: isMember ? colors.background : 'white' }]}>{isMember ? 'Member' : (group.isPrivate ? 'Request' : 'Join')}</Text>
+            </TouchableOpacity>
+            <Text style={[styles.filterBadgeText, { color: colors.textSecondary, textAlign: 'right', marginTop: 6 }]}>{group.memberCount ?? 0} members</Text>
           </View>
         </TouchableOpacity>
       </View>
@@ -962,23 +1116,40 @@ const Explore = () => {
           )
         ) : (
           // Groups mode
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.emptyState}>
-              <MaterialIcons name="group-add" size={48} color={colors.primary} />
-              <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>
-                Create Groups
-              </Text>
-              <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8, marginBottom: 16 }]}>
-                Start your own group and bring together people who share your interests and passions
-              </Text>
-              <TouchableOpacity
-                onPress={() => router.push('/CreateGroup')}
-                style={[styles.actionButton, { backgroundColor: '#000000' }]}
-              >
-                <MaterialIcons name="add" size={16} color="white" />
-                <Text style={[styles.actionButtonText, { color: 'white' }]}>Create Group</Text>
-              </TouchableOpacity>
-            </View>
+          <View>
+            {loadingGroups ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+              </View>
+            ) : groups.length > 0 ? (
+              <FlatList
+                data={visibleGroups}
+                renderItem={renderGroupItem}
+                keyExtractor={(item) => item.$id}
+                showsVerticalScrollIndicator={false}
+                scrollEnabled={false}
+                ListEmptyComponent={() => (
+                  <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <View style={styles.emptyState}>
+                      <MaterialIcons name="group" size={48} color={colors.textSecondary} />
+                      <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No groups found</Text>
+                    </View>
+                  </View>
+                )}
+              />
+            ) : (
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="group-add" size={48} color={colors.primary} />
+                  <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>Create Groups</Text>
+                  <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8, marginBottom: 16 }]}>Start your own group and bring together people who share your interests and passions</Text>
+                  <TouchableOpacity onPress={() => router.push('/CreateGroup')} style={[styles.actionButton, { backgroundColor: '#000000' }]}>
+                    <MaterialIcons name="add" size={16} color="white" />
+                    <Text style={[styles.actionButtonText, { color: 'white' }]}>Create Group</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
