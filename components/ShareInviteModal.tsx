@@ -1,3 +1,4 @@
+import { useTheme } from '@/lib/context/ThemeContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
@@ -73,6 +74,8 @@ export default function ShareInviteModal({ visible, onClose, eventId }: ShareInv
         }
     }, [visible, eventId]);
 
+    const { colors } = useTheme();
+
     const loadInviteData = async () => {
         try {
             setLoading(true);
@@ -140,16 +143,14 @@ export default function ShareInviteModal({ visible, onClose, eventId }: ShareInv
             <View style={styles.overlay}>
                 <View style={styles.modalContainer}>
                     {/* Black Header matching your app style */}
-                    <View style={styles.header}>
-                        <Text style={styles.headerTitle}>
-                            Share Event Invite
-                        </Text>
+                    <View style={[styles.header, { backgroundColor: colors.primary, borderBottomColor: colors.border }]}>
+                        <Text style={[styles.headerTitle, { color: colors.buttonText }]}>Share Event Invite</Text>
                         <TouchableOpacity
                             onPress={onClose}
                             style={styles.closeButton}
                             disabled={loading}
                         >
-                            <MaterialIcons name="close" size={24} color="#ffffff" />
+                            <MaterialIcons name="close" size={24} color={colors.buttonText} />
                         </TouchableOpacity>
                     </View>
 
@@ -222,7 +223,7 @@ export default function ShareInviteModal({ visible, onClose, eventId }: ShareInv
                                                     {option.id === 'general' && 'Use your device\'s sharing options'}
                                                 </Text>
                                             </View>
-                                            <MaterialIcons name="chevron-right" size={24} color="#CCCCCC" />
+                                            <MaterialIcons name="chevron-right" size={24} color={colors.textSecondary} />
                                         </TouchableOpacity>
                                     ))}
                                 </View>

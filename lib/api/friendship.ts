@@ -168,17 +168,17 @@ export async function declineFriendRequest(friendshipId: string): Promise<{ succ
     try {
         authDebug.info(`Declining friend request: ${friendshipId}`);
 
-        await databases.updateDocument(
+        // Delete the friendship document on decline so the system relies
+        // entirely on the userFriendships collection and declined requests
+        // are removed per product requirements.
+        await databases.deleteDocument(
             config.databaseID!,
             config.userFriendshipsCollectionID!,
-            friendshipId,
-            {
-                status: 'declined'
-            }
+            friendshipId
         );
 
-        authDebug.info('Friend request declined successfully');
-        return { success: true, message: 'Friend request declined' };
+        authDebug.info('Friend request deleted (declined) successfully');
+        return { success: true, message: 'Friend request declined and removed' };
 
     } catch (error) {
         authDebug.error('Error declining friend request:', error);

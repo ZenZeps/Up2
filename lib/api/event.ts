@@ -487,7 +487,7 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
       return false;
     }
 
-    // Check if already attending
+    // Look for any existing attendance records for this user/event
     const existingAttendance = await databases.listDocuments(
       config.databaseID!,
       collectionId,
@@ -497,12 +497,47 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
       ]
     );
 
-    if (existingAttendance.documents.length > 0) {
+    // If an attending record already exists, nothing to do
+    if (existingAttendance.documents.some((d: any) => d.status === 'attending')) {
       authDebug.info(`User ${userId} already attending event ${eventId}`);
       return true;
     }
 
-    // Create attendance record with only the required fields
+    // If an invited/pending record exists, promote it to attending and update counts
+    const invitedRecord = existingAttendance.documents.find((d: any) => d.status === 'invited' || d.status === 'pending');
+    if (invitedRecord) {
+      // Update the attendance record to attending
+      await databases.updateDocument(
+        config.databaseID!,
+        collectionId,
+        invitedRecord.$id,
+        {
+          status: 'attending',
+          acceptedAt: new Date().toISOString(),
+        }
+      );
+
+      // Update event counters: +1 attendee, -1 invite (if present)
+      const currentEvent = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
+      const newAttendeeCount = (currentEvent.attendeeCount || 0) + 1;
+      const newInviteCount = Math.max(0, (currentEvent.inviteCount || 0) - 1);
+
+      await databases.updateDocument(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        eventId,
+        {
+          attendeeCount: newAttendeeCount,
+          inviteCount: newInviteCount,
+          lastActivtyAt: new Date().toISOString(),
+        }
+      );
+
+      authDebug.info(`User ${userId} promoted from invite to attending for event ${eventId}, new attendee count: ${newAttendeeCount}`);
+      return true;
+    }
+
+    // No existing records -> create a fresh attending record
     await databases.createDocument(
       config.databaseID!,
       collectionId,
@@ -510,7 +545,8 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
       {
         eventId,
         userId,
-        status: 'attending'
+        status: 'attending',
+        createdAt: new Date().toISOString(),
       }
     );
 
@@ -523,7 +559,8 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
       config.eventsCollectionID!,
       eventId,
       {
-        attendeeCount: newCount
+        attendeeCount: newCount,
+        lastActivtyAt: new Date().toISOString(),
       }
     );
 
@@ -559,12 +596,18 @@ export async function removeEventAttendee(eventId: string, userId: string): Prom
     );
 
     if (attendanceRecords.documents.length === 0) {
-      authDebug.info(`User ${userId} not attending event ${eventId}`);
+      authDebug.info(`No attendance/invite records found for user ${userId} on event ${eventId}`);
       return true;
     }
 
-    // Remove attendance record
+    // Determine what kinds of records we deleted so we can adjust counts appropriately
+    let attendingDeleted = 0;
+    let invitedDeleted = 0;
+
     for (const record of attendanceRecords.documents) {
+      if (record.status === 'attending') attendingDeleted++;
+      if (record.status === 'invited' || record.status === 'pending') invitedDeleted++;
+
       await databases.deleteDocument(
         config.databaseID!,
         collectionId,
@@ -572,21 +615,23 @@ export async function removeEventAttendee(eventId: string, userId: string): Prom
       );
     }
 
-    // Update event attendee count
+    // Update event counters accordingly
     const currentEvent = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
-    const newCount = Math.max(0, (currentEvent.attendeeCount || 0) - 1);
+    const newAttendeeCount = Math.max(0, (currentEvent.attendeeCount || 0) - attendingDeleted);
+    const newInviteCount = Math.max(0, (currentEvent.inviteCount || 0) - invitedDeleted);
 
     await databases.updateDocument(
       config.databaseID!,
       config.eventsCollectionID!,
       eventId,
       {
-        attendeeCount: newCount,
+        attendeeCount: newAttendeeCount,
+        inviteCount: newInviteCount,
         lastActivtyAt: new Date().toISOString(),
       }
     );
 
-    authDebug.info(`User ${userId} removed from event ${eventId}, new count: ${newCount}`);
+    authDebug.info(`User ${userId} removed from event ${eventId}, attendeeDelta: -${attendingDeleted}, inviteDelta: -${invitedDeleted}`);
     return true;
   } catch (error) {
     authDebug.error(`Failed to remove attendee from event: ${eventId}`, error);
@@ -599,31 +644,46 @@ export async function removeEventAttendee(eventId: string, userId: string): Prom
  */
 export async function addEventInvitation(eventId: string, userId: string): Promise<boolean> {
   try {
-    // Check if already invited
-    const existingInvite = await databases.listDocuments(
+    const collectionId = config.eventAttendancesCollectionID;
+
+    // Check config
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
+      authDebug.info('Event attendances junction table not configured, skipping invitation creation');
+      return false;
+    }
+
+    // Check if a record already exists for this user/event
+    const existing = await databases.listDocuments(
       config.databaseID!,
-      'event_invitations', // Junction table
+      collectionId,
       [
         Query.equal('eventId', eventId),
         Query.equal('userId', userId)
       ]
     );
 
-    if (existingInvite.documents.length > 0) {
+    // If already attending, nothing to do
+    if (existing.documents.some((d: any) => d.status === 'attending')) {
+      authDebug.info(`User ${userId} is already attending event ${eventId}, skipping invite`);
+      return true;
+    }
+
+    // If already invited/pending, nothing to do
+    if (existing.documents.some((d: any) => d.status === 'invited' || d.status === 'pending')) {
       authDebug.info(`User ${userId} already invited to event ${eventId}`);
       return true;
     }
 
-    // Create invitation record
+    // Create an invitation record in the same junction table
     await databases.createDocument(
       config.databaseID!,
-      'event_invitations',
+      collectionId,
       ID.unique(),
       {
         eventId,
         userId,
         invitedAt: new Date().toISOString(),
-        status: 'pending'
+        status: 'invited'
       }
     );
 
@@ -641,7 +701,7 @@ export async function addEventInvitation(eventId: string, userId: string): Promi
       }
     );
 
-    authDebug.info(`User ${userId} invited to event ${eventId}, new count: ${newCount}`);
+    authDebug.info(`User ${userId} invited to event ${eventId}, new invite count: ${newCount}`);
     return true;
   } catch (error) {
     authDebug.error(`Failed to add invitation to event: ${eventId}`, error);
@@ -688,13 +748,76 @@ export async function getEventAttendees(eventId: string): Promise<string[]> {
  */
 export async function getEventInvitees(eventId: string): Promise<string[]> {
   try {
-    // Always return empty array as we don't have invitations collection configured
-    // The system will fallback to using inviteeIds from the event document
-    authDebug.debug('Event invitations junction table not configured, skipping lookup');
-    return [];
+    const collectionId = config.eventAttendancesCollectionID;
+    authDebug.debug(`Checking invite collection config: ${collectionId}`);
+
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
+      authDebug.info('Junction table not configured, skipping invitees lookup');
+      return [];
+    }
+
+    const invitationRecords = await databases.listDocuments(
+      config.databaseID!,
+      collectionId,
+      [
+        Query.equal('eventId', eventId),
+        Query.equal('status', 'invited'),
+        Query.limit(1000)
+      ]
+    );
+
+    const inviteeIds = invitationRecords.documents.map((record: any) => record.userId);
+    authDebug.info(`Found ${inviteeIds.length} invitees for event ${eventId}`);
+    return inviteeIds;
   } catch (error) {
     authDebug.error(`Failed to get invitees for event: ${eventId}`, error);
     return [];
+  }
+}
+
+/**
+ * Remove invitation(s) for a user on an event
+ */
+export async function removeEventInvitation(eventId: string, userId: string): Promise<boolean> {
+  try {
+    const collectionId = config.eventAttendancesCollectionID;
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
+      authDebug.info('Event attendances junction table not configured, skipping invitation removal');
+      return false;
+    }
+
+    const invitationRecords = await databases.listDocuments(
+      config.databaseID!,
+      collectionId,
+      [
+        Query.equal('eventId', eventId),
+        Query.equal('userId', userId),
+        Query.equal('status', 'invited')
+      ]
+    );
+
+    if (invitationRecords.documents.length === 0) {
+      authDebug.info(`No invitation records to remove for user ${userId} on event ${eventId}`);
+      return true;
+    }
+
+    for (const rec of invitationRecords.documents) {
+      await databases.deleteDocument(config.databaseID!, collectionId, rec.$id);
+    }
+
+    // Decrement invite count
+    const currentEvent = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
+    const newInviteCount = Math.max(0, (currentEvent.inviteCount || 0) - invitationRecords.documents.length);
+    await databases.updateDocument(config.databaseID!, config.eventsCollectionID!, eventId, {
+      inviteCount: newInviteCount,
+      lastActivtyAt: new Date().toISOString(),
+    });
+
+    authDebug.info(`Removed ${invitationRecords.documents.length} invitation(s) for user ${userId} on event ${eventId}`);
+    return true;
+  } catch (error) {
+    authDebug.error(`Failed to remove invitation for event: ${eventId}`, error);
+    throw error;
   }
 }
 
@@ -756,9 +879,27 @@ export async function updateEventAttendance(eventId: string, userId: string, isA
 
       // Handle invitees array update
       if ((eventData as any).inviteeIds && Array.isArray((eventData as any).inviteeIds)) {
-        // Since we don't have invitations collection configured, skip this for now
-        authDebug.info('Event invitations junction table not configured, skipping invitees sync');
-        authDebug.info(`Updated invitees: +0`);
+        const collectionId = config.eventAttendancesCollectionID;
+        if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
+          authDebug.info('Event invitations junction table not configured, skipping invitees sync');
+          authDebug.info(`Updated invitees: +0`);
+        } else {
+          // Get current invitees from junction table
+          const currentInvitees = await getEventInvitees(id);
+          const newInvitees = (eventData as any).inviteeIds as string[];
+
+          const toAdd = newInvitees.filter(userId => !currentInvitees.includes(userId));
+          const toRemove = currentInvitees.filter(userId => !newInvitees.includes(userId));
+
+          for (const userId of toAdd) {
+            await addEventInvitation(id, userId);
+          }
+          for (const userId of toRemove) {
+            await removeEventInvitation(id, userId);
+          }
+
+          authDebug.info(`Updated invitees: +${toAdd.length}, -${toRemove.length}`);
+        }
       }
 
       // Check if there are other fields to update besides arrays
@@ -828,6 +969,19 @@ export async function deleteEvent(id: string) {
   try {
     authDebug.info(`Deleting event: ${id}`);
 
+    // If you've created a relationship attribute in Appwrite between `events` and `eventAttendances`
+    // with "On deleting a document -> Cascade", Appwrite will automatically remove the related
+    // attendance/invitation documents when the event is deleted. In that case we skip manual
+    // cascade deletion here and rely on the DB to maintain referential integrity.
+    const collectionId = config.eventAttendancesCollectionID;
+    if (collectionId && !collectionId.includes('temp_') && collectionId !== 'temp_attendances_id') {
+      authDebug.info(`Assuming DB-level relationship cascade for eventAttendances collection (${collectionId}). Skipping manual cascade delete.`);
+    } else {
+      authDebug.info('Event attendances junction table not configured; no DB-level cascade available. No manual cascade performed here.');
+    }
+
+    // Delete the event document itself. If DB-level cascade is configured, related attendance
+    // records will be removed automatically by Appwrite.
     await databases.deleteDocument(
       config.databaseID!,
       config.eventsCollectionID!,

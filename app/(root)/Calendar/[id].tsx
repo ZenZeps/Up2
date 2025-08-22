@@ -1,5 +1,5 @@
 import { getEventColor } from '@/constants/categories';
-import { getAllEvents, updateEvent } from '@/lib/api/event';
+import { addEventAttendee, getAllEvents, removeEventAttendee } from '@/lib/api/event';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { account } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
@@ -155,17 +155,13 @@ export default function FriendCalendar() {
         }
 
         try {
-            const updatedAttendees = [...(event.attendees || []), currentUserId];
-            // Use updateEvent function to ensure all required fields are included
-            await updateEvent(event.$id, {
-                attendees: updatedAttendees,
-            });
+            await addEventAttendee(event.$id, currentUserId);
 
             // Update local state
             setEvents(prevEvents =>
                 prevEvents.map(e =>
                     e.$id === event.$id
-                        ? { ...e, attendees: updatedAttendees, isAttending: true }
+                        ? { ...e, attendees: [...(e.attendees || []), currentUserId], isAttending: true }
                         : e
                 )
             );
@@ -182,17 +178,13 @@ export default function FriendCalendar() {
         if (!currentUserId) return;
 
         try {
-            const updatedAttendees = (event.attendees || []).filter(id => id !== currentUserId);
-            // Use updateEvent function to ensure all required fields are included
-            await updateEvent(event.$id, {
-                attendees: updatedAttendees,
-            });
+            await removeEventAttendee(event.$id, currentUserId);
 
             // Update local state
             setEvents(prevEvents =>
                 prevEvents.map(e =>
                     e.$id === event.$id
-                        ? { ...e, attendees: updatedAttendees, isAttending: false }
+                        ? { ...e, attendees: (e.attendees || []).filter(id => id !== currentUserId), isAttending: false }
                         : e
                 )
             );

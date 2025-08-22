@@ -1,4 +1,4 @@
-import { updateEvent } from '@/lib/api/event';
+import { addEventAttendee, removeEventInvitation } from '@/lib/api/event';
 import { acceptFriendRequest, declineFriendRequest } from '@/lib/api/friendship';
 import { acceptGroupInvite, declineGroupInvite, getGroupById, getUserGroupInvites } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
@@ -371,8 +371,8 @@ export default function Invites() {
                         onPress={() => handleAcceptFriendRequest(req)}
                         style={[styles.acceptButton, { backgroundColor: colors.primary }]}
                       >
-                        <MaterialIcons name="check" size={16} color="white" />
-                        <Text style={styles.acceptButtonText}>Accept</Text>
+                        <MaterialIcons name="check" size={16} color={colors.buttonText} />
+                        <Text style={[styles.acceptButtonText, { color: colors.buttonText }]}>Accept</Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
@@ -435,14 +435,9 @@ export default function Invites() {
                       style={[styles.acceptButton, { backgroundColor: colors.primary, alignSelf: 'flex-start' }]}
                       onPress={async () => {
                         try {
-                          // Remove userId from inviteeIds, add to attendingIds
-                          const updatedInvitees = event.inviteeIds.filter((id: string) => id !== userId);
-                          const updatedAttendees = [...(event.attendees || []), userId];
-                          // Use updateEvent function to ensure all required fields are included
-                          await updateEvent(event.$id, {
-                            inviteeIds: updatedInvitees,
-                            attendees: updatedAttendees
-                          });
+                          // Use junction table helpers to accept invite
+                          await addEventAttendee(event.$id, userId);
+                          await removeEventInvitation(event.$id, userId);
                           if (typeof refetchEvents === 'function') {
                             await refetchEvents();
                           }
@@ -453,8 +448,8 @@ export default function Invites() {
                         }
                       }}
                     >
-                      <MaterialIcons name="check" size={16} color="white" />
-                      <Text style={styles.acceptButtonText}>Accept</Text>
+                      <MaterialIcons name="check" size={16} color={colors.buttonText} />
+                      <Text style={[styles.acceptButtonText, { color: colors.buttonText }]}>Accept</Text>
                     </TouchableOpacity>
                   </View>
                 ))
@@ -499,8 +494,8 @@ export default function Invites() {
                         onPress={() => handleAcceptGroupInvite(invite)}
                         style={[styles.acceptButton, { backgroundColor: colors.primary }]}
                       >
-                        <MaterialIcons name="check" size={16} color="white" />
-                        <Text style={styles.acceptButtonText}>Accept</Text>
+                        <MaterialIcons name="check" size={16} color={colors.buttonText} />
+                        <Text style={[styles.acceptButtonText, { color: colors.buttonText }]}>Accept</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => handleDeclineGroupInvite(invite)}

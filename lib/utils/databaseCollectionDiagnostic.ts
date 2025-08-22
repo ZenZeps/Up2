@@ -30,7 +30,6 @@ async function runCollectionDiagnostic() {
     const collections = [
         { id: config.usersCollectionID, name: 'Users Collection' },
         { id: config.eventsCollectionID, name: 'Events Collection' },
-        { id: config.friendRequestsCollectionID, name: 'Friend Requests Collection' },
         { id: config.userFriendshipsCollectionID, name: 'User Friendships Collection (Junction Table)' },
         { id: config.eventAttendancesCollectionID, name: 'Event Attendances Collection (Junction Table)' },
         { id: config.groupsCollectionID, name: 'Groups Collection' },

@@ -1,5 +1,5 @@
 import { getEventEmoji } from '@/constants/categories';
-import { getEventById, updateEvent } from '@/lib/api/event';
+import { addEventAttendee, addEventInvitation, getEventById, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
@@ -20,7 +20,9 @@ import UserAvatar from '../components/UserAvatar';
 import { useEvents } from '../context/EventContext';
 
 const EventDetail = () => {
-  const { eventId } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const { eventId } = params as { eventId?: string; from?: string };
+  const fromParam = (params as any)?.from as string | undefined;
   const router = useRouter();
   const { refetchEvents } = useEvents();
   const { colors } = useTheme();
@@ -129,12 +131,8 @@ const EventDetail = () => {
     }
 
     try {
-      const updatedAttendees = [...(event.attendees || []), userId];
-      // Use updateEvent function to ensure all required fields are included
-      await updateEvent(event.$id, {
-        attendees: updatedAttendees,
-      });
-      setEvent({ ...event, attendees: updatedAttendees });
+      await addEventAttendee(event.$id, userId);
+      setEvent({ ...event, attendees: [...(event.attendees || []), userId] });
       setAttending(true);
       showSuccess('Attending Event!', 'You are now attending this event!');
       refetchEvents();
@@ -148,12 +146,8 @@ const EventDetail = () => {
     if (!event || !userId) return;
 
     try {
-      const updatedAttendees = (event.attendees || []).filter((id: string) => id !== userId);
-      // Use updateEvent function to ensure all required fields are included
-      await updateEvent(event.$id, {
-        attendees: updatedAttendees,
-      });
-      setEvent({ ...event, attendees: updatedAttendees });
+      await removeEventAttendee(event.$id, userId);
+      setEvent({ ...event, attendees: (event.attendees || []).filter((id: string) => id !== userId) });
       setAttending(false);
       showSuccess('No Longer Attending', 'You are no longer attending this event.');
       refetchEvents();
@@ -206,15 +200,11 @@ const EventDetail = () => {
     try {
       setInviting(true);
 
-      // Update the event's inviteeIds
+      // Create an invitation using the junction table helper
+      await addEventInvitation(event.$id, friendId);
+
+      // Update local state to include the new invitee for immediate feedback
       const updatedInviteeIds = [...(event.inviteeIds || []), friendId];
-
-      // Use updateEvent function to ensure all required fields are included
-      await updateEvent(event.$id, {
-        inviteeIds: updatedInviteeIds,
-      });
-
-      // Update local state
       setEvent({ ...event, inviteeIds: updatedInviteeIds });
 
       // Reload invitee profiles
@@ -285,7 +275,17 @@ const EventDetail = () => {
         }]}>
           <TouchableOpacity
             style={[styles.headerButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
-            onPress={() => router.back()}
+            onPress={() => {
+              if (fromParam === 'feed') {
+                router.push('/(root)/Feed' as any);
+                return;
+              }
+              if (fromParam === 'explore') {
+                router.push('/(root)/Explore' as any);
+                return;
+              }
+              router.back();
+            }}
           >
             <MaterialIcons name="arrow-back" size={24} color="white" />
           </TouchableOpacity>
@@ -310,7 +310,7 @@ const EventDetail = () => {
               }}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="share" size={24} color="white" />
+              <MaterialIcons name="share" size={24} color={colors.buttonText} />
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.headerButton, {
@@ -320,7 +320,7 @@ const EventDetail = () => {
               onPress={handleInviteFriend}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="person-add" size={24} color="white" />
+              <MaterialIcons name="person-add" size={24} color={colors.buttonText} />
             </TouchableOpacity>
           </View>
         </View>
@@ -354,16 +354,16 @@ const EventDetail = () => {
               style={[styles.primaryButton, styles.attendingButton, { backgroundColor: colors.success }]}
               onPress={handleNotAttend}
             >
-              <MaterialIcons name="check-circle" size={20} color="white" />
-              <Text style={styles.buttonText}>Attending</Text>
+              <MaterialIcons name="check-circle" size={20} color={colors.buttonText} />
+              <Text style={[styles.buttonText, { color: colors.buttonText }]}>Attending</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
               style={[styles.primaryButton, { backgroundColor: colors.primary }]}
               onPress={handleAttend}
             >
-              <MaterialIcons name="event-available" size={20} color="white" />
-              <Text style={styles.buttonText}>Attend Event</Text>
+              <MaterialIcons name="event-available" size={20} color={colors.buttonText} />
+              <Text style={[styles.buttonText, { color: colors.buttonText }]}>Attend Event</Text>
             </TouchableOpacity>
           )}
         </View>

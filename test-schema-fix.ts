@@ -20,7 +20,7 @@ async function testSchemaFixes() {
         try {
             const requestsRes = await databases.listDocuments(
                 config.databaseID!,
-                config.friendRequestsCollectionID,
+                config.userFriendshipsCollectionID,
                 [
                     Query.equal('requesterId', testUserId),
                     Query.equal('status', 'pending'),

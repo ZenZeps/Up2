@@ -1,9 +1,11 @@
 import { CATEGORIES } from '@/constants/categories';
-import { updateEvent as updateEventAPI } from '@/lib/api/event';
+import { addEventAttendee, addEventInvitation, removeEventAttendee } from '@/lib/api/event';
 import { addEventToGroup } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
-import { getFriends } from '@/lib/api/user';
+import { getFriends, getUserProfile } from '@/lib/api/user';
 import { config, databases } from '@/lib/appwrite/appwrite';
+import { useTheme } from '@/lib/context/ThemeContext';
+import { sendEventInviteNotification } from '@/lib/notifications/notificationUtils';
 import { Event } from '@/lib/types/Events';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import dayjs from 'dayjs';
@@ -130,6 +132,8 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   // EventContext access
   const eventContext = useEvents();
   const { refetchEvents, addEvent, updateEvent } = eventContext;
+
+  const { colors } = useTheme();
 
   // Validation checks (only run when component first renders)
   useEffect(() => {
@@ -368,11 +372,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
         groupId: groupId || undefined, // Include group ID if provided
       };
 
-      // Only include these array fields when creating new events
-      if (!event || !event.$id) {
-        (eventData as any).inviteeIds = inviteeIds.filter(id => id && id.trim());
-        (eventData as any).attendees = [];
-      }
+      // Do not include inviteeIds in the initial create payload; we'll create invitations after event is created
 
       console.log("Saving event with data:", eventData);
 
@@ -394,6 +394,31 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
           console.log("Creating new event");
           savedEvent = await addEvent(eventData as any); // Cast to any since addEvent creates the $id internally
           console.log("Event created successfully with ID:", savedEvent.$id);
+
+          // Create invitations in junction table for selected invitees
+          if (inviteeIds && inviteeIds.length > 0 && savedEvent.$id) {
+            try {
+              // Create invitation records
+              for (const uid of inviteeIds) {
+                try {
+                  await addEventInvitation(savedEvent.$id, uid);
+                } catch (e) {
+                  console.warn('Failed to create invitation for', uid, e);
+                }
+              }
+
+              // Send push notifications to invitees (best-effort)
+              try {
+                const creatorProfile = await getUserProfile(currentUserId);
+                const creatorName = creatorProfile ? `${creatorProfile.firstName || ''} ${creatorProfile.lastName || ''}`.trim() : '';
+                await sendEventInviteNotification(inviteeIds, savedEvent.title || eventData.title, creatorName, savedEvent.$id);
+              } catch (notifyErr) {
+                console.warn('Failed to send invite notifications:', notifyErr);
+              }
+            } catch (invErr) {
+              console.warn('Error creating invitations for new event:', invErr);
+            }
+          }
         }
 
         // If this event is being created for a group, associate it with the group
@@ -743,26 +768,26 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
             presentationStyle="pageSheet"
             onRequestClose={() => setShowFriendPicker(false)}
           >
-            <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
+            <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
               <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: 16,
                 borderBottomWidth: 1,
-                borderBottomColor: '#E5E7EB',
+                borderBottomColor: colors.border,
               }}>
                 <TouchableOpacity onPress={() => setShowFriendPicker(false)}>
                   <Text style={{
                     fontSize: 18,
                     fontWeight: '500',
-                    color: '#000',
+                    color: colors.text,
                   }}>Cancel</Text>
                 </TouchableOpacity>
                 <Text style={{
                   fontSize: 20,
                   fontWeight: '600',
-                  color: '#000',
+                  color: colors.text,
                 }}>Invite Friends</Text>
                 <View style={{ width: 60 }} />
               </View>
@@ -800,13 +825,13 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                         <Text style={{
                           fontSize: 16,
                           fontWeight: '600',
-                          color: '#000',
+                          color: colors.text,
                         }}>
                           {userDisplayUtils.getFullName(item) || item.name}
                         </Text>
                       </View>
                       <Text style={{
-                        color: '#3B82F6',
+                        color: colors.primary,
                         fontSize: 16,
                         fontWeight: '500',
                       }}>
@@ -861,16 +886,14 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
           {/* Join/Leave event functionality */}
           {event && !isCreator && (
             <View className="mb-4">
-              {inviteeIds.includes(currentUserId) ? (
+              {inviteeIds.includes(currentUserId) || event?.attendees?.includes(currentUserId) ? (
                 <TouchableOpacity
                   onPress={async () => {
                     try {
-                      const updatedInvitees = inviteeIds.filter((id) => id !== currentUserId);
-                      // Use updateEventAPI function to ensure all required fields are included
-                      await updateEventAPI(event.$id, {
-                        inviteeIds: updatedInvitees
-                      });
-                      setInviteeIds(updatedInvitees);
+                      // Remove user attendance/invitation using junction helpers
+                      await removeEventAttendee(event.$id, currentUserId);
+                      // Also remove from local invitee state if present
+                      setInviteeIds(inviteeIds.filter((id) => id !== currentUserId));
                       await refetchEvents();
                       onClose();
                     } catch (err) {
@@ -886,12 +909,10 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                 <TouchableOpacity
                   onPress={async () => {
                     try {
-                      const updatedInvitees = [...inviteeIds, currentUserId];
-                      // Use updateEventAPI function to ensure all required fields are included
-                      await updateEventAPI(event.$id, {
-                        inviteeIds: updatedInvitees
-                      });
-                      setInviteeIds(updatedInvitees);
+                      // Mark user as attending using junction helper
+                      await addEventAttendee(event.$id, currentUserId);
+                      // Optionally add to local invitee state for UX
+                      setInviteeIds([...inviteeIds, currentUserId]);
                       await refetchEvents();
                       onClose();
                     } catch (err) {

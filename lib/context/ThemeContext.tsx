@@ -21,6 +21,7 @@ interface ThemeContextType {
         card: string;
         tabBar: string;
         shadow: string;
+        buttonText: string;
     };
 }
 
@@ -38,12 +39,16 @@ const lightColors = {
     card: '#ffffff',
     tabBar: '#ffffff',
     shadow: 'rgba(0, 0, 0, 0.1)',
+    // Text color to use on buttons that use primary as background
+    buttonText: '#ffffff',
 };
 
 const darkColors = {
     background: '#121212',
     surface: '#1e1e1e',
-    primary: '#000000',
+    // In dark mode primary should be a light value so elements that use primary
+    // (which are black in light mode) appear visible — use white here.
+    primary: '#FFFFFF',
     secondary: '#8e8e93',
     text: '#ffffff',
     textSecondary: '#8e8e93',
@@ -54,6 +59,8 @@ const darkColors = {
     card: '#2c2c2e',
     tabBar: '#1c1c1e',
     shadow: 'rgba(0, 0, 0, 0.3)',
+    // Use black text on primary-colored buttons in dark mode (primary may be light)
+    buttonText: '#000000',
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);

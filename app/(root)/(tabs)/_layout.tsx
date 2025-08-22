@@ -70,20 +70,20 @@ const TabIcon = ({ focused, icon, title, colors, hasNotifications = false }: {
         style={{
           width: 24,
           height: 24,
-          tintColor: focused ? '#000000' : colors.textSecondary
+          tintColor: focused ? colors.primary : colors.textSecondary
         }}
         resizeMode="contain"
       />
       {/* Notification badge for Feed tab only */}
       {hasNotifications && title === 'Feed' && (
-        <View className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-white" />
+        <View style={{ position: 'absolute', top: -4, right: -4, width: 12, height: 12, backgroundColor: '#ef4444', borderRadius: 12, borderWidth: 1, borderColor: colors.buttonText }} />
       )}
     </View>
     {/* Tab label with dynamic style based on focus */}
     <Text
       className={`${focused ? 'font-rubik-medium' : 'font-rubik'} text-xs w-full text-center mt-1`}
       style={{
-        color: focused ? '#000000' : colors.textSecondary
+        color: focused ? colors.primary : colors.textSecondary
       }}
     >
       {title}

@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import images from '../../constants/images';
-import { updateEvent } from '../../lib/api/event';
+import { addEventAttendee, removeEventInvitation } from '../../lib/api/event';
 import { getUserProfile } from '../../lib/api/user';
 import { config, databases } from '../../lib/appwrite/appwrite';
 import { useGlobalContext } from '../../lib/global-provider';
@@ -127,15 +127,10 @@ export default function Invite() {
         if (!event) return;
 
         try {
-            // Add user to event attendees and remove from invitees
-            const updatedInvitees = (event.inviteeIds || []).filter(id => id !== currentUser.$id);
-            const updatedAttendees = [...(event.attendees || []), currentUser.$id];
-
-            // Use updateEvent function to ensure all required fields are included
-            await updateEvent(event.$id, {
-                inviteeIds: updatedInvitees,
-                attendees: updatedAttendees,
-            });
+            // Create attendance record and remove invitation record via junction table
+            await addEventAttendee(event.$id, currentUser.$id);
+            // Remove any legacy invitation records in the junction table
+            await removeEventInvitation(event.$id, currentUser.$id);
 
             Alert.alert('Success!', 'You\'ve accepted the invite and are now attending this event!');
             router.push(`/(root)/event/${event.$id}`);

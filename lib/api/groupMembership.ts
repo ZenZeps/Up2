@@ -619,8 +619,8 @@ export async function requestToJoinGroup(
             if (membership.status === 'active') {
                 authDebug.info(`User ${userId} already member of group ${groupId}`);
                 return false;
-            } else if (membership.status === 'requested') {
-                authDebug.info(`User ${userId} already has pending request for group ${groupId}`);
+            } else if (membership.status === 'requested' || membership.status === 'invited') {
+                authDebug.info(`User ${userId} already has pending request/invite for group ${groupId}`);
                 return false;
             } else if (membership.status === 'banned') {
                 authDebug.warn(`Banned user ${userId} attempted to request join group ${groupId}`);
@@ -628,21 +628,46 @@ export async function requestToJoinGroup(
             }
         }
 
-        // Create join request
+        // Create join request as an 'invited' membership record so it uses
+        // the unified groupMemberships collection semantics. We set invitedBy
+        // to the requester so owners/admins can see who requested to join.
+        const membershipId = ID.unique();
         await databases.createDocument(
             config.databaseID!,
             config.groupMembershipsCollectionID!,
-            ID.unique(),
+            membershipId,
             {
                 groupId,
                 userId,
                 role: 'member',
-                status: 'requested',
+                status: 'invited',
+                invitedBy: userId,
+                invitedAt: new Date().toISOString(),
                 requestedAt: new Date().toISOString()
             }
         );
 
-        authDebug.info(`User ${userId} requested to join private group ${groupId}`);
+        authDebug.info(`User ${userId} requested to join private group ${groupId} (created invited membership ${membershipId})`);
+
+        // Notify the group owner that someone requested to join
+        try {
+            const { sendGroupJoinRequestNotification } = await import('@/lib/notifications/notificationUtils');
+            // Get requester profile for friendly name
+            const { getUserProfile } = await import('./user');
+            const requesterProfile = await getUserProfile(userId);
+            const requesterName = requesterProfile ? `${requesterProfile.firstName || ''} ${requesterProfile.lastName || ''}`.trim() : 'Someone';
+
+            // Get group to obtain creatorId and title
+            const group = await databases.getDocument(config.databaseID!, config.groupsCollectionID!, groupId);
+            const ownerId = group.creatorId;
+            const groupTitle = group.title || 'your group';
+
+            // Send join request notification to owner
+            await sendGroupJoinRequestNotification(ownerId, requesterName || 'Someone', userId, groupTitle, groupId);
+        } catch (notifyErr) {
+            authDebug.warn('Failed to send join request notification', notifyErr);
+        }
+
         return true;
     } catch (error) {
         authDebug.error(`Failed to request join: ${groupId}/${userId}`, error);
@@ -667,8 +692,13 @@ export async function getGroupJoinRequests(groupId: string, requesterId: string)
             config.databaseID!,
             config.groupMembershipsCollectionID!,
             [
-                Query.equal('groupId', groupId),
-                Query.equal('status', 'requested'),
+                Query.and([
+                    Query.equal('groupId', groupId),
+                    Query.or([
+                        Query.equal('status', 'requested'),
+                        Query.equal('status', 'invited')
+                    ])
+                ]),
                 Query.orderDesc('requestedAt')
             ]
         );

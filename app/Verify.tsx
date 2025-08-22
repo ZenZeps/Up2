@@ -44,9 +44,10 @@ export default function Verify() {
           console.warn("Could not refresh global context after verification");
         }
 
-        // Auto-redirect to index to let routing logic handle the verified user properly
+        // After verification, send the user to the Sign In page so they can sign in
+        // (avoids taking them back to the start of the Sign Up flow and re-entering details)
         setTimeout(() => {
-          router.replace("/");
+          router.replace("/SignIn");
         }, 2000);
 
       } catch (err: any) {
@@ -71,7 +72,8 @@ export default function Verify() {
   }, [userId, secret, refetch, router]);
 
   const handleRetry = () => {
-    router.replace("/");
+    // On error, send user to sign in so they can request a new verification email or sign in
+    router.replace("/SignIn");
   };
 
   return (
@@ -95,7 +97,7 @@ export default function Verify() {
             Great! Now please sign in to complete your profile setup.
           </Text>
           <TouchableOpacity
-            onPress={() => router.replace("/")}
+            onPress={() => router.replace("/SignIn")}
             style={{
               backgroundColor: '#007AFF',
               paddingHorizontal: 30,
@@ -133,7 +135,7 @@ export default function Verify() {
             }}
           >
             <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
-              Back to Sign Up
+              Back to Sign In
             </Text>
           </TouchableOpacity>
         </>

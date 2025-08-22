@@ -1,5 +1,5 @@
 import { getEventColor } from '@/constants/categories';
-import { updateEvent } from '@/lib/api/event';
+import { addEventAttendee, removeEventAttendee } from '@/lib/api/event';
 import { getGroupById, getGroupEvents, leaveGroup } from '@/lib/api/group';
 import { getProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUsersByIds } from '@/lib/api/user';
@@ -153,17 +153,13 @@ const GroupPage = () => {
         }
 
         try {
-            const updatedAttendees = [...(event.attendees || []), user.$id];
-            // Use updateEvent function to ensure all required fields are included
-            await updateEvent(event.$id, {
-                attendees: updatedAttendees
-            });
+            await addEventAttendee(event.$id, user.$id);
 
             // Update local state
             setEvents(prevEvents =>
                 prevEvents.map(e =>
                     e.$id === event.$id
-                        ? { ...e, attendees: updatedAttendees, isAttending: true }
+                        ? { ...e, attendees: [...(e.attendees || []), user.$id], isAttending: true }
                         : e
                 )
             );
@@ -179,17 +175,13 @@ const GroupPage = () => {
         if (!user?.$id) return;
 
         try {
-            const updatedAttendees = (event.attendees || []).filter(id => id !== user.$id);
-            // Use updateEvent function to ensure all required fields are included
-            await updateEvent(event.$id, {
-                attendees: updatedAttendees
-            });
+            await removeEventAttendee(event.$id, user.$id);
 
             // Update local state
             setEvents(prevEvents =>
                 prevEvents.map(e =>
                     e.$id === event.$id
-                        ? { ...e, attendees: updatedAttendees, isAttending: false }
+                        ? { ...e, attendees: (e.attendees || []).filter((id: string) => id !== user.$id), isAttending: false }
                         : e
                 )
             );

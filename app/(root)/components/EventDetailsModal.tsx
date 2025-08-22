@@ -1,8 +1,9 @@
 import { getEventEmoji } from '@/constants/categories';
 import icons from '@/constants/icons';
-import { isUserAttendingEvent, updateEvent } from '@/lib/api/event';
+import { addEventInvitation, isUserAttendingEvent } from '@/lib/api/event';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriends, getUsersByIds } from '@/lib/api/user';
+import { useTheme } from '@/lib/context/ThemeContext';
 import { sendEventInviteNotification } from '@/lib/notifications/notificationUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -37,6 +38,7 @@ const EventDetailsModal = ({
   currentUserId
 }: EventDetailsModalProps) => {
   const router = useRouter();
+  const { colors } = useTheme();
   const [attendeeProfiles, setAttendeeProfiles] = useState<any[]>([]);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -183,13 +185,8 @@ const EventDetailsModal = ({
     try {
       setInviting(true);
 
-      // Update the event's inviteeIds
-      const updatedInviteeIds = [...(event.inviteeIds || []), friendId];
-
-      // Use updateEvent function to ensure all required fields are included
-      await updateEvent(event.$id, {
-        inviteeIds: updatedInviteeIds,
-      });
+      // Create invitation record via junction table
+      await addEventInvitation(event.$id, friendId);
 
       // Send push notification to the invited friend
       await sendEventInviteNotification(
@@ -262,22 +259,22 @@ const EventDetailsModal = ({
       <View style={styles.centeredView}>
         <View style={styles.modalView}>
           {/* Header with black background and invite button */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>{event.title}</Text>
+          <View style={[styles.header, { backgroundColor: colors.primary }]}>
+            <Text style={[styles.headerTitle, { color: colors.buttonText }]}>{event.title}</Text>
             <View style={styles.headerButtons}>
               {isAttending && onChat && (
                 <TouchableOpacity style={styles.headerButton} onPress={() => onChat(event)}>
-                  <Image source={icons.chat} style={styles.headerChatIcon} />
+                  <Image source={icons.chat} style={[styles.headerChatIcon, { tintColor: colors.buttonText }]} />
                 </TouchableOpacity>
               )}
               <TouchableOpacity style={styles.headerButton} onPress={() => setShowShareModal(true)}>
-                <MaterialIcons name="share" size={24} color="white" />
+                <MaterialIcons name="share" size={24} color={colors.buttonText} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.headerButton} onPress={handleInviteFriend}>
-                <MaterialIcons name="person-add" size={24} color="white" />
+                <MaterialIcons name="person-add" size={24} color={colors.buttonText} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.headerButton} onPress={onClose}>
-                <MaterialIcons name="close" size={24} color="white" />
+                <MaterialIcons name="close" size={24} color={colors.buttonText} />
               </TouchableOpacity>
             </View>
           </View>
@@ -315,7 +312,7 @@ const EventDetailsModal = ({
             </View>
 
             {/* Event Description */}
-            <Text style={styles.description}>{event.description || 'No description available.'}</Text>
+            <Text style={[styles.description, { color: colors.text }]}>{event.description || 'No description available.'}</Text>
 
             {/* Attendees Section */}
             {attendeeProfiles.length > 0 && (
@@ -339,10 +336,7 @@ const EventDetailsModal = ({
                   ]}
                   onPress={isAttending ? handleNotAttendClick : handleAttendClick}
                 >
-                  <Text style={[
-                    styles.buttonText,
-                    isAttending ? styles.notAttendingText : styles.attendingText
-                  ]}>
+                  <Text style={[styles.buttonText, { color: colors.buttonText }]}>
                     {checkingAttendance ? 'Loading...' : (isAttending ? 'Not Attending' : 'Attend Event')}
                   </Text>
                 </TouchableOpacity>
@@ -350,10 +344,10 @@ const EventDetailsModal = ({
 
               {isCreator && (
                 <TouchableOpacity
-                  style={[styles.button, styles.editButtonBottom]}
+                  style={[styles.button, styles.editButtonBottom, { backgroundColor: colors.primary }]}
                   onPress={() => onEdit(event)}
                 >
-                  <Text style={styles.buttonText}>Edit Event</Text>
+                  <Text style={[styles.buttonText, { color: colors.buttonText }]}>Edit Event</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -393,12 +387,12 @@ const EventDetailsModal = ({
         presentationStyle="pageSheet"
         onRequestClose={() => setShowInviteModal(false)}
       >
-        <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
           <View style={styles.inviteModalHeader}>
             <TouchableOpacity onPress={() => setShowInviteModal(false)}>
-              <Text style={styles.inviteModalCancel}>Cancel</Text>
+              <Text style={[styles.inviteModalCancel, { color: colors.text }]}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={styles.inviteModalTitle}>Invite Friends</Text>
+            <Text style={[styles.inviteModalTitle, { color: colors.text }]}>Invite Friends</Text>
             <View style={{ width: 60 }} />
           </View>
 
@@ -419,11 +413,11 @@ const EventDetailsModal = ({
                   size={40}
                 />
                 <View style={styles.inviteFriendInfo}>
-                  <Text style={styles.inviteFriendName}>
+                  <Text style={[styles.inviteFriendName, { color: colors.text }]}>
                     {userDisplayUtils.getFullName(item) || item.name}
                   </Text>
                 </View>
-                <Text style={styles.inviteButtonText}>
+                <Text style={[styles.inviteButtonText, { color: colors.primary }]}>
                   {inviting ? 'Inviting...' : 'Invite'}
                 </Text>
               </TouchableOpacity>
@@ -583,27 +577,24 @@ const styles = StyleSheet.create({
     marginVertical: 5,
   },
   editButton: {
-    backgroundColor: '#4A90E2',
+    // backgroundColor set inline via theme
   },
   editButtonBottom: {
-    backgroundColor: '#000',
+    // backgroundColor set inline via theme
   },
   attendingButton: {
-    backgroundColor: '#4CAF50',
+    // backgroundColor set inline via theme
   },
   notAttendingButton: {
-    backgroundColor: '#888888',
+    // backgroundColor set inline via theme
   },
   buttonText: {
-    color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },
   attendingText: {
-    color: 'white',
   },
   notAttendingText: {
-    color: 'white',
   },
   attendeesModalView: {
     padding: 20,
@@ -624,7 +615,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#4A90E2',
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 8,
@@ -634,15 +624,12 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     marginRight: 8,
-    tintColor: 'white',
   },
   chatButtonText: {
-    color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },
   header: {
-    backgroundColor: '#000',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -652,7 +639,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
   },
   headerTitle: {
-    color: 'white',
     fontSize: 20,
     fontWeight: 'bold',
     flex: 1,
@@ -670,7 +656,6 @@ const styles = StyleSheet.create({
     tintColor: 'white',
   },
   contentContainer: {
-    backgroundColor: 'white',
     padding: 20,
   },
   inviteModalHeader: {
@@ -684,12 +669,10 @@ const styles = StyleSheet.create({
   inviteModalCancel: {
     fontSize: 18,
     fontWeight: '500',
-    color: '#000',
   },
   inviteModalTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#000',
   },
   inviteFriendItem: {
     flexDirection: 'row',
@@ -705,10 +688,8 @@ const styles = StyleSheet.create({
   inviteFriendName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
   },
   inviteButtonText: {
-    color: '#3B82F6',
     fontSize: 16,
     fontWeight: '500',
   },

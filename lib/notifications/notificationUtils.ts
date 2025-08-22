@@ -230,3 +230,40 @@ export async function sendGroupInviteNotification(
         console.error('Error sending group invite notification:', error);
     }
 }
+
+/**
+ * Send notification when a group owner receives a join request
+ */
+export async function sendGroupJoinRequestNotification(
+    ownerUserId: string,
+    requesterName: string,
+    requesterId: string,
+    groupName: string,
+    groupId: string
+): Promise<void> {
+    try {
+        // Use temporary token manager for owner notifications
+        const tokenData = notificationTokenManager.getUserToken(ownerUserId);
+        if (!tokenData?.token || !tokenData.enabled) {
+            console.log('Owner does not have notifications enabled or no token');
+            return;
+        }
+
+        await notificationService.sendPushNotification(
+            [tokenData.token],
+            '🔔 Group Join Request',
+            `${requesterName} requested to join "${groupName}"`,
+            {
+                type: 'group_join_request',
+                requesterId,
+                requesterName,
+                groupId,
+                groupName
+            }
+        );
+
+        console.log('Group join request notification sent');
+    } catch (error) {
+        console.error('Error sending group join request notification:', error);
+    }
+}

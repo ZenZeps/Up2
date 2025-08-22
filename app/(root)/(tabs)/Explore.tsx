@@ -1,5 +1,5 @@
-import { CATEGORIES } from '@/constants/categories';
-import { enrichEventsWithGroupNames, isUserAttendingEvent, updateEvent } from '@/lib/api/event';
+import { CATEGORIES, getCategoriesByValues, getEventEmoji } from '@/constants/categories';
+import { addEventAttendee, enrichEventsWithGroupNames, isUserAttendingEvent, removeEventInvitation } from '@/lib/api/event';
 import { cancelFriendRequest, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
 import { getPublicGroups, getUserGroups, joinGroup, searchPublicGroups } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
@@ -13,6 +13,8 @@ import { emit as emitEvent } from '@/lib/utils/eventBus';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -31,10 +33,11 @@ import { Query } from 'react-native-appwrite';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserAvatar from '../components/UserAvatar';
 import { useEvents } from '../context/EventContext';
+dayjs.extend(relativeTime);
 
 const Explore = () => {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { events, refetchEvents } = useEvents();
   const { showAlert } = useAlert();
@@ -63,6 +66,8 @@ const Explore = () => {
   const [userPhotoUrls, setUserPhotoUrls] = useState<Record<string, string | null>>({}); // All users' profile photos
   const [requestedUsers, setRequestedUsers] = useState<string[]>([]); // Users who have sent friend requests
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<any[]>([]);
+  // Cache for creator photos (used by horizontal cards)
+  const [creatorPhotoUrls, setCreatorPhotoUrls] = useState<Record<string, string | null>>({});
   // Groups state
   const [groups, setGroups] = useState<any[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
@@ -174,11 +179,28 @@ const Explore = () => {
 
   useEffect(() => {
     const addCreatorNames = async () => {
-      // Filter events for Explore: events from OTHER users that current user is NOT attending
+      // Build Explore event set from all app events (global discovery), then filter out attended/past/private as needed
       const now = new Date();
 
+      // Fetch all events from the events collection (small limit to avoid huge payloads)
+      let allEvents: any[] = [];
+      try {
+        const res = await databases.listDocuments(
+          config.databaseID!,
+          config.eventsCollectionID!,
+          [
+            Query.limit(500), // reasonable client-side cap for Explore
+            // Optionally could filter server-side for upcoming events
+          ]
+        );
+        allEvents = res.documents || [];
+      } catch (err) {
+        console.error('Explore: failed to fetch all events from DB, falling back to events context', err);
+        allEvents = events || [];
+      }
+
       // First filter out basic criteria (past events, user's own events)
-      const basicFilteredEvents = events.filter(event => {
+      const basicFilteredEvents = allEvents.filter(event => {
         // Filter out past events
         if (new Date(event.endTime) <= now) return false;
 
@@ -194,10 +216,7 @@ const Explore = () => {
           // Check if user is attending using junction table
           const isAttending = await isUserAttendingEvent(userId, event.$id);
 
-          return {
-            event,
-            isAttending
-          };
+          return { event, isAttending };
         })
       );
 
@@ -232,6 +251,17 @@ const Explore = () => {
       const uniqueCreatorIds = [...new Set(eventsWithGroupNames.map(event => event.creatorId))];
       const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
       const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, userDisplayUtils.getFullName(profile)]));
+
+      // Fetch creator photos in parallel (small batches)
+      const photoMap: Record<string, string | null> = {};
+      await Promise.all(uniqueCreatorIds.map(async (cid) => {
+        try {
+          photoMap[cid] = await getUserProfilePhotoUrl(cid);
+        } catch (err) {
+          photoMap[cid] = null;
+        }
+      }));
+      setCreatorPhotoUrls(photoMap);
 
       const eventsWithNames = eventsWithGroupNames.map(event => ({
         ...event,
@@ -712,17 +742,106 @@ const Explore = () => {
     return filtered;
   }, [query, eventsWithCreatorNames, dateFilter, selectedTags, priceFilter, locationFilter]);
 
+  // Popularity × Time weighting function
+  const scoreEvent = useCallback((event: any) => {
+    // popularityScore is denormalized on event (higher is more popular)
+    const popularity = event.popularityScore || 0;
+    const now = Date.now();
+    const start = new Date(event.startTime).getTime();
+    const hoursUntil = Math.max((start - now) / (1000 * 60 * 60), 0.01); // avoid division by zero
+
+    // decayFactor controls how quickly time wins over popularity. 8 is a reasonable starting point.
+    const decayFactor = 8;
+
+    // Score increases with popularity and decreases as event gets further in future.
+    const score = popularity / (1 + hoursUntil / decayFactor);
+    return score;
+  }, []);
+
+  // When search is empty and in events mode, build category sections similar to Feed
+  const groupedSections = useMemo(() => {
+    // If user typed a query, or there are no events, return empty
+    if (query.trim()) return [];
+    const upcoming = filteredEvents.filter((e: any) => new Date(e.endTime) > new Date());
+
+    // Exclude events user is attending (should already be excluded upstream) but double-check
+    const nonAttending = upcoming.filter((e: any) => !e.attendees || !e.attendees.includes(userId));
+
+    const map = new Map<string, { key: string; label: string; emoji: string; events: any[] }>();
+
+    nonAttending.forEach((ev: any) => {
+      const cats = getCategoriesByValues(ev.tags || []);
+      const primary = cats.length > 0 ? cats[0] : { value: 'other', label: 'Other', emoji: '\ud83d\udcc5' } as any;
+      const key = primary.value || 'other';
+
+      if (!map.has(key)) {
+        map.set(key, { key, label: primary.label || 'Other', emoji: primary.emoji || '\ud83d\udcc5', events: [] });
+      }
+      map.get(key)!.events.push(ev);
+    });
+
+    const sections = Array.from(map.values()).map(section => {
+      // Sort within a section by our score (descending: higher score first)
+      section.events.sort((a, b) => scoreEvent(b) - scoreEvent(a));
+      return section;
+    });
+
+    // Sort sections by the top event's start time (soonest first)
+    sections.sort((s1, s2) => {
+      const t1 = s1.events.length > 0 ? new Date(s1.events[0].startTime).getTime() : Infinity;
+      const t2 = s2.events.length > 0 ? new Date(s2.events[0].startTime).getTime() : Infinity;
+      return t1 - t2;
+    });
+
+    return sections;
+  }, [filteredEvents, query, userId, scoreEvent]);
+
+  const renderHorizontalEventCard = ({ item }: { item: any }) => {
+    // Force explicit dark palette so horizontal minicards match dark-mode exactly regardless of theme
+    const darkCard = {
+      card: '#2c2c2e',
+      border: '#333333',
+      surface: '#1e1e1e',
+      text: '#ffffff',
+      textSecondary: '#8e8e93',
+      primary: '#FFFFFF',
+    };
+
+    return (
+      //The Minicard Layout
+      <TouchableOpacity
+        style={[styles.eventMiniCard, { backgroundColor: darkCard.card, borderColor: darkCard.border }]}
+        onPress={() => router.push(`/(root)/event/${item.$id}?from=explore` as any)}
+      >
+        <LinearGradient colors={['#FF6B6B', '#FFD166']} style={styles.eventMiniEmoji}>
+          <Text style={styles.eventEmojiSmall}>{getEventEmoji(item.tags)}</Text>
+        </LinearGradient>
+        <View style={styles.eventMiniContent}>
+          {/* Title */}
+          <Text style={[styles.eventMiniTitle, { color: darkCard.text }]} numberOfLines={2}>{item.title}</Text>
+          {/* Location */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, marginLeft: -2 }}>
+            <MaterialIcons name="location-on" size={12} color={darkCard.primary} />
+            <Text style={{ fontSize: 11, color: darkCard.primary, marginLeft: 2, flexShrink: 1 }} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
+          </View>
+          {/* Date (In number of days from today)*/}
+          <Text style={[styles.eventMiniMeta, { color: darkCard.textSecondary }]}>{dayjs(item.startTime).fromNow()}</Text>
+        </View>
+        <TouchableOpacity style={styles.goIconSmall} onPress={() => router.push(`/(root)/event/${item.$id}?from=explore` as any)}>
+          <MaterialIcons name="arrow-forward" size={18} color={darkCard.primary} />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
   // Handler for attending an event (not used in UI here, but available)
   const handleAttendEvent = async (event: any) => {
     if (!event.inviteeIds?.includes(userId)) {
       try {
-        const updatedInviteeIds = [...(event.inviteeIds || []), userId];
-        // Use updateEvent function to ensure all required fields are included
-        await updateEvent(event.$id || event.id, {
-          ...event,
-          inviteeIds: updatedInviteeIds,
-        });
-        // Correct: refetch events from the server
+        // Create attendance record and remove any invitation records
+        await addEventAttendee(event.$id || event.id, userId);
+        await removeEventInvitation(event.$id || event.id, userId);
+        // Refresh
         await refetchEvents();
         Alert.alert('Success', 'You are now attending this event!');
       } catch (err) {
@@ -765,12 +884,12 @@ const Explore = () => {
               name="tune"
               size={20}
               color={showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any'
-                ? 'white'
+                ? colors.buttonText
                 : colors.text}
             />
             {/* Filter count badge */}
             {(dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') && (
-              <View style={[styles.filterBadge, { backgroundColor: 'white' }]}>
+              <View style={[styles.filterBadge, { backgroundColor: colors.buttonText }]}>
                 <Text style={[styles.filterBadgeText, { color: colors.primary }]}>
                   {(dateFilter !== 'any' ? 1 : 0) + selectedTags.length + (priceFilter !== 'any' ? 1 : 0) + (locationFilter !== 'any' ? 1 : 0)}
                 </Text>
@@ -794,12 +913,12 @@ const Explore = () => {
           <MaterialIcons
             name="event"
             size={18}
-            color={mode === 'events' ? 'white' : colors.text}
+            color={mode === 'events' ? colors.buttonText : colors.text}
           />
           <Text
             style={[
               styles.modeButtonText,
-              { color: mode === 'events' ? 'white' : colors.text }
+              { color: mode === 'events' ? colors.buttonText : colors.text }
             ]}
           >
             Events
@@ -1060,59 +1179,87 @@ const Explore = () => {
             />
           )
         ) : mode === 'events' ? (
-          filteredEvents.length > 0 ? (
-            filteredEvents.map((event) => (
-              <View key={event.$id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          // If user has typed a query, show the filtered vertical events list
+          query.trim() ? (
+            filteredEvents.length > 0 ? (
+              filteredEvents.map((event) => (
                 <TouchableOpacity
+                  key={event.$id}
                   onPress={() => router.push(`/event/${event.$id}`)}
-                  style={styles.eventItem}
+                  style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                 >
-                  <Text style={[styles.eventTitle, { color: colors.text }]}>
-                    {event.title}
-                  </Text>
-                  <View style={styles.eventDetails}>
-                    <View style={styles.eventDetailRow}>
-                      <MaterialIcons name="person" size={16} color={colors.primary} />
-                      <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
-                        {event.creatorName}
-                      </Text>
+                  <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={styles.feedThumb}>
+                    <Text style={styles.eventEmojiThumb}>{getEventEmoji(event.tags)}</Text>
+                  </LinearGradient>
+
+                  <View style={styles.feedBody}>
+                    <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{event.title}</Text>
+
+                    <View style={styles.feedMetaRow}>
+                      <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
+                      <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{dayjs(event.startTime).format('DD MMM, YYYY')}</Text>
+                      <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
+                      <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
+                      <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{event.location || ''}</Text>
                     </View>
-                    {event.groupName && (
-                      <View style={styles.eventDetailRow}>
-                        <MaterialIcons name="group" size={16} color={colors.primary} />
-                        <Text style={[styles.eventDetailText, { color: colors.primary }]}>
-                          {event.groupName}
-                        </Text>
-                      </View>
-                    )}
-                    <View style={styles.eventDetailRow}>
-                      <MaterialIcons name="location-on" size={16} color={colors.primary} />
-                      <TouchableOpacity onPress={() => openInMaps(event.location)}>
-                        <Text style={[styles.eventDetailText, { color: '#000000', textDecorationLine: 'underline' }]}>
-                          {event.location}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.eventDetailRow}>
-                      <MaterialIcons name="access-time" size={16} color={colors.primary} />
-                      <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
-                        {dayjs(event.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(event.endTime).format('h:mm A')}
-                      </Text>
+
+                    <View style={styles.feedSubRow}>
+                      <UserAvatar photoUrl={creatorPhotoUrls[event.creatorId] || null} name={event.creatorName} size={28} />
+                      <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{event.creatorName || 'Unknown'}</Text>
                     </View>
                   </View>
-                  <Text style={[styles.eventDescription, { color: colors.text }]} numberOfLines={2}>
-                    {event.description}
-                  </Text>
+
+                  <View style={styles.feedRightCol}>
+                    {((event as any).price !== undefined && (event as any).price !== null) ? (
+                      <View style={styles.pricePill}>
+                        <Text style={styles.priceText}>${(event as any).price}</Text>
+                      </View>
+                    ) : null}
+
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{(typeof event.attendeeCount === 'number' ? event.attendeeCount : (event.attendees?.length || 0))} attending</Text>
+                    </View>
+                  </View>
                 </TouchableOpacity>
+              ))
+            ) : (
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="event" size={48} color={colors.textSecondary} />
+                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No events found</Text>
+                </View>
               </View>
-            ))
+            )
           ) : (
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.emptyState}>
-                <MaterialIcons name="event" size={48} color={colors.textSecondary} />
-                <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No events found</Text>
+            // Default Explore: grouped category horizontal lists (same as Feed)
+            groupedSections.length > 0 ? (
+              groupedSections.map(section => (
+                <View key={section.key} style={styles.categorySection}>
+                  <View style={styles.categoryHeader}>
+                    <Text style={[styles.sectionHeaderTitle, { color: colors.text }]}>{section.emoji} {section.label}</Text>
+                    <TouchableOpacity onPress={() => console.log('See all', section.key)}>
+                      <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <FlatList
+                    data={section.events}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    keyExtractor={(it) => it.$id}
+                    renderItem={renderHorizontalEventCard}
+                    contentContainerStyle={styles.horizontalList}
+                  />
+                </View>
+              ))
+            ) : (
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="event" size={48} color={colors.textSecondary} />
+                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No events found</Text>
+                </View>
               </View>
-            </View>
+            )
           )
         ) : (
           // Groups mode
@@ -1143,9 +1290,9 @@ const Explore = () => {
                   <MaterialIcons name="group-add" size={48} color={colors.primary} />
                   <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>Create Groups</Text>
                   <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8, marginBottom: 16 }]}>Start your own group and bring together people who share your interests and passions</Text>
-                  <TouchableOpacity onPress={() => router.push('/CreateGroup')} style={[styles.actionButton, { backgroundColor: '#000000' }]}>
-                    <MaterialIcons name="add" size={16} color="white" />
-                    <Text style={[styles.actionButtonText, { color: 'white' }]}>Create Group</Text>
+                  <TouchableOpacity onPress={() => router.push('/CreateGroup')} style={[styles.actionButton, { backgroundColor: colors.primary }]}>
+                    <MaterialIcons name="add" size={16} color={colors.buttonText} />
+                    <Text style={[styles.actionButtonText, { color: colors.buttonText }]}>Create Group</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1484,6 +1631,138 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 14,
+  },
+  // Horizontal mini card styles (copied from Feed)
+  eventMiniCard: {
+    width: 220,
+    borderRadius: 14,
+    padding: 12,
+    marginHorizontal: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  eventMiniEmoji: {
+    width: 64,
+    height: 64,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  eventEmojiSmall: {
+    fontSize: 28,
+  },
+  eventMiniContent: {
+    flex: 1,
+  },
+  eventMiniTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  eventMiniMeta: {
+    fontSize: 12,
+    marginTop: 6,
+  },
+  goIconSmall: {
+    marginLeft: 8,
+    padding: 6,
+    borderRadius: 8,
+  },
+  // Shared feed-style horizontal card styles (copied from Feed)
+  feedRowCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 12,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  feedThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  eventEmojiThumb: {
+    fontSize: 28,
+  },
+  feedBody: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  feedTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  feedMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  feedMetaText: {
+    fontSize: 12,
+  },
+  smallCreatorName: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  feedSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  feedRightCol: {
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    height: 72,
+  },
+  pricePill: {
+    backgroundColor: '#fff0f0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  priceText: {
+    color: '#d64545',
+    fontWeight: '700',
+  },
+  joinButton: {
+    backgroundColor: '#1f6feb',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  joinButtonText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  categorySection: {
+    marginBottom: 18,
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  sectionHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  seeAllText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  horizontalList: {
+    paddingLeft: 12,
+    paddingRight: 12,
   },
 });
 

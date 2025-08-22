@@ -1,8 +1,10 @@
+import { cancelFriendRequest, getPendingFriendRequests, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
 import { getUserGroups } from '@/lib/api/group';
 import { getProfilePhotoUrl } from '@/lib/api/profilePhoto';
-import { getFriends, getUserProfile } from '@/lib/api/user';
+import { getFriends, getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
+import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
 import { Group } from '@/lib/types/Groups';
 import { UserProfile as UserProfileType } from '@/lib/types/Users';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
@@ -39,6 +41,7 @@ const UserProfile = () => {
         friends: 0,
         groups: 0,
     });
+    const [friendshipState, setFriendshipState] = useState<'none' | 'requested' | 'friends'>('none');
 
     // Create a reusable loadUserData function
     const loadUserData = useCallback(async () => {
@@ -55,11 +58,15 @@ const UserProfile = () => {
             }
             setUserProfile(profile);
 
-            // Load friends and groups
-            const [userFriends, userGroups] = await Promise.all([
-                getFriends(userId),
-                getUserGroups(userId)
-            ]);
+            // Load groups first
+            const userGroups = await getUserGroups(userId);
+
+            // Load friends: prefer legacy getFriends(), otherwise fall back to junction table
+            let userFriends = await getFriends(userId);
+            if (!userFriends || userFriends.length === 0) {
+                const friendIds = await getUserFriends(userId);
+                userFriends = friendIds && friendIds.length > 0 ? await getUsersByIds(friendIds) : [];
+            }
 
             setFriends(userFriends || []);
             setGroups(userGroups || []);
@@ -92,6 +99,39 @@ const UserProfile = () => {
         }, [loadUserData])
     );
 
+    // Load friendship state between current user and this profile
+    useEffect(() => {
+        const loadFriendship = async () => {
+            try {
+                if (!currentUser?.$id || !userId) return;
+
+                // Check accepted friends
+                const friendsIds = await getUserFriends(currentUser.$id);
+                if (friendsIds.includes(userId)) {
+                    setFriendshipState('friends');
+                    return;
+                }
+
+                // Check pending requests (sent or received)
+                const pending = await getPendingFriendRequests(currentUser.$id);
+                const relatedPending = [...pending.sent, ...pending.received].some((f: any) => {
+                    return f.userId1 === userId || f.userId2 === userId;
+                });
+
+                if (relatedPending) {
+                    setFriendshipState('requested');
+                    return;
+                }
+
+                setFriendshipState('none');
+            } catch (error) {
+                console.error('Error loading friendship state:', error);
+            }
+        };
+
+        loadFriendship();
+    }, [currentUser?.$id, userId]);
+
     const handleMessageUser = () => {
         // Navigate to conversation with this user
         router.push(`/(root)/Messages/${userId}` as any);
@@ -104,6 +144,48 @@ const UserProfile = () => {
             router.push(`/(root)/UserCalendar/${userId}` as any);
         } catch (error) {
             console.error('Error navigating to calendar:', error);
+        }
+    };
+
+    const handleSendFriendRequest = async () => {
+        if (!currentUser?.$id) return;
+        try {
+            const res = await sendFriendRequest(currentUser.$id, userId as string);
+            if (res?.success) {
+                setFriendshipState('requested');
+                try {
+                    const senderName = currentUser.name || `${firstName} ${lastName}`;
+                    await sendFriendRequestNotification(userId as string, senderName, currentUser.$id);
+                } catch (notifErr) {
+                    console.warn('Failed to send friend request notification:', notifErr);
+                }
+            }
+        } catch (error) {
+            console.error('Error sending friend request:', error);
+        }
+    };
+
+    const handleCancelFriendRequest = async () => {
+        if (!currentUser?.$id) return;
+        try {
+            const res = await cancelFriendRequest(currentUser.$id, userId as string);
+            if (res?.success) {
+                setFriendshipState('none');
+            }
+        } catch (error) {
+            console.error('Error cancelling friend request:', error);
+        }
+    };
+
+    const handleUnfriend = async () => {
+        if (!currentUser?.$id) return;
+        try {
+            const res = await unfriendUser(currentUser.$id, userId as string);
+            if (res?.success) {
+                setFriendshipState('none');
+            }
+        } catch (error) {
+            console.error('Error unfriending user:', error);
         }
     };
     if (loading) {
@@ -128,114 +210,123 @@ const UserProfile = () => {
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-            {/* Enhanced Header with Gradient */}
-            <View style={styles.header}>
-                <LinearGradient
-                    colors={['#000000', '#1a1a1a', '#2d2d2d']}
-                    start={[0, 0]}
-                    end={[1, 1]}
-                    style={styles.headerGradient}
-                >
-                    <View style={styles.headerContent}>
-                        {/* Profile Section */}
-                        <View style={styles.profileSection}>
-                            <View style={styles.leftProfileSection}>
-                                <View style={styles.avatarContainer}>
-                                    {profilePhotoUrl ? (
-                                        <Image
-                                            source={{ uri: profilePhotoUrl }}
-                                            style={styles.avatar}
-                                        />
-                                    ) : (
-                                        <View style={styles.avatarPlaceholder}>
-                                            <Text style={styles.avatarText}>
-                                                {userDisplayUtils.getInitials({ firstName, lastName })}
-                                            </Text>
-                                        </View>
-                                    )}
-                                </View>
-
-                                <View style={styles.nameSection}>
-                                    <Text style={styles.userName}>
-                                        {userDisplayUtils.getFullName({ firstName, lastName })}
-                                    </Text>
-                                </View>
-                            </View>
-
-                            {/* Stats positioned to the right */}
-                            <View style={styles.rightStatsSection}>
-                                <View style={styles.statItem}>
-                                    <Text style={styles.statNumber}>{stats.friends}</Text>
-                                    <Text style={styles.statLabel}>Friends</Text>
-                                </View>
-                                <View style={styles.statDivider} />
-                                <View style={styles.statItem}>
-                                    <Text style={styles.statNumber}>{stats.groups}</Text>
-                                    <Text style={styles.statLabel}>Groups</Text>
-                                </View>
-                            </View>
-                        </View>
-                    </View>
-                </LinearGradient>
-            </View>
-
             <ScrollView
                 style={styles.scrollContainer}
                 contentContainerStyle={[styles.scrollContent, { paddingBottom: 70 + insets.bottom }]}
                 showsVerticalScrollIndicator={false}
             >
-                {/* About Section */}
-                {userProfile.about && (
-                    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <View style={styles.cardHeader}>
-                            <View style={styles.cardTitleContainer}>
-                                <MaterialIcons name="info" size={20} color={colors.primary} />
-                                <Text style={[styles.cardTitle, { color: colors.text }]}>About</Text>
-                            </View>
-                        </View>
-                        <View style={[styles.contentContainer, { backgroundColor: colors.background }]}>
-                            <Text style={[styles.contentText, { color: colors.text }]}>
-                                {userProfile.about}
-                            </Text>
-                        </View>
-                    </View>
-                )}
+                {/* Modern Header (centered, scrolls with page) */}
+                <View style={styles.header}>
+                    <LinearGradient
+                        colors={['#FF6B6B', '#FFD166']}
+                        start={[0, 0]}
+                        end={[1, 1]}
+                        style={styles.coverGradient}
+                    >
+                        <View style={styles.coverContent}>
+                            <View style={styles.leftArea}>
+                                <View style={styles.avatarWrapper}>
+                                    {profilePhotoUrl ? (
+                                        <Image source={{ uri: profilePhotoUrl }} style={[styles.avatarLarge, { borderColor: colors.card }]} />
+                                    ) : (
+                                        <View style={[styles.avatarPlaceholderLarge, { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: colors.card }]}>
+                                            <Text style={[styles.avatarTextLarge, { color: colors.text }]}>{userDisplayUtils.getInitials({ firstName, lastName })}</Text>
+                                        </View>
+                                    )}
+                                </View>
 
-                {/* Personal Details Section */}
-                {(userProfile.nationality || userProfile.age) && (
-                    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <View style={styles.cardHeader}>
-                            <View style={styles.cardTitleContainer}>
-                                <MaterialIcons name="person" size={20} color={colors.primary} />
-                                <Text style={[styles.cardTitle, { color: colors.text }]}>Personal Details</Text>
+                                <Text style={[styles.userNameLarge, { color: colors.text, marginTop: 12 }]}>{userDisplayUtils.getFullName({ firstName, lastName })}</Text>
+                                <Text style={[styles.userSubtitleSmall, { color: colors.textSecondary, marginTop: 6 }]}>{userProfile?.about ? userProfile.about.slice(0, 60) + (userProfile.about.length > 60 ? '...' : '') : 'No bio yet'}</Text>
+
+                                <View style={[styles.statsRow, { marginTop: 12 }]}>
+                                    <View style={[styles.statCard, { backgroundColor: 'transparent' }]}>
+                                        <Text style={[styles.statNumberLarge, { color: colors.text }]}>{stats.friends}</Text>
+                                        <Text style={[styles.statLabelSmall, { color: colors.textSecondary }]}>Friends</Text>
+                                    </View>
+                                    <View style={[styles.statCard, { backgroundColor: 'transparent' }]}>
+                                        <Text style={[styles.statNumberLarge, { color: colors.text }]}>{stats.groups}</Text>
+                                        <Text style={[styles.statLabelSmall, { color: colors.textSecondary }]}>Groups</Text>
+                                    </View>
+                                </View>
                             </View>
+
+                            {/* rightArea removed - controls moved to centered action row below */}
                         </View>
-                        <View style={styles.detailsContainer}>
-                            {userProfile.nationality && (
-                                <View style={styles.detailRow}>
-                                    <MaterialIcons name="flag" size={18} color={colors.textSecondary} />
-                                    <View style={styles.detailContent}>
-                                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Nationality</Text>
-                                        <Text style={[styles.detailValue, { color: colors.text }]}>
-                                            {userProfile.nationality}
-                                        </Text>
-                                    </View>
-                                </View>
-                            )}
-                            {userProfile.age && (
-                                <View style={styles.detailRow}>
-                                    <MaterialIcons name="cake" size={18} color={colors.textSecondary} />
-                                    <View style={styles.detailContent}>
-                                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Age</Text>
-                                        <Text style={[styles.detailValue, { color: colors.text }]}>
-                                            {userProfile.age} years old
-                                        </Text>
-                                    </View>
-                                </View>
-                            )}
+                    </LinearGradient>
+                </View>
+
+                {/* Action row: Calendar + Friend controls (inline, no card) */}
+                <View style={[styles.actionRowContainer, { marginTop: 12, justifyContent: 'center' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <TouchableOpacity onPress={handleViewCalendar} style={[styles.actionButtonEqual, { backgroundColor: colors.primary }]}>
+                            <MaterialIcons name="calendar-today" size={18} color="white" />
+                            <Text style={styles.actionButtonText}>Calendar</Text>
+                        </TouchableOpacity>
+
+                        {currentUser && currentUser.$id !== userId && (
+                            <>
+                                {friendshipState === 'none' && (
+                                    <TouchableOpacity style={[styles.actionButtonEqual, { backgroundColor: colors.primary }]} onPress={handleSendFriendRequest}>
+                                        <MaterialIcons name="person-add" size={18} color="white" />
+                                        <Text style={styles.actionButtonText}>Add</Text>
+                                    </TouchableOpacity>
+                                )}
+                                {friendshipState === 'requested' && (
+                                    <TouchableOpacity style={[styles.actionButtonEqual, { backgroundColor: '#f59e0b' }]} onPress={handleCancelFriendRequest}>
+                                        <MaterialIcons name="hourglass-empty" size={18} color="white" />
+                                        <Text style={styles.actionButtonText}>Cancel</Text>
+                                    </TouchableOpacity>
+                                )}
+                                {friendshipState === 'friends' && (
+                                    <TouchableOpacity style={[styles.actionButtonEqual, { backgroundColor: '#ef4444' }]} onPress={handleUnfriend}>
+                                        <MaterialIcons name="person" size={18} color="white" />
+                                        <Text style={styles.actionButtonText}>Remove</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </>
+                        )}
+                    </View>
+                </View>
+
+                {/* Bio Section (combine about + personal details) */}
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 16 }]}>
+                    <View style={styles.cardHeader}>
+                        <View style={styles.cardTitleContainer}>
+                            <MaterialIcons name="info" size={20} color={colors.primary} />
+                            <Text style={[styles.cardTitle, { color: colors.text }]}>Bio</Text>
                         </View>
                     </View>
-                )}
+
+                    <View style={[styles.contentContainer, { backgroundColor: colors.background }]}>
+                        <View style={styles.aboutRow}>
+                            <View style={styles.aboutIconWrap}>
+                                <MaterialIcons name="favorite" size={18} color={colors.primary} />
+                            </View>
+                            <View style={styles.aboutTextWrap}>
+                                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>About</Text>
+                                <Text style={[styles.detailValue, { color: colors.text, marginTop: 6 }]}>{userProfile?.about || 'No about information set'}</Text>
+                            </View>
+                        </View>
+
+                        <View style={[styles.detailsContainer, { marginTop: 12 }]}>
+                            <View style={styles.detailRow}>
+                                <MaterialIcons name="flag" size={18} color={colors.textSecondary} />
+                                <View style={styles.detailContent}>
+                                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Nationality</Text>
+                                    <Text style={[styles.detailValue, { color: colors.text }]}>{userProfile?.nationality || 'Not specified'}</Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.detailRow}>
+                                <MaterialIcons name="cake" size={18} color={colors.textSecondary} />
+                                <View style={styles.detailContent}>
+                                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Age</Text>
+                                    <Text style={[styles.detailValue, { color: colors.text }]}>{userProfile?.age ? `${userProfile.age} years old` : 'Not specified'}</Text>
+                                </View>
+                            </View>
+                        </View>
+                    </View>
+                </View>
 
                 {/* Friends Section */}
                 <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -315,7 +406,7 @@ const UserProfile = () => {
                                         {item.title}
                                     </Text>
                                     <Text style={[styles.groupMembers, { color: colors.textSecondary }]}>
-                                        {item.users?.length || 0} members
+                                        {item.memberCount ?? (Array.isArray(item.users) ? item.users.length : 0)} members
                                     </Text>
                                 </TouchableOpacity>
                             )}
@@ -331,16 +422,7 @@ const UserProfile = () => {
                     </View>
                 </View>
 
-                {/* Calendar Action Section */}
-                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <TouchableOpacity
-                        onPress={handleViewCalendar}
-                        style={[styles.calendarButton, { backgroundColor: colors.primary }]}
-                    >
-                        <MaterialIcons name="calendar-today" size={20} color="white" />
-                        <Text style={styles.calendarButtonText}>View Calendar</Text>
-                    </TouchableOpacity>
-                </View>
+                {/* Calendar Action Section removed (moved above Bio) */}
             </ScrollView>
         </SafeAreaView>
     );
@@ -358,9 +440,7 @@ const styles = StyleSheet.create({
     loadingText: {
         fontSize: 16,
     },
-    header: {
-        position: 'relative',
-    },
+    /* Compact header and small-avatar styles (kept for legacy layouts) */
     headerGradient: {
         paddingHorizontal: 20,
         paddingVertical: 24,
@@ -406,6 +486,131 @@ const styles = StyleSheet.create({
         fontSize: 20,
         fontWeight: '600',
         color: 'white',
+    },
+    settingsButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    actionButtonEqual: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 20,
+        borderRadius: 8,
+        minWidth: 120,
+        justifyContent: 'center',
+    },
+    aboutRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginTop: 6,
+    },
+    aboutIconWrap: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: 'transparent',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    aboutTextWrap: {
+        flex: 1,
+    },
+    /* Modern profile header styles (aligned with main Profile) */
+    coverGradient: {
+        paddingVertical: 18,
+        paddingHorizontal: 0,
+        borderBottomLeftRadius: 28,
+        borderBottomRightRadius: 28,
+    },
+    coverContent: {
+        flexDirection: 'column',
+        alignItems: 'center',
+        paddingVertical: 12,
+    },
+    leftArea: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 8,
+        width: '100%',
+    },
+    rightArea: {
+        position: 'absolute',
+        right: 16,
+        top: 16,
+    },
+    header: {
+        position: 'relative',
+        overflow: 'hidden',
+        borderBottomLeftRadius: 28,
+        borderBottomRightRadius: 28,
+        marginHorizontal: -16, // cancel ScrollView padding so gradient spans full width
+        paddingTop: 0,
+    },
+    avatarWrapper: {
+        position: 'relative',
+        marginBottom: 8,
+    },
+    avatarLarge: {
+        width: 132,
+        height: 132,
+        borderRadius: 66,
+        borderWidth: 3,
+        borderColor: 'white',
+    },
+    avatarPlaceholderLarge: {
+        width: 132,
+        height: 132,
+        borderRadius: 66,
+        backgroundColor: 'rgba(0,0,0,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    avatarTextLarge: {
+        fontSize: 36,
+        fontWeight: '700',
+        color: 'white',
+    },
+    userNameLarge: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: 'white',
+        textAlign: 'center',
+    },
+    userSubtitleSmall: {
+        marginTop: 6,
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.9)',
+        textAlign: 'center',
+    },
+    statsRow: {
+        marginTop: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    statCard: {
+        minWidth: 86,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 12,
+        alignItems: 'center',
+        marginHorizontal: 8,
+    },
+    statNumberLarge: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: 'white',
+    },
+    statLabelSmall: {
+        fontSize: 11,
+        color: 'rgba(255,255,255,0.85)'
     },
     nameSection: {
         flex: 1,
@@ -578,6 +783,41 @@ const styles = StyleSheet.create({
         color: 'white',
         fontSize: 16,
         fontWeight: '600',
+    },
+    createButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        gap: 8,
+    },
+    createButtonText: {
+        color: 'white',
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 6,
+    },
+    actionRowContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        paddingHorizontal: 0,
+    },
+    actionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+    },
+    actionButtonText: {
+        color: 'white',
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 8,
     },
 });
 

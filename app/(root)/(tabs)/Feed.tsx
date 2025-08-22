@@ -1,5 +1,5 @@
 import { getCategoriesByValues, getEventEmoji } from '@/constants/categories';
-import { isUserAttendingEvent, updateEvent } from '@/lib/api/event';
+import { addEventAttendee, getEventAttendees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
 import { getUserGroups } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
@@ -14,9 +14,10 @@ import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams } from 'expo-router';
+// header will be plain white
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Linking, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import UserAvatar from '../components/UserAvatar';
@@ -36,9 +37,12 @@ export default function Feed() {
   const insets = useSafeAreaInsets();
   const { events, refetchEvents } = useEvents();
   const { user: globalUser } = useGlobalContext();
+  const router = useRouter();
   const params = useLocalSearchParams();
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<AppEvent[]>([]);
   const [travelAnnouncements, setTravelAnnouncements] = useState<TravelAnnouncementWithUserInfo[]>([]);
+  const [friendProfiles, setFriendProfiles] = useState<any[]>([]);
+  const [friendPhotoUrls, setFriendPhotoUrls] = useState<Record<string, string | null>>({});
   const [formVisible, setFormVisible] = useState(false);
   const [travelFormVisible, setTravelFormVisible] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -57,6 +61,34 @@ export default function Feed() {
       // Use proper junction table approach to get friends
       const userFriends = await getUserFriends(globalUser.$id);
       setFriends(userFriends);
+
+      // Batch fetch friend profiles and photos for the friends bubble bar
+      if (userFriends.length > 0) {
+        try {
+          const friendProfilesBatches = await batchProcess(
+            userFriends,
+            async (batch) => await getUsersByIds(batch),
+            25
+          );
+          const flatFriendProfiles = friendProfilesBatches.flat();
+          setFriendProfiles(flatFriendProfiles || []);
+
+          // Fetch friend photos
+          const friendPhotoMap: Record<string, string | null> = {};
+          await Promise.all(flatFriendProfiles.map(async (p: any) => {
+            try {
+              friendPhotoMap[p.$id] = await getUserProfilePhotoUrl(p.$id);
+            } catch {
+              friendPhotoMap[p.$id] = null;
+            }
+          }));
+          setFriendPhotoUrls(friendPhotoMap);
+        } catch (err) {
+          console.error('Feed: failed to load friend profiles', err);
+          setFriendProfiles([]);
+          setFriendPhotoUrls({});
+        }
+      }
 
       console.log('Feed: User friends loaded:', userFriends.length);
 
@@ -118,30 +150,43 @@ export default function Feed() {
         );
         setCreatorPhotoUrls(creatorPhotoMap);
 
+        // Build mapped events with creator names and filter out events the user is already attending
         const filteredAndMappedEvents = await Promise.all(
           relevantEvents.documents
             .filter((event: any) => {
-              // Show all upcoming events from friends and groups
-              const eventDate = new Date(event.endTime || event.date); // Use endTime if available, fallback to date
-              const now = new Date();
-              const isUpcoming = eventDate >= now;
-              return isUpcoming;
+              const eventDate = new Date(event.endTime || event.date);
+              return eventDate >= new Date(); // upcoming
             })
             .map(async (event: any) => {
-              // Check if user is attending using junction table
               const isAttending = await isUserAttendingEvent(globalUser.$id, event.$id);
+
+              // Normalize attendee data: prefer optimized attendeeCount, fall back to attendees array,
+              // and as a last resort query the junction table via getEventAttendees
+              let attendeesList: string[] = Array.isArray(event.attendees) ? event.attendees : [];
+              let attendeeCount: number | undefined = typeof event.attendeeCount === 'number' ? event.attendeeCount : (attendeesList.length > 0 ? attendeesList.length : undefined);
+
+              if ((attendeeCount === undefined || attendeeCount === 0) && !Array.isArray(event.attendees)) {
+                try {
+                  const junctionAttendees = await getEventAttendees(event.$id);
+                  attendeesList = Array.isArray(junctionAttendees) ? junctionAttendees : [];
+                  attendeeCount = attendeesList.length;
+                } catch (err) {
+                  // ignore and fallback to 0
+                  attendeeCount = attendeeCount ?? 0;
+                }
+              }
 
               return {
                 ...(event as unknown as AppEvent),
                 creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
                 isAttending,
-              };
+                attendees: attendeesList,
+                attendeeCount: attendeeCount ?? 0,
+              } as AppEvent & { isAttending?: boolean; attendeeCount?: number };
             })
         );
 
-        // Filter out events the user is already attending (based on requirement)
-        const nonAttendingEvents = filteredAndMappedEvents.filter((event: any) => !event.isAttending);
-
+        const nonAttendingEvents = filteredAndMappedEvents.filter((e: any) => !e.isAttending);
         setEventsWithCreatorNames(nonAttendingEvents as AppEvent[]);
 
         // Fetch travel announcements with connection pooling
@@ -276,9 +321,7 @@ export default function Feed() {
     try {
       const updatedAttendees = [...(event.attendees || []), currentUserId];
       // Use updateEvent function to ensure all required fields are included
-      await updateEvent(event.$id, {
-        attendees: updatedAttendees,
-      });
+      await addEventAttendee(event.$id, currentUserId);
       // Update the local state to reflect the change
       setEventsWithCreatorNames(prevEvents =>
         prevEvents.map(e =>
@@ -299,9 +342,7 @@ export default function Feed() {
     try {
       const updatedAttendees = (event.attendees || []).filter((id: string) => id !== currentUserId);
       // Use updateEvent function to ensure all required fields are included
-      await updateEvent(event.$id, {
-        attendees: updatedAttendees,
-      });
+      await removeEventAttendee(event.$id, currentUserId);
       // Update the local state to reflect the change
       setEventsWithCreatorNames(prevEvents =>
         prevEvents.map(e =>
@@ -320,108 +361,116 @@ export default function Feed() {
   const now = new Date();
   const upcomingEvents = eventsWithCreatorNames.filter(event => new Date(event.endTime) > now);
 
-  const feedItems: FeedItem[] = [
-    ...upcomingEvents.map(event => ({ ...event, type: 'event' as const })),
-    ...travelAnnouncements.map(travel => ({ ...travel, type: 'travel' as const }))
-  ].sort((a, b) => {
-    // Sort by creation time (most recent first)
-    // For events, use startTime as proxy for creation time since $createdAt may not be available
-    const aDate = a.type === 'event' ? new Date(a.startTime) : new Date(a.createdAt);
-    const bDate = b.type === 'event' ? new Date(b.startTime) : new Date(b.createdAt);
-    return bDate.getTime() - aDate.getTime();
-  });
+  // Group upcoming events by primary category (derived from tags) and sort groups by soonest event
+  const groupedByCategory = (() => {
+    const map = new Map<string, { key: string; label: string; emoji: string; events: AppEvent[] }>();
 
-  const renderEventItem = ({ item }: { item: AppEvent & { creatorName?: string } }) => (
-    <View style={[styles.feedCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      {/* Event Header */}
-      <View style={styles.cardHeader}>
-        <UserAvatar
-          photoUrl={creatorPhotoUrls[item.creatorId] || null}
-          name={item.creatorName}
-          size={48}
-        />
-        <View style={styles.headerText}>
-          <Text style={[styles.creatorName, { color: colors.text }]}>
-            {item.creatorName || 'Unknown Creator'}
-          </Text>
-          <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>
-            {dayjs(item.startTime).fromNow()}
-          </Text>
-        </View>
-        <TouchableOpacity style={styles.moreButton}>
-          <MaterialIcons name="more-horiz" size={24} color={colors.textSecondary} />
-        </TouchableOpacity>
-      </View>
+    upcomingEvents.forEach(ev => {
+      const cats = getCategoriesByValues(ev.tags || []);
+      const primary = cats.length > 0 ? cats[0] : { value: 'other', label: 'Other', emoji: '📅' } as any;
+      const key = primary.value || 'other';
 
-      {/* Event Emoji Container */}
-      <View style={[styles.emojiContainer, { backgroundColor: colors.surface }]}>
-        <Text style={styles.eventEmoji}>{getEventEmoji(item.tags)}</Text>
-      </View>
+      if (!map.has(key)) {
+        map.set(key, { key, label: primary.label || 'Other', emoji: primary.emoji || '📅', events: [] });
+      }
+      map.get(key)!.events.push(ev);
+    });
 
-      {/* Event Details */}
-      <View style={styles.cardContent}>
-        <Text style={[styles.eventTitle, { color: colors.text }]}>{item.title}</Text>
+    const sections = Array.from(map.values()).map(section => {
+      section.events.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+      return section;
+    });
 
-        <View style={styles.eventMeta}>
-          <View style={styles.metaRow}>
-            <MaterialIcons name="location-on" size={16} color={colors.primary} />
-            <TouchableOpacity onPress={() => openInMaps(item.location)}>
-              <Text style={[styles.metaText, { color: colors.primary, textDecorationLine: 'underline' }]}>
-                {item.location}
-              </Text>
-            </TouchableOpacity>
+    sections.sort((s1, s2) => {
+      const t1 = s1.events.length > 0 ? new Date(s1.events[0].startTime).getTime() : Infinity;
+      const t2 = s2.events.length > 0 ? new Date(s2.events[0].startTime).getTime() : Infinity;
+      return t1 - t2;
+    });
+
+    return sections;
+  })();
+
+  // Compact horizontal card used in category lists
+  const renderHorizontalEventCard = ({ item }: { item: AppEvent }) => (
+    // Use explicit dark-mode palette for event minicards so they look identical in light and dark themes
+    (() => {
+      const darkCard = {
+        card: '#2c2c2e',
+        border: '#333333',
+        surface: '#1e1e1e',
+        text: '#ffffff',
+        textSecondary: '#8e8e93',
+        primary: '#FFFFFF',
+      };
+
+      return (
+        <TouchableOpacity
+          style={[styles.eventMiniCard, { backgroundColor: darkCard.card, borderColor: darkCard.border }]}
+          onPress={() => router.push(`/(root)/event/${item.$id}?from=feed` as any)}
+        >
+          <LinearGradient colors={['#FF6B6B', '#FFD166']} style={styles.eventMiniEmoji}>
+            <Text style={styles.eventEmojiSmall}>{getEventEmoji(item.tags)}</Text>
+          </LinearGradient>
+          <View style={styles.eventMiniContent}>
+            <Text style={[styles.eventMiniTitle, { color: darkCard.text }]} numberOfLines={2}>{item.title}</Text>
+            <Text style={[styles.eventMiniMeta, { color: darkCard.textSecondary }]}>{dayjs(item.startTime).fromNow()}</Text>
           </View>
-
-          <View style={styles.metaRow}>
-            <MaterialIcons name="access-time" size={16} color={colors.primary} />
-            <Text style={[styles.metaText, { color: colors.textSecondary }]}>
-              {dayjs(item.startTime).format('MMM D, YYYY h:mm A')} - {dayjs(item.endTime).format('h:mm A')}
-            </Text>
-          </View>
-        </View>
-
-        {/* Display event tags */}
-        {item.tags && item.tags.length > 0 && (
-          <View style={styles.tagsContainer}>
-            {getCategoriesByValues(item.tags).map((category) => (
-              <View key={category.value} style={[styles.tag, { backgroundColor: colors.surface }]}>
-                <Text style={styles.tagEmoji}>{category.emoji}</Text>
-                <Text style={[styles.tagText, { color: colors.text }]}>{category.label}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        <Text style={[styles.eventDescription, { color: colors.text }]}>{item.description}</Text>
-      </View>
-
-      {/* Actions */}
-      <View style={[styles.cardActions, { borderTopColor: colors.border }]}>
-        {item.isAttending ? (
-          <TouchableOpacity
-            onPress={() => handleNotAttend(item)}
-            style={styles.actionButton}
-          >
-            <MaterialIcons name="event-busy" size={20} color="#FF3B30" />
-            <Text style={[styles.actionText, { color: '#FF3B30' }]}>Not Attending</Text>
+          <TouchableOpacity style={styles.goIconSmall} onPress={() => router.push(`/(root)/event/${item.$id}?from=feed` as any)}>
+            <MaterialIcons name="arrow-forward" size={18} color={darkCard.primary} />
           </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            onPress={() => handleAttend(item)}
-            style={styles.actionButton}
-          >
-            <MaterialIcons name="event-available" size={20} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.primary }]}>Attend</Text>
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity style={styles.actionButton}>
-          <MaterialIcons name="share" size={20} color={colors.textSecondary} />
-          <Text style={[styles.actionText, { color: colors.textSecondary }]}>Share</Text>
         </TouchableOpacity>
-      </View>
-    </View>
+      );
+    })()
   );
+
+  // Friend bubbles bar (horizontal scroll) - friends with new events ordered first
+  const renderFriendBubble = (friend: any) => (
+    <TouchableOpacity key={friend.$id} style={styles.friendBubble} onPress={() => router.push(`/(root)/UserProfile/${friend.$id}` as any)}>
+      <UserAvatar photoUrl={friendPhotoUrls[friend.$id] || null} name={userDisplayUtils.getFullName(friend)} size={48} />
+    </TouchableOpacity>
+  );
+
+  const renderEventItem = ({ item }: { item: AppEvent & { creatorName?: string } }) => {
+    return (
+      <TouchableOpacity
+        onPress={() => router.push(`/(root)/event/${item.$id}?from=feed` as any)}
+        style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+      >
+        <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={styles.feedThumb}>
+          <Text style={styles.eventEmojiThumb}>{getEventEmoji(item.tags)}</Text>
+        </LinearGradient>
+
+        <View style={styles.feedBody}>
+          <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
+
+          <View style={styles.feedMetaRow}>
+            <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
+            <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{dayjs(item.startTime).format('DD MMM, YYYY')}</Text>
+            <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
+            <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
+            <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
+          </View>
+
+          <View style={styles.feedSubRow}>
+            <UserAvatar photoUrl={creatorPhotoUrls[item.creatorId] || null} name={item.creatorName} size={28} />
+            <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{item.creatorName || 'Unknown'}</Text>
+          </View>
+        </View>
+
+        <View style={styles.feedRightCol}>
+          {((item as any).price !== undefined && (item as any).price !== null) ? (
+            <View style={styles.pricePill}>
+              <Text style={styles.priceText}>${(item as any).price}</Text>
+            </View>
+          ) : null}
+
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{(typeof item.attendeeCount === 'number' ? item.attendeeCount : (item.attendees?.length || 0))} attending</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   const renderTravelItem = ({ item }: { item: TravelAnnouncementWithUserInfo }) => (
     <View style={[styles.feedCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -502,50 +551,85 @@ export default function Feed() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Enhanced Header with Black Gradient */}
-      <View style={styles.header}>
-        <LinearGradient
-          colors={['#000000', '#1a1a1a', '#2d2d2d']}
-          start={[0, 0]}
-          end={[1, 1]}
-          style={styles.headerGradient}
-        >
-          <View style={styles.headerContent}>
-            <Text style={styles.headerTitle}>Up2 You</Text>
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                onPress={() => setTravelFormVisible(true)}
-                style={styles.headerButton}
-              >
-                <MaterialIcons name="flight" size={24} color="white" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setFormVisible(true)}
-                style={styles.headerButton}
-              >
-                <MaterialIcons name="add" size={24} color="white" />
-              </TouchableOpacity>
-            </View>
+      {/* Improved gradient header */}
+      <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={[styles.headerGradient]}>
+        <View style={styles.headerContent}>
+          <Text style={[styles.headerTitle, { color: '#fff' }]}>UP2 YOU</Text>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={() => setTravelFormVisible(true)} style={styles.headerActionButton}>
+              <MaterialIcons name="flight" size={18} color={'#fff'} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setFormVisible(true)} style={styles.headerActionButton}>
+              <MaterialIcons name="add" size={18} color={'#fff'} />
+            </TouchableOpacity>
           </View>
-        </LinearGradient>
-      </View>
+        </View>
+      </LinearGradient>
 
-      {/* Event Feed with Pull-to-Refresh for scalability */}
-      <FlatList
-        data={feedItems}
-        keyExtractor={(item) => `${item.type}-${item.$id}`}
-        renderItem={renderFeedItem}
-        contentContainerStyle={[styles.feedContent, { paddingBottom: 70 + insets.bottom }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
-        }
-      />
+      {/* Event Feed as a single vertical FlatList with pull-to-refresh */}
+      <View style={[styles.feedContent, { paddingBottom: 70 + insets.bottom }]}>
+        {/* Compact friends summary (replaces large friend bubble bar) */}
+        {friendProfiles.length > 0 && (
+          <TouchableOpacity
+            style={[styles.feedFriendSummary, { backgroundColor: colors.background }]}
+            onPress={() => router.push('/Friends' as any)}
+          >
+            <View style={styles.friendOverlapRow}>
+              {friendProfiles.slice(0, 4).map((f, idx) => (
+                <View key={f.$id} style={[styles.friendOverlap, { marginLeft: idx === 0 ? 0 : -12 }]}>
+                  <UserAvatar photoUrl={friendPhotoUrls[f.$id] || null} name={userDisplayUtils.getFullName(f)} size={40} />
+                </View>
+              ))}
+            </View>
+            <View style={{ marginLeft: 12 }}>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>{friendProfiles.length} friends</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>See events from your friends</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {/* Main events FlatList (condensed chronological list) */}
+        <FlatList
+          data={eventsWithCreatorNames}
+          keyExtractor={(item) => item.$id}
+          renderItem={renderEventItem}
+          ListEmptyComponent={() => (
+            <View style={{ padding: 24, alignItems: 'center' }}>
+              <Text style={{ color: colors.textSecondary }}>No events yet. Pull to refresh.</Text>
+            </View>
+          )}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 70 + insets.bottom }}
+        />
+
+        {/* Travel announcements (kept below the main feed) */}
+        {travelAnnouncements.length > 0 && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={[styles.sectionHeaderTitle, { color: colors.text, marginLeft: 16 }]}>Travel Announcements</Text>
+            <FlatList
+              data={travelAnnouncements}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(t) => t.$id}
+              renderItem={({ item }) => (
+                <View style={[styles.feedCard, { width: 300, marginHorizontal: 12, backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={styles.cardHeader}>
+                    <UserAvatar photoUrl={item.userPhotoUrl || null} name={item.userName} size={40} />
+                    <View style={styles.headerText}>
+                      <Text style={[styles.creatorName, { color: colors.text }]}>{item.userName}</Text>
+                      <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>{dayjs(item.startDate).fromNow()}</Text>
+                    </View>
+                    <TouchableOpacity style={styles.moreButton} onPress={() => router.push(`/(root)/event/${item.$id}?from=feed` as any)}>
+                      <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            />
+          </View>
+        )}
+      </View>
 
       {/* Event Form Modal */}
       {formVisible && (
@@ -732,5 +816,230 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginLeft: 6,
+  },
+  categorySection: {
+    marginBottom: 18,
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  sectionHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  seeAllText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  horizontalList: {
+    paddingLeft: 12,
+    paddingRight: 12,
+  },
+  eventMiniCard: {
+    width: 220,
+    borderRadius: 14,
+    padding: 12,
+    marginHorizontal: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  eventMiniEmoji: {
+    width: 64,
+    height: 64,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  eventEmojiSmall: {
+    fontSize: 28,
+  },
+  eventMiniContent: {
+    flex: 1,
+  },
+  eventMiniTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  eventMiniMeta: {
+    fontSize: 12,
+    marginTop: 6,
+  },
+  goIconSmall: {
+    marginLeft: 8,
+    padding: 6,
+    borderRadius: 8,
+  },
+  goIcon: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+  },
+  // Friend bubble bar
+  friendBarContainer: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e6e6e6',
+  },
+  friendBar: {
+    paddingLeft: 12,
+    paddingRight: 12,
+    alignItems: 'center',
+  },
+  friendBubble: {
+    marginRight: 12,
+  },
+  // Condensed event card (vertical feed)
+  condensedCard: {
+    borderRadius: 12,
+    padding: 12,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  // New condensed feed card styles
+  condensedFeedCard: {
+    borderRadius: 12,
+    marginHorizontal: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  emojiContainerCondensed: {
+    width: '100%',
+    height: 110,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  eventEmojiCondensed: {
+    fontSize: 48,
+  },
+  cardContentCondensed: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
+  },
+  eventTitleCondensed: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  eventMetaCondensed: {
+    marginBottom: 6,
+  },
+  cardFooterCondensed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderTopWidth: 1,
+  },
+  smallCreatorName: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  // New horizontal feed row styles
+  feedRowCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 12,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  feedThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  eventEmojiThumb: {
+    fontSize: 28,
+  },
+  feedBody: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  feedTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  feedMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  feedMetaText: {
+    fontSize: 12,
+  },
+  feedSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  feedRightCol: {
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    height: 72,
+  },
+  pricePill: {
+    backgroundColor: '#fff0f0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  priceText: {
+    color: '#d64545',
+    fontWeight: '700',
+  },
+  joinButton: {
+    backgroundColor: '#1f6feb',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  joinButtonText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  // Compact friends summary styles
+  feedFriendSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  friendOverlapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  friendOverlap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  headerActionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)'
   },
 });
