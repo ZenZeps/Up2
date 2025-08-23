@@ -110,7 +110,13 @@ class CacheManager {
      */
     clear(): void {
         this.cache.clear();
-        authDebug.debug('Cache cleared');
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+            // Capture stack trace to help locate who invoked clear()
+            const stack = new Error('Cache.clear() called').stack;
+            authDebug.warn('Cache cleared (dev):', stack);
+        } else {
+            authDebug.debug('Cache cleared');
+        }
     }
 
     /**
@@ -118,11 +124,23 @@ class CacheManager {
      * @param pattern RegExp pattern to match keys
      */
     clearPattern(pattern: RegExp): void {
+        const matched: string[] = [];
         for (const key of this.cache.keys()) {
             if (pattern.test(key)) {
                 this.cache.delete(key);
-                authDebug.debug(`Cache cleared for pattern match: ${key}`);
+                matched.push(key);
             }
+        }
+
+        if (matched.length === 0) return;
+
+        // In dev, capture a single stack trace to help locate who invoked clearPattern,
+        // but avoid per-key stack captures which flood logs.
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+            const stack = new Error(`Cache.clearPattern matched ${matched.length} keys`).stack;
+            authDebug.warn(`Cache cleared for pattern match: ${matched.length} keys`, { keys: matched, stack });
+        } else {
+            authDebug.debug(`Cache cleared for pattern match: ${matched.length} keys`);
         }
     }
 

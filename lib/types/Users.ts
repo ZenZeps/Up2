@@ -23,4 +23,6 @@ export interface UserProfile {
     popularityScore?: number;
     lastLocationLat?: number;
     lastLocationLng?: number;
+    // Users that this user has blocked
+    blocked?: string[];
 } 

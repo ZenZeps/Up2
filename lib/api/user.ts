@@ -167,10 +167,11 @@ export async function updateUserProfile(profile: UserProfile) {
         ...(profile.popularityScore !== undefined && { popularityScore: profile.popularityScore }),
         ...(profile.lastLocationLat !== undefined && { lastLocationLat: profile.lastLocationLat }),
         ...(profile.lastLocationLng !== undefined && { lastLocationLng: profile.lastLocationLng }),
+        ...(profile.blocked !== undefined && { blocked: profile.blocked }),
         // Note: friends and preferences removed - friends now in user_friendships table
-        // Temporarily comment out notification fields until database attributes are added
-        // notificationToken: profile.notificationToken,
-        // notificationsEnabled: profile.notificationsEnabled,
+        // Notification fields (optional) - only send if provided in the profile
+        ...(profile.notificationToken !== undefined && { notificationToken: profile.notificationToken }),
+        ...(profile.notificationsEnabled !== undefined && { notificationsEnabled: profile.notificationsEnabled }),
       }
     );
 

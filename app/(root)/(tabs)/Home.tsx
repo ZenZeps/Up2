@@ -981,7 +981,7 @@ export default function Home() {
                       <Text
                         style={[
                           styles.viewModeText,
-                          { color: viewMode === mode ? 'white' : colors.text }
+                          { color: viewMode === mode ? colors.buttonText : colors.text }
                         ]}
                       >
                         {mode.charAt(0).toUpperCase() + mode.slice(1)}
@@ -1000,7 +1000,7 @@ export default function Home() {
                 onPress={handleTodayPress}
                 style={[styles.todayButton, { backgroundColor: colors.primary }]}
               >
-                <Text style={styles.todayButtonText}>Today</Text>
+                <Text style={[styles.todayButtonText, { color: colors.buttonText }]}>Today</Text>
               </TouchableOpacity>
             </View>
 

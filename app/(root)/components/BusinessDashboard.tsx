@@ -1,3 +1,4 @@
+import { useTheme } from '@/lib/context/ThemeContext';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -42,6 +43,7 @@ const BusinessDashboard: React.FC = () => {
             setLoading(false);
         }
     };
+    const { colors } = useTheme();
 
     const handleRefresh = async () => {
         setRefreshing(true);
@@ -188,7 +190,7 @@ const BusinessDashboard: React.FC = () => {
                     style={styles.createEventButton}
                     onPress={() => router.push('/(root)/CreateBusinessEvent')}
                 >
-                    <Text style={styles.createEventButtonText}>+ New Event</Text>
+                    <Text style={[styles.createEventButtonText, { color: colors.buttonText }]}>+ New Event</Text>
                 </TouchableOpacity>
             </View>
 

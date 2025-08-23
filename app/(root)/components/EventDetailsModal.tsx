@@ -1,6 +1,6 @@
 import { getEventEmoji } from '@/constants/categories';
 import icons from '@/constants/icons';
-import { addEventInvitation, isUserAttendingEvent } from '@/lib/api/event';
+import { addEventAttendee, addEventInvitation, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriends, getUsersByIds } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
@@ -10,7 +10,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, FlatList, Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ShareInviteModal from '../../../components/ShareInviteModal';
 import UserAvatar from './UserAvatar';
 
@@ -87,14 +87,37 @@ const EventDetailsModal = ({
 
   // Enhanced attend handler
   const handleAttendClick = async () => {
-    await onAttend();
+    if (onAttend) {
+      await onAttend();
+    } else {
+      // fallback: call internal attendee API
+      try {
+        if (!currentUserId) return;
+        await addEventAttendee(event.$id, currentUserId);
+      } catch (err) {
+        console.error('Fallback attend error:', err);
+        Alert.alert('Error', 'Failed to attend event');
+        return;
+      }
+    }
     // Refresh attendance status after a brief delay to ensure backend is updated
     setTimeout(refreshAttendanceStatus, 500);
   };
 
   // Enhanced not attend handler
   const handleNotAttendClick = async () => {
-    await onNotAttend();
+    if (onNotAttend) {
+      await onNotAttend();
+    } else {
+      try {
+        if (!currentUserId) return;
+        await removeEventAttendee(event.$id, currentUserId);
+      } catch (err) {
+        console.error('Fallback not-attend error:', err);
+        Alert.alert('Error', 'Failed to un-attend event');
+        return;
+      }
+    }
     // Refresh attendance status after a brief delay to ensure backend is updated
     setTimeout(refreshAttendanceStatus, 500);
   };
@@ -298,10 +321,26 @@ const EventDetailsModal = ({
             </View>
 
             {/* Event Details */}
-            <View style={styles.detailRow}>
+            <TouchableOpacity
+              style={styles.detailRow}
+              onPress={() => {
+                try {
+                  const evAny = event as any;
+                  if (evAny.locationLat && evAny.locationLng) {
+                    const url = `https://www.google.com/maps/search/?api=1&query=${evAny.locationLat},${evAny.locationLng}`;
+                    Linking.openURL(url);
+                  } else if (event.location) {
+                    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`;
+                    Linking.openURL(url);
+                  }
+                } catch (err) {
+                  console.error('Failed to open maps:', err);
+                }
+              }}
+            >
               <Image source={icons.location} style={styles.detailIcon} />
-              <Text style={styles.detailText}>{event.location}</Text>
-            </View>
+              <Text style={[styles.detailText, { textDecorationLine: 'underline' }]}>{event.location}</Text>
+            </TouchableOpacity>
             <View style={styles.detailRow}>
               <Image source={icons.calendar} style={styles.detailIcon} />
               <Text style={styles.detailText}>
@@ -332,7 +371,8 @@ const EventDetailsModal = ({
                 <TouchableOpacity
                   style={[
                     styles.button,
-                    isAttending ? styles.notAttendingButton : styles.attendingButton
+                    isAttending ? styles.notAttendingButton : styles.attendingButton,
+                    { backgroundColor: isAttending ? colors.error : colors.primary }
                   ]}
                   onPress={isAttending ? handleNotAttendClick : handleAttendClick}
                 >

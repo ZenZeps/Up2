@@ -136,17 +136,7 @@ const TabsLayout = () => {
             )
           }}
         />
-        {/* Map tab */}
-        <Tabs.Screen
-          name="Map"
-          options={{
-            title: 'Map',
-            headerShown: false,
-            tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.location} focused={focused} title="Map" colors={colors} hasNotifications={false} />
-            )
-          }}
-        />
+        {/* Map tab removed: map feature deprecated and route deleted */}
         {/* Explore tab */}
         <Tabs.Screen
           name="Explore"

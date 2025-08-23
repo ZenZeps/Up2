@@ -1,5 +1,5 @@
 import { getCategoriesByValues, getEventEmoji } from '@/constants/categories';
-import { addEventAttendee, getEventAttendees, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
+import { addEventAttendee, getEventAttendeesFor, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
 import { getUserGroups } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
@@ -58,31 +58,9 @@ export default function Feed() {
     setCurrentUserId(globalUser.$id);
 
     try {
-      // Load friends and friend profiles (batched)
+      // Load friends (profiles and photos will be loaded asynchronously to avoid blocking the feed render)
       const userFriends = await getUserFriends(globalUser.$id);
       setFriends(userFriends);
-
-      if (userFriends.length > 0) {
-        try {
-          const friendProfilesBatches = await batchProcess(userFriends, async (batch: string[]) => await getUsersByIds(batch), 25);
-          const flatFriendProfiles = friendProfilesBatches.flat();
-          setFriendProfiles(flatFriendProfiles || []);
-
-          const friendPhotoMap: Record<string, string | null> = {};
-          await Promise.all(flatFriendProfiles.map(async (p: any) => {
-            try {
-              friendPhotoMap[p.$id] = await getUserProfilePhotoUrl(p.$id);
-            } catch {
-              friendPhotoMap[p.$id] = null;
-            }
-          }));
-          setFriendPhotoUrls(friendPhotoMap);
-        } catch (err) {
-          console.error('Feed: failed to load friend profiles', err);
-          setFriendProfiles([]);
-          setFriendPhotoUrls({});
-        }
-      }
 
       // Load groups
       const userGroups = await getUserGroups(globalUser.$id);
@@ -104,12 +82,32 @@ export default function Feed() {
       if (cachedEntry && Array.isArray(cachedEntry.data)) {
         try {
           const cachedArray = cachedEntry.data;
-          const relevantCached = cachedArray.filter(e => userFriends.includes(e.creatorId) || (e.groupId && userGroupIds.includes(e.groupId)));
+          const now = new Date();
+          // Filter to relevant events (friends/groups) and upcoming only
+          const relevantCached = cachedArray
+            .filter(e => (userFriends.includes(e.creatorId) || (e.groupId && userGroupIds.includes(e.groupId))))
+            .filter((ev: any) => new Date(ev.endTime || ev.date) >= now);
+
+          // Fetch the user's attending events quickly so we can filter cached feed before rendering
+          let attendingIds = new Set<string>();
+          try {
+            const attendingEventsForUser = await getUserAttendingEvents(globalUser.$id);
+            attendingIds = new Set(attendingEventsForUser.map((a: any) => a.$id));
+          } catch (err) {
+            console.warn('Feed: failed to load attending events for cached flow', err);
+          }
+
           const cachedMapped = relevantCached
-            .filter((ev: any) => new Date(ev.endTime || ev.date) >= new Date())
-            .map((ev: any) => ({ ...(ev as AppEvent), creatorName: undefined } as AppEvent));
-          setEventsWithCreatorNames(cachedMapped);
-          console.log('Feed: Showing cached feed with', cachedMapped.length, 'items');
+            .map((ev: any) => ({ ...(ev as AppEvent), creatorName: undefined, isAttending: attendingIds.has(ev.$id) } as any));
+
+          const nonAttendingCached = cachedMapped.filter((ev: any) => !ev.isAttending).map((ev: any) => {
+            // Remove helper flag before storing
+            const { isAttending, ...rest } = ev;
+            return rest as AppEvent;
+          });
+
+          setEventsWithCreatorNames(nonAttendingCached);
+          console.log('Feed: Showing cached feed with', nonAttendingCached.length, 'items (filtered by attendance)');
         } catch (err) {
           console.warn('Feed: failed to map cached feed', err);
         }
@@ -142,6 +140,10 @@ export default function Feed() {
               const attendingEventsForUser = await getUserAttendingEvents(globalUser.$id);
               const attendingIds = new Set(attendingEventsForUser.map((a: any) => a.$id));
 
+              // Batch fetch attendees for all relevant events to avoid per-event DB calls
+              const eventIds = relevantFresh.map((ev: any) => ev.$id);
+              const attendeesMap = await getEventAttendeesFor(eventIds as string[]);
+
               const filteredAndMappedEvents = await Promise.all(relevantFresh
                 .filter((ev: any) => new Date(ev.endTime || ev.date) >= new Date())
                 .map(async (event: any) => {
@@ -150,7 +152,7 @@ export default function Feed() {
                   let attendeeCount: number | undefined = typeof event.attendeeCount === 'number' ? event.attendeeCount : (attendeesList.length > 0 ? attendeesList.length : undefined);
                   if ((attendeeCount === undefined || attendeeCount === 0) && !Array.isArray(event.attendees)) {
                     try {
-                      const junctionAttendees = await getEventAttendees(event.$id);
+                      const junctionAttendees = attendeesMap[event.$id] || [];
                       attendeesList = Array.isArray(junctionAttendees) ? junctionAttendees : [];
                       attendeeCount = attendeesList.length;
                     } catch (err) {
@@ -187,6 +189,30 @@ export default function Feed() {
             }
           })();
         }
+        // Start loading friend profiles/photos asynchronously (non-blocking)
+        (async () => {
+          if (userFriends.length === 0) return;
+          try {
+            const friendProfilesBatches = await batchProcess(userFriends, async (batch: string[]) => await getUsersByIds(batch), 25);
+            const flatFriendProfiles = friendProfilesBatches.flat();
+            setFriendProfiles(flatFriendProfiles || []);
+
+            const friendPhotoMap: Record<string, string | null> = {};
+            await Promise.all(flatFriendProfiles.map(async (p: any) => {
+              try {
+                friendPhotoMap[p.$id] = await getUserProfilePhotoUrl(p.$id);
+              } catch {
+                friendPhotoMap[p.$id] = null;
+              }
+            }));
+            setFriendPhotoUrls(friendPhotoMap);
+          } catch (err) {
+            console.error('Feed: failed to load friend profiles', err);
+            setFriendProfiles([]);
+            setFriendPhotoUrls({});
+          }
+        })();
+
         // Done for cached flow - background revalidation will refresh context
         return;
       }
@@ -214,6 +240,10 @@ export default function Feed() {
       const attendingEventsForUserSync = await getUserAttendingEvents(globalUser.$id);
       const attendingIdsSync = new Set(attendingEventsForUserSync.map((a: any) => a.$id));
 
+      // Batch fetch attendees for relevant events
+      const eventIdsSync = relevantEvents.map((ev: any) => ev.$id);
+      const attendeesMapSync = await getEventAttendeesFor(eventIdsSync as string[]);
+
       const mappedEvents = await Promise.all(relevantEvents
         .filter((ev: any) => new Date(ev.endTime || ev.date) >= new Date())
         .map(async (event: any) => {
@@ -222,14 +252,13 @@ export default function Feed() {
           let attendeeCount: number | undefined = typeof event.attendeeCount === 'number' ? event.attendeeCount : (attendeesList.length > 0 ? attendeesList.length : undefined);
           if ((attendeeCount === undefined || attendeeCount === 0) && !Array.isArray(event.attendees)) {
             try {
-              const junctionAttendees = await getEventAttendees(event.$id);
+              const junctionAttendees = attendeesMapSync[event.$id] || [];
               attendeesList = Array.isArray(junctionAttendees) ? junctionAttendees : [];
               attendeeCount = attendeesList.length;
             } catch (err) {
               attendeeCount = attendeeCount ?? 0;
             }
           }
-
           return {
             ...(event as unknown as AppEvent),
             creatorName: creatorMapSync.get(event.creatorId) || 'Unknown Creator',

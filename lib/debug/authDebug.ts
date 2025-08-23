@@ -66,15 +66,37 @@ const maskSensitiveData = (data: any): any => {
     return result;
 };
 
+// Simple suppression map to avoid logging identical messages repeatedly in a short window
+const lastLogTimestamps: Map<string, number> = new Map();
+const SUPPRESSION_WINDOW_MS: Record<LogLevel, number> = {
+    debug: 500,
+    info: 1000,
+    warn: 0,
+    error: 0,
+};
+
+const shouldSuppress = (level: LogLevel, message: string) => {
+    const windowMs = SUPPRESSION_WINDOW_MS[level] ?? 0;
+    if (windowMs <= 0) return false;
+    const key = `${level}:${message}`;
+    const last = lastLogTimestamps.get(key) || 0;
+    const now = Date.now();
+    if (now - last < windowMs) return true;
+    lastLogTimestamps.set(key, now);
+    return false;
+};
+
 export const authDebug = {
     debug: (message: string, data?: any) => {
         if (isDev && ENABLED_LEVELS.includes('debug')) {
+            if (shouldSuppress('debug', message)) return;
             console.log(`${DEBUG_PREFIX} [DEBUG]: ${message}`, data !== undefined ? maskSensitiveData(data) : '');
         }
     },
 
     info: (message: string, data?: any) => {
         if (isDev && ENABLED_LEVELS.includes('info')) {
+            if (shouldSuppress('info', message)) return;
             console.log(`${DEBUG_PREFIX} [INFO]: ${message}`, data !== undefined ? maskSensitiveData(data) : '');
         }
     },

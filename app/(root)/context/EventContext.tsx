@@ -3,6 +3,7 @@ import { createEvent as createEventAPI, fetchUserEvents, updateEvent as updateEv
 import { config, databases, ID } from '@/lib/appwrite/appwrite';
 import { invalidateCache, useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { authDebug } from '@/lib/debug/authDebug';
+import { cacheManager } from '@/lib/debug/cacheManager';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Event } from '@/lib/types/Events';
 import { requestDeduplicator } from '@/lib/utils/dbOptimization';
@@ -58,7 +59,7 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
     fn: fetchEventsForUser,
     params: { userId: userId! }, // Pass userId as parameter
     cacheKey: userId ? `events-user-${userId}` : undefined, // User-specific cache key
-    cacheTTL: 1 * 60 * 1000, // 1 minute cache for events (frequent updates for 100k users)
+    cacheTTL: 5 * 60 * 1000, // 5 minute cache for events to reduce frequent reloads
     dependencies: [userId], // Re-fetch when user changes
     skip: !userId // Skip if no user ID
   });
@@ -71,6 +72,29 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
     if (!userId) {
       authDebug.info('EventContext: User logged out, clearing local events');
       setEvents([]);
+    }
+  }, [userId]);
+
+  // Preload cached events (if available) to avoid unnecessary network fetches on navigation
+  React.useEffect(() => {
+    if (!userId) return;
+
+    try {
+      const cached = cacheManager.get<any[]>(`events-user-${userId}`);
+      if (cached && Array.isArray(cached) && cached.length > 0) {
+        authDebug.debug(`EventContext: Preloading ${cached.length} cached events for user ${userId}`);
+        const sanitizedEvents = cached.map(event => ({
+          ...event,
+          inviteeIds: Array.isArray(event.inviteeIds) ? event.inviteeIds : [],
+          attendees: Array.isArray(event.attendees) ? event.attendees : [],
+          tags: Array.isArray(event.tags) ? event.tags : []
+        }));
+        setEvents(sanitizedEvents);
+        // Mark we had an initial load so smartRefetch may respect intervals
+        // Note: hasInitialLoad is local to Home; EventContext doesn't track it here
+      }
+    } catch (err) {
+      authDebug.debug('EventContext: no cached events available on preload', err);
     }
   }, [userId]);
 
@@ -103,7 +127,7 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
     // Deduplicate concurrent refetch calls for the same user to avoid duplicate updates
     return requestDeduplicator.deduplicate(`refetchEvents-${userId}`, async () => {
       authDebug.info(`Refetching events for user: ${userId}`);
-      invalidateCache(new RegExp(`events-user-${userId}`)); // Invalidate user-specific cache
+      invalidateCache(`events-user-${userId}`); // Invalidate user-specific cache (exact key)
       await refetch();
     });
   }, [refetch, userId]);
@@ -133,7 +157,7 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
 
       // Invalidate user-specific cache to ensure data consistency
       if (userId) {
-        invalidateCache(new RegExp(`user-events-${userId}`));
+        invalidateCache(`user-events-${userId}`);
       }
 
       return newEvent;
@@ -165,7 +189,7 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
 
       // Invalidate user-specific event cache
       if (user?.$id) {
-        invalidateCache(new RegExp(`events-user-${user.$id}`));
+        invalidateCache(`events-user-${user.$id}`);
       }
     } catch (err) {
       authDebug.error('Failed to update event:', err);
@@ -191,7 +215,7 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
 
       // Invalidate user-specific event cache
       if (user?.$id) {
-        invalidateCache(new RegExp(`events-user-${user.$id}`));
+        invalidateCache(`events-user-${user.$id}`);
       }
     } catch (err) {
       authDebug.error('Failed to delete event:', err);

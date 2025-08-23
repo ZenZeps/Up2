@@ -539,7 +539,7 @@ const Explore = () => {
         <TouchableOpacity onPress={() => router.push(`/Group/${group.$id}`)} style={styles.groupItem}>
           <View style={styles.groupInfo}>
             <View style={[styles.groupAvatar, { backgroundColor: colors.primary }]}>
-              <Text style={styles.groupAvatarText}>{(group.title || '').charAt(0).toUpperCase()}</Text>
+              <Text style={[styles.groupAvatarText, { color: colors.buttonText }]}>{(group.title || '').charAt(0).toUpperCase()}</Text>
             </View>
             <View style={styles.groupDetails}>
               <Text style={[styles.groupName, { color: colors.text }]}>{group.title}</Text>
@@ -552,8 +552,8 @@ const Explore = () => {
               onPress={() => handleJoinGroup(group.$id)}
               style={[styles.actionButton, { backgroundColor: isMember ? colors.textSecondary : colors.primary }]}
             >
-              <MaterialIcons name={isMember ? 'check' : 'group-add'} size={16} color={isMember ? colors.background : 'white'} />
-              <Text style={[styles.actionButtonText, { color: isMember ? colors.background : 'white' }]}>{isMember ? 'Member' : (group.isPrivate ? 'Request' : 'Join')}</Text>
+              <MaterialIcons name={isMember ? 'check' : 'group-add'} size={16} color={isMember ? colors.background : colors.buttonText} />
+              <Text style={[styles.actionButtonText, { color: isMember ? colors.background : colors.buttonText }]}>{isMember ? 'Member' : (group.isPrivate ? 'Request' : 'Join')}</Text>
             </TouchableOpacity>
             <Text style={[styles.filterBadgeText, { color: colors.textSecondary, textAlign: 'right', marginTop: 6 }]}>{group.memberCount ?? 0} members</Text>
           </View>
@@ -936,12 +936,12 @@ const Explore = () => {
           <MaterialIcons
             name="people"
             size={18}
-            color={mode === 'users' ? 'white' : colors.text}
+            color={mode === 'users' ? colors.buttonText : colors.text}
           />
           <Text
             style={[
               styles.modeButtonText,
-              { color: mode === 'users' ? 'white' : colors.text }
+              { color: mode === 'users' ? colors.buttonText : colors.text }
             ]}
           >
             Users
@@ -998,7 +998,7 @@ const Explore = () => {
                 >
                   <Text style={[
                     styles.filterChipText,
-                    { color: dateFilter === option.value ? 'white' : colors.text }
+                    { color: dateFilter === option.value ? colors.buttonText : colors.text }
                   ]}>
                     {option.label}
                   </Text>
@@ -1029,7 +1029,7 @@ const Explore = () => {
                 >
                   <Text style={[
                     styles.filterChipText,
-                    { color: priceFilter === option.value ? 'white' : colors.text }
+                    { color: priceFilter === option.value ? colors.buttonText : colors.text }
                   ]}>
                     {option.label}
                   </Text>
@@ -1059,7 +1059,7 @@ const Explore = () => {
                 >
                   <Text style={[
                     styles.filterChipText,
-                    { color: locationFilter === option.value ? 'white' : colors.text }
+                    { color: locationFilter === option.value ? colors.buttonText : colors.text }
                   ]}>
                     {option.label}
                   </Text>

@@ -302,8 +302,9 @@ export async function createEvent(event: Event) {
       responseRate: true, // Default to true
 
       // Optional fields - set defaults since they don't exist in Event type yet
-      locationLat: 0.0, // Default location coordinates
-      locationLng: 0.0,
+      // locationLat/locationLng are optional fields not declared on the Event type
+      locationLat: (event as any).locationLat ?? 0.0, // Default location coordinates
+      locationLng: (event as any).locationLng ?? 0.0,
       searchKeywords: [], // Default empty array
       categoryTags: [], // Default empty array
 
@@ -321,6 +322,20 @@ export async function createEvent(event: Event) {
     // Validate config before making API call
     if (!config.databaseID || !config.eventsCollectionID) {
       console.warn('Database configuration is missing, using fallbacks');
+    }
+
+    // If a textual location is provided but no explicit coordinates, attempt to geocode it
+    try {
+      if (sanitizedEvent.location && (!sanitizedEvent.locationLat || !sanitizedEvent.locationLng)) {
+        const { geocodeAddress } = await import('@/lib/utils/geocode');
+        const coords = await geocodeAddress(sanitizedEvent.location);
+        if (coords) {
+          sanitizedEvent.locationLat = coords.latitude;
+          sanitizedEvent.locationLng = coords.longitude;
+        }
+      }
+    } catch (geocodeErr) {
+      authDebug.warn('Geocoding failed or unavailable, continuing without coordinates', geocodeErr);
     }
 
     // Create the event
@@ -738,11 +753,52 @@ export async function getEventAttendees(eventId: string): Promise<string[]> {
     );
 
     const attendeeIds = attendanceRecords.documents.map((record: any) => record.userId);
-    authDebug.info(`Updated attendees: +${attendeeIds.length}, -0`);
+    authDebug.debug(`Updated attendees: +${attendeeIds.length}, -0`);
     return attendeeIds;
   } catch (error) {
     authDebug.error(`Failed to get attendees for event: ${eventId}`, error);
     return [];
+  }
+}
+
+/**
+ * Batch fetch attendees for multiple events. Returns a map of eventId -> attendeeId[]
+ */
+export async function getEventAttendeesFor(eventIds: string[]): Promise<Record<string, string[]>> {
+  try {
+    const collectionId = config.eventAttendancesCollectionID;
+    authDebug.debug(`Batch fetching attendees for ${eventIds.length} events from: ${collectionId}`);
+
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
+      authDebug.info('Junction table not configured, skipping batched attendees lookup');
+      return {};
+    }
+
+    if (!Array.isArray(eventIds) || eventIds.length === 0) return {};
+
+    // Appwrite allows querying by array values in Query.equal
+    const res = await databases.listDocuments(
+      config.databaseID!,
+      collectionId,
+      [
+        Query.equal('eventId', eventIds),
+        Query.equal('status', 'attending'),
+        Query.limit(1000)
+      ]
+    );
+
+    const map: Record<string, string[]> = {};
+    for (const rec of res.documents) {
+      const eId = rec.eventId;
+      if (!map[eId]) map[eId] = [];
+      map[eId].push(rec.userId);
+    }
+
+    authDebug.debug(`Batch attendees fetched for ${Object.keys(map).length} events`);
+    return map;
+  } catch (error) {
+    authDebug.error('Failed to batch fetch attendees for events', error);
+    return {};
   }
 }
 
@@ -770,7 +826,7 @@ export async function getEventInvitees(eventId: string): Promise<string[]> {
     );
 
     const inviteeIds = invitationRecords.documents.map((record: any) => record.userId);
-    authDebug.info(`Found ${inviteeIds.length} invitees for event ${eventId}`);
+    authDebug.debug(`Found ${inviteeIds.length} invitees for event ${eventId}`);
     return inviteeIds;
   } catch (error) {
     authDebug.error(`Failed to get invitees for event: ${eventId}`, error);
@@ -1092,7 +1148,7 @@ export async function fetchUserEvents(userId: string): Promise<Event[]> {
  */
 export async function getUserAttendingEvents(userId: string): Promise<Event[]> {
   try {
-    authDebug.info(`Fetching events user is attending: ${userId}`);
+    authDebug.debug(`Fetching events user is attending: ${userId}`);
 
     // Get event IDs from event_attendances junction table
     const attendanceRecords = await databases.listDocuments(
@@ -1102,7 +1158,7 @@ export async function getUserAttendingEvents(userId: string): Promise<Event[]> {
     );
 
     if (attendanceRecords.documents.length === 0) {
-      authDebug.info(`No attendance records found for user: ${userId}`);
+      authDebug.debug(`No attendance records found for user: ${userId}`);
       return [];
     }
 

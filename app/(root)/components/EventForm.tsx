@@ -12,6 +12,7 @@ import dayjs from 'dayjs';
 import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, Modal, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useEvents } from '../context/EventContext';
+import PlaceAutocomplete from './PlaceAutocomplete';
 import UserAvatar from './UserAvatar';
 
 // Conditional imports for third-party libraries
@@ -61,6 +62,8 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   // Basic state initialization
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
+  const [locationLat, setLocationLat] = useState<number | null>(null);
+  const [locationLng, setLocationLng] = useState<number | null>(null);
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -363,6 +366,8 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       const eventData = {
         title: title.trim(),
         location: location.trim(),
+        // Include coordinates when available for precise mapping
+        ...(locationLat !== null && locationLng !== null ? { locationLat, locationLng } : {}),
         startTime: startDate.toISOString(),
         endTime: endDate.toISOString(),
         creatorId: currentUserId,
@@ -537,13 +542,21 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
             editable={editable}
           />
 
-          <TextInput
-            placeholder="Location"
+          <PlaceAutocomplete
             value={location}
-            onChangeText={setLocation}
-            className="border-b border-gray-300 p-3 mb-4 text-lg"
-            placeholderTextColor="#A0A0A0"
-            editable={editable}
+            onChangeText={(v: string) => {
+              setLocation(v);
+              setLocationLat(null);
+              setLocationLng(null);
+            }}
+            onSelect={(address: string, lat?: number, lng?: number) => {
+              setLocation(address);
+              if (typeof lat === 'number' && typeof lng === 'number') {
+                setLocationLat(lat);
+                setLocationLng(lng);
+              }
+            }}
+            placeholder="Location"
           />
 
           {/* Diagnostic Test Button for Development */}

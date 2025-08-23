@@ -313,9 +313,9 @@ const Profile = () => {
               <MaterialIcons
                 name={isEditing ? "close" : "edit"}
                 size={16}
-                color="white"
+                color={isEditing ? 'white' : (colors.primary.toLowerCase() === '#ffffff' || colors.primary.toLowerCase() === 'white' ? '#000' : 'white')}
               />
-              <Text style={styles.editButtonText}>
+              <Text style={[styles.editButtonText, { color: isEditing ? 'white' : (colors.primary.toLowerCase() === '#ffffff' || colors.primary.toLowerCase() === 'white' ? '#000' : colors.buttonText) }]}>
                 {isEditing ? 'Cancel' : 'Edit'}
               </Text>
             </TouchableOpacity>
@@ -382,8 +382,8 @@ const Profile = () => {
                 onPress={handleSaveProfile}
                 style={[styles.saveButton, { backgroundColor: colors.primary }]}
               >
-                <MaterialIcons name="check" size={16} color="white" />
-                <Text style={styles.saveButtonText}>Save Changes</Text>
+                <MaterialIcons name="check" size={16} color={colors.buttonText} />
+                <Text style={[styles.saveButtonText, { color: colors.buttonText }]}>Save Changes</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -478,8 +478,8 @@ const Profile = () => {
               <Text style={[styles.cardTitle, { color: colors.text }]}>Groups</Text>
             </View>
             <TouchableOpacity onPress={() => router.push('/(root)/CreateGroup')} style={[styles.createButton, { backgroundColor: colors.primary }]}>
-              <MaterialIcons name="add" size={16} color="white" />
-              <Text style={styles.createButtonText}>New</Text>
+              <MaterialIcons name="add" size={16} color={colors.buttonText} />
+              <Text style={[styles.createButtonText, { color: colors.buttonText }]}>New</Text>
             </TouchableOpacity>
           </View>
 

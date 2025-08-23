@@ -35,6 +35,7 @@ const Settings = () => {
     const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
     const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [notificationsEnabled, setNotificationsEnabled] = useState<boolean | null>(null);
 
     // Load profile data
     useEffect(() => {
@@ -50,6 +51,7 @@ const Settings = () => {
                     setEmail(profile.email || user?.email || '');
                     setIsPrivate(!profile.isPublic);
                     setSelectedEventTypes(profile.preferences || []);
+                    setNotificationsEnabled(profile.notificationsEnabled ?? null);
 
                     if (profile.photoId) {
                         const photoUrl = await getProfilePhotoUrl(profile.photoId);
@@ -123,6 +125,7 @@ const Settings = () => {
                 preferences: selectedEventTypes,
                 friends: currentProfile?.friends || [], // Preserve existing friends
                 photoId: user?.profile?.photoId,
+                ...(notificationsEnabled !== null && { notificationsEnabled }),
             });
 
             await refetch();
@@ -133,6 +136,64 @@ const Settings = () => {
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleToggleNotifications = async (value: boolean) => {
+        setNotificationsEnabled(value);
+
+        // Try to persist immediately for quicker UX
+        try {
+            if (!userId) return;
+            const currentProfile = await getUserProfile(userId);
+            await updateUserProfile({
+                $id: userId,
+                firstName: currentProfile?.firstName || firstName,
+                lastName: currentProfile?.lastName || lastName,
+                email: currentProfile?.email || email,
+                isPublic: currentProfile?.isPublic ?? !isPrivate,
+                preferences: currentProfile?.preferences || selectedEventTypes,
+                friends: currentProfile?.friends || [],
+                photoId: currentProfile?.photoId || user?.profile?.photoId,
+                notificationsEnabled: value,
+            });
+            refetch();
+        } catch (err) {
+            console.error('Failed to update notification preference:', err);
+            Alert.alert('Error', 'Failed to update notification settings');
+        }
+    };
+
+    const handleChangePassword = () => {
+        // Use PasswordResetHandler to send reset email for signed-in user
+        Alert.prompt(
+            'Change Password',
+            'Enter your email to receive a password reset link:',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Send',
+                    onPress: async (emailInput?: string) => {
+                        const emailToUse = emailInput?.trim() || email;
+                        if (!emailToUse) {
+                            Alert.alert('Error', 'Please enter a valid email address');
+                            return;
+                        }
+
+                        try {
+                            const { PasswordResetHandler } = await import('@/lib/auth/passwordReset');
+                            await PasswordResetHandler.sendResetEmail(emailToUse.toLowerCase());
+                            Alert.alert('Success', 'Password reset email sent');
+                        } catch (err: any) {
+                            console.error('Failed to send password reset email:', err);
+                            Alert.alert('Error', err.message || 'Failed to send password reset email');
+                        }
+                    }
+                }
+            ],
+            'plain-text',
+            email,
+            'email-address'
+        );
     };
 
     const handleLogout = async () => {
@@ -336,6 +397,46 @@ const Settings = () => {
                             trackColor={{ false: colors.border, true: colors.primary }}
                             thumbColor={isDark ? '#FFFFFF' : '#f4f3f4'}
                         />
+                    </View>
+
+                    <View style={styles.settingRow}>
+                        <View style={styles.settingInfo}>
+                            <MaterialIcons name="notifications" size={18} color={colors.textSecondary} />
+                            <View style={styles.settingTextContainer}>
+                                <Text style={[styles.settingTitle, { color: colors.text }]}>Push Notifications</Text>
+                                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                                    Receive push notifications for friend requests and invites
+                                </Text>
+                            </View>
+                        </View>
+                        <Switch
+                            value={!!notificationsEnabled}
+                            onValueChange={handleToggleNotifications}
+                            trackColor={{ false: colors.border, true: colors.primary }}
+                            thumbColor={notificationsEnabled ? '#FFFFFF' : '#f4f3f4'}
+                        />
+                    </View>
+
+                    <View style={[{ marginTop: 12 }, styles.settingRow]}>
+                        <TouchableOpacity onPress={handleChangePassword} style={{ flex: 1 }}>
+                            <View style={{ paddingVertical: 8 }}>
+                                <Text style={[styles.settingTitle, { color: colors.text }]}>Change Password</Text>
+                                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                                    Send a password reset email to change your password
+                                </Text>
+                            </View>
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={[{ marginTop: 8 }, styles.settingRow]}>
+                        <TouchableOpacity onPress={() => (router as any).push('/BlockedUsers')} style={{ flex: 1 }}>
+                            <View style={{ paddingVertical: 8 }}>
+                                <Text style={[styles.settingTitle, { color: colors.text }]}>Blocked Users</Text>
+                                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                                    Manage users you've blocked
+                                </Text>
+                            </View>
+                        </TouchableOpacity>
                     </View>
                 </View>
 

@@ -259,22 +259,22 @@ const UserProfile = () => {
                 <View style={[styles.actionRowContainer, { marginTop: 12, justifyContent: 'center' }]}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                         <TouchableOpacity onPress={handleViewCalendar} style={[styles.actionButtonEqual, { backgroundColor: colors.primary }]}>
-                            <MaterialIcons name="calendar-today" size={18} color="white" />
-                            <Text style={styles.actionButtonText}>Calendar</Text>
+                            <MaterialIcons name="calendar-today" size={18} color={colors.buttonText} />
+                            <Text style={[styles.actionButtonText, { color: colors.buttonText }]}>Calendar</Text>
                         </TouchableOpacity>
 
                         {currentUser && currentUser.$id !== userId && (
                             <>
                                 {friendshipState === 'none' && (
                                     <TouchableOpacity style={[styles.actionButtonEqual, { backgroundColor: colors.primary }]} onPress={handleSendFriendRequest}>
-                                        <MaterialIcons name="person-add" size={18} color="white" />
-                                        <Text style={styles.actionButtonText}>Add</Text>
+                                        <MaterialIcons name="person-add" size={18} color={colors.buttonText} />
+                                        <Text style={[styles.actionButtonText, { color: colors.buttonText }]}>Add</Text>
                                     </TouchableOpacity>
                                 )}
                                 {friendshipState === 'requested' && (
                                     <TouchableOpacity style={[styles.actionButtonEqual, { backgroundColor: '#f59e0b' }]} onPress={handleCancelFriendRequest}>
-                                        <MaterialIcons name="hourglass-empty" size={18} color="white" />
-                                        <Text style={styles.actionButtonText}>Cancel</Text>
+                                        <MaterialIcons name="hourglass-empty" size={18} color={colors.buttonText} />
+                                        <Text style={[styles.actionButtonText, { color: colors.buttonText }]}>Cancel</Text>
                                     </TouchableOpacity>
                                 )}
                                 {friendshipState === 'friends' && (
