@@ -1,11 +1,10 @@
 import { getCategoriesByValues, getEventEmoji } from '@/constants/categories';
-import { addEventAttendee, getEventAttendees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
+import { addEventAttendee, getEventAttendees, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
 import { getUserGroups } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
 import { getUsersByIds } from '@/lib/api/user';
-import { config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { batchProcess, dbConnectionPool } from '@/lib/utils/dbOptimization';
@@ -16,7 +15,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { LinearGradient } from 'expo-linear-gradient';
 // header will be plain white
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -50,30 +49,25 @@ export default function Feed() {
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [creatorPhotoUrls, setCreatorPhotoUrls] = useState<Record<string, string | null>>({});
+  const backgroundRevalidating = useRef(false);
 
-  // Optimized fetch function for scalability
+  // Optimized fetch function for scalability (clean SWR-first implementation)
   const fetchFeedData = useCallback(async () => {
+    if (!globalUser?.$id) return;
+    setRefreshing(true);
+    setCurrentUserId(globalUser.$id);
+
     try {
-      if (!globalUser?.$id) return;
-
-      setCurrentUserId(globalUser.$id);
-
-      // Use proper junction table approach to get friends
+      // Load friends and friend profiles (batched)
       const userFriends = await getUserFriends(globalUser.$id);
       setFriends(userFriends);
 
-      // Batch fetch friend profiles and photos for the friends bubble bar
       if (userFriends.length > 0) {
         try {
-          const friendProfilesBatches = await batchProcess(
-            userFriends,
-            async (batch) => await getUsersByIds(batch),
-            25
-          );
+          const friendProfilesBatches = await batchProcess(userFriends, async (batch: string[]) => await getUsersByIds(batch), 25);
           const flatFriendProfiles = friendProfilesBatches.flat();
           setFriendProfiles(flatFriendProfiles || []);
 
-          // Fetch friend photos
           const friendPhotoMap: Record<string, string | null> = {};
           await Promise.all(flatFriendProfiles.map(async (p: any) => {
             try {
@@ -90,138 +84,182 @@ export default function Feed() {
         }
       }
 
-      console.log('Feed: User friends loaded:', userFriends.length);
-
-      // Also get user's groups to show events from groups
+      // Load groups
       const userGroups = await getUserGroups(globalUser.$id);
-      const userGroupIds = userGroups.map(group => group.$id);
+      const userGroupIds = userGroups.map(g => g.$id);
 
-      console.log('Feed: User groups loaded:', userGroupIds.length);
-
-      if (userFriends.length > 0 || userGroupIds.length > 0) {
-        // Fetch ALL events and filter for friends' events and group events
-        console.log('Feed: Fetching events from friends and groups');
-
-        const allEvents = await databases.listDocuments(
-          config.databaseID!,
-          config.eventsCollectionID!,
-          [
-            // Query.greaterThan('endTime', new Date().toISOString()), // Only upcoming events
-            // Query.orderDesc('$createdAt'), // Most recent first
-            // Query.limit(100) // Reasonable limit
-          ]
-        );
-
-        console.log('Feed: Total events fetched:', allEvents.documents.length);
-
-        // Filter events created by friends OR events from user's groups
-        const relevantEvents = {
-          documents: allEvents.documents.filter(event =>
-            userFriends.includes(event.creatorId) || // Events from friends
-            (event.groupId && userGroupIds.includes(event.groupId)) // Events from user's groups
-          )
-        };
-
-        console.log('Feed: Events from friends and groups:', relevantEvents.documents.length);
-
-        // Batch process creator profiles for better performance
-        const uniqueCreatorIds = [...new Set(relevantEvents.documents.map((event: any) => event.creatorId))];
-        const creatorProfiles = await batchProcess(
-          uniqueCreatorIds,
-          async (batch) => await getUsersByIds(batch),
-          25 // Optimal batch size
-        );
-
-        const creatorMap = new Map(
-          creatorProfiles.flat().map(profile => [profile.$id, userDisplayUtils.getFullName(profile)])
-        );
-
-        // Fetch creator profile photos
-        const creatorPhotoMap: Record<string, string | null> = {};
-        await Promise.all(
-          uniqueCreatorIds.map(async (creatorId: string) => {
-            try {
-              const photoUrl = await getUserProfilePhotoUrl(creatorId);
-              creatorPhotoMap[creatorId] = photoUrl;
-            } catch (error) {
-              creatorPhotoMap[creatorId] = null;
-            }
-          })
-        );
-        setCreatorPhotoUrls(creatorPhotoMap);
-
-        // Build mapped events with creator names and filter out events the user is already attending
-        const filteredAndMappedEvents = await Promise.all(
-          relevantEvents.documents
-            .filter((event: any) => {
-              const eventDate = new Date(event.endTime || event.date);
-              return eventDate >= new Date(); // upcoming
-            })
-            .map(async (event: any) => {
-              const isAttending = await isUserAttendingEvent(globalUser.$id, event.$id);
-
-              // Normalize attendee data: prefer optimized attendeeCount, fall back to attendees array,
-              // and as a last resort query the junction table via getEventAttendees
-              let attendeesList: string[] = Array.isArray(event.attendees) ? event.attendees : [];
-              let attendeeCount: number | undefined = typeof event.attendeeCount === 'number' ? event.attendeeCount : (attendeesList.length > 0 ? attendeesList.length : undefined);
-
-              if ((attendeeCount === undefined || attendeeCount === 0) && !Array.isArray(event.attendees)) {
-                try {
-                  const junctionAttendees = await getEventAttendees(event.$id);
-                  attendeesList = Array.isArray(junctionAttendees) ? junctionAttendees : [];
-                  attendeeCount = attendeesList.length;
-                } catch (err) {
-                  // ignore and fallback to 0
-                  attendeeCount = attendeeCount ?? 0;
-                }
-              }
-
-              return {
-                ...(event as unknown as AppEvent),
-                creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
-                isAttending,
-                attendees: attendeesList,
-                attendeeCount: attendeeCount ?? 0,
-              } as AppEvent & { isAttending?: boolean; attendeeCount?: number };
-            })
-        );
-
-        const nonAttendingEvents = filteredAndMappedEvents.filter((e: any) => !e.isAttending);
-        setEventsWithCreatorNames(nonAttendingEvents as AppEvent[]);
-
-        // Fetch travel announcements with connection pooling
-        await dbConnectionPool.acquire(async () => {
-          await fetchTravelAnnouncements(userFriends);
-        });
-      } else {
-        // No friends or groups - show empty feed
+      // If no social graph, nothing to show
+      if (userFriends.length === 0 && userGroupIds.length === 0) {
         setEventsWithCreatorNames([]);
+        setTravelAnnouncements([]);
+        await refetchEvents();
+        return;
       }
-    } catch (err: any) {
-      if (err?.message?.includes('missing scope (account)')) return;
-      console.error('Error fetching feed data:', err);
-    }
-  }, []);
 
-  // Pull-to-refresh handler for Instagram-like functionality
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await fetchFeedData();
-      await refetchEvents(); // Also refresh events context
+      // SWR: try cached read first
+      const { cacheManager } = await import('@/lib/debug/cacheManager');
+      const eventsCacheKey = `all-events`;
+      const cachedEntry = cacheManager.getEntry<any[]>(eventsCacheKey);
+
+      if (cachedEntry && Array.isArray(cachedEntry.data)) {
+        try {
+          const cachedArray = cachedEntry.data;
+          const relevantCached = cachedArray.filter(e => userFriends.includes(e.creatorId) || (e.groupId && userGroupIds.includes(e.groupId)));
+          const cachedMapped = relevantCached
+            .filter((ev: any) => new Date(ev.endTime || ev.date) >= new Date())
+            .map((ev: any) => ({ ...(ev as AppEvent), creatorName: undefined } as AppEvent));
+          setEventsWithCreatorNames(cachedMapped);
+          console.log('Feed: Showing cached feed with', cachedMapped.length, 'items');
+        } catch (err) {
+          console.warn('Feed: failed to map cached feed', err);
+        }
+
+        // Kick off background revalidation (don't await). Guard so we don't run multiple times
+        if (!backgroundRevalidating.current) {
+          backgroundRevalidating.current = true;
+          (async () => {
+            try {
+              console.log('Feed: Background revalidation of events started');
+              const { fetchEvents } = await import('@/lib/api/event');
+              const freshAllEvents = await fetchEvents();
+              const relevantFresh = freshAllEvents.filter((event: any) => userFriends.includes(event.creatorId) || (event.groupId && userGroupIds.includes(event.groupId)));
+
+              const uniqueCreatorIds = [...new Set(relevantFresh.map((ev: any) => ev.creatorId))] as string[];
+              const creatorProfiles = await batchProcess(uniqueCreatorIds, async (batch: string[]) => await getUsersByIds(batch), 25);
+              const creatorMap = new Map(creatorProfiles.flat().map((profile: any) => [profile.$id, userDisplayUtils.getFullName(profile)]));
+
+              const creatorPhotoMap: Record<string, string | null> = {};
+              await Promise.all(uniqueCreatorIds.map(async (creatorId: string) => {
+                try {
+                  creatorPhotoMap[creatorId] = await getUserProfilePhotoUrl(creatorId);
+                } catch {
+                  creatorPhotoMap[creatorId] = null;
+                }
+              }));
+              setCreatorPhotoUrls(creatorPhotoMap);
+
+              // Optimize attendance checks: fetch all attending event IDs once and use a Set for lookups
+              const attendingEventsForUser = await getUserAttendingEvents(globalUser.$id);
+              const attendingIds = new Set(attendingEventsForUser.map((a: any) => a.$id));
+
+              const filteredAndMappedEvents = await Promise.all(relevantFresh
+                .filter((ev: any) => new Date(ev.endTime || ev.date) >= new Date())
+                .map(async (event: any) => {
+                  const isAttending = attendingIds.has(event.$id);
+                  let attendeesList: string[] = Array.isArray(event.attendees) ? event.attendees : [];
+                  let attendeeCount: number | undefined = typeof event.attendeeCount === 'number' ? event.attendeeCount : (attendeesList.length > 0 ? attendeesList.length : undefined);
+                  if ((attendeeCount === undefined || attendeeCount === 0) && !Array.isArray(event.attendees)) {
+                    try {
+                      const junctionAttendees = await getEventAttendees(event.$id);
+                      attendeesList = Array.isArray(junctionAttendees) ? junctionAttendees : [];
+                      attendeeCount = attendeesList.length;
+                    } catch (err) {
+                      attendeeCount = attendeeCount ?? 0;
+                    }
+                  }
+                  return {
+                    ...(event as unknown as AppEvent),
+                    creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
+                    isAttending,
+                    attendees: attendeesList,
+                    attendeeCount: attendeeCount ?? 0,
+                  } as AppEvent & { isAttending?: boolean; attendeeCount?: number };
+                }));
+
+              const nonAttendingEvents = filteredAndMappedEvents.filter((e: any) => !e.isAttending);
+              setEventsWithCreatorNames(nonAttendingEvents as AppEvent[]);
+              console.log('Feed: Background revalidation updated feed with', nonAttendingEvents.length, 'items');
+
+              await dbConnectionPool.acquire(async () => {
+                await fetchTravelAnnouncements(userFriends);
+              });
+
+              // Let EventContext refresh once after background revalidation completes
+              try {
+                await refetchEvents();
+              } catch (e) {
+                console.warn('Feed: Failed to refetch events after revalidation', e);
+              }
+            } catch (err) {
+              console.error('Feed: Background revalidation error:', err);
+            } finally {
+              backgroundRevalidating.current = false;
+            }
+          })();
+        }
+        // Done for cached flow - background revalidation will refresh context
+        return;
+      }
+
+      // No cache: fetch synchronously and map
+      const { fetchEvents } = await import('@/lib/api/event');
+      const allEvents = await fetchEvents();
+      const relevantEvents = allEvents.filter((ev: any) => userFriends.includes(ev.creatorId) || (ev.groupId && userGroupIds.includes(ev.groupId)));
+
+      const uniqueCreatorIdsSync = [...new Set(relevantEvents.map((ev: any) => ev.creatorId))] as string[];
+      const creatorProfilesSync = await batchProcess(uniqueCreatorIdsSync, async (batch: string[]) => await getUsersByIds(batch), 25);
+      const creatorMapSync = new Map(creatorProfilesSync.flat().map((p: any) => [p.$id, userDisplayUtils.getFullName(p)]));
+
+      const creatorPhotoMapSync: Record<string, string | null> = {};
+      await Promise.all(uniqueCreatorIdsSync.map(async (creatorId: string) => {
+        try {
+          creatorPhotoMapSync[creatorId] = await getUserProfilePhotoUrl(creatorId);
+        } catch {
+          creatorPhotoMapSync[creatorId] = null;
+        }
+      }));
+      setCreatorPhotoUrls(creatorPhotoMapSync);
+
+      // Optimize attendance checks for synchronous fetch as well
+      const attendingEventsForUserSync = await getUserAttendingEvents(globalUser.$id);
+      const attendingIdsSync = new Set(attendingEventsForUserSync.map((a: any) => a.$id));
+
+      const mappedEvents = await Promise.all(relevantEvents
+        .filter((ev: any) => new Date(ev.endTime || ev.date) >= new Date())
+        .map(async (event: any) => {
+          const isAttending = attendingIdsSync.has(event.$id);
+          let attendeesList: string[] = Array.isArray(event.attendees) ? event.attendees : [];
+          let attendeeCount: number | undefined = typeof event.attendeeCount === 'number' ? event.attendeeCount : (attendeesList.length > 0 ? attendeesList.length : undefined);
+          if ((attendeeCount === undefined || attendeeCount === 0) && !Array.isArray(event.attendees)) {
+            try {
+              const junctionAttendees = await getEventAttendees(event.$id);
+              attendeesList = Array.isArray(junctionAttendees) ? junctionAttendees : [];
+              attendeeCount = attendeesList.length;
+            } catch (err) {
+              attendeeCount = attendeeCount ?? 0;
+            }
+          }
+
+          return {
+            ...(event as unknown as AppEvent),
+            creatorName: creatorMapSync.get(event.creatorId) || 'Unknown Creator',
+            isAttending,
+            attendees: attendeesList,
+            attendeeCount: attendeeCount ?? 0,
+          } as AppEvent & { isAttending?: boolean; attendeeCount?: number };
+        }));
+
+      const nonAttendingEventsSync = mappedEvents.filter((e: any) => !e.isAttending);
+      setEventsWithCreatorNames(nonAttendingEventsSync as AppEvent[]);
+
+      await dbConnectionPool.acquire(async () => {
+        await fetchTravelAnnouncements(userFriends);
+      });
+
+      await refetchEvents();
     } catch (error) {
       console.error('Error refreshing feed:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [fetchFeedData, refetchEvents]);
+  }, [refetchEvents, globalUser?.$id]);
 
   // Initial load - happens once per session for scalability
   useEffect(() => {
     if (!initialLoadComplete) {
       const init = async () => {
         await fetchFeedData();
-        await refetchEvents();
+        // Do not call refetchEvents here - fetchFeedData will perform background revalidation
         setInitialLoadComplete(true);
       };
       init();
@@ -333,6 +371,18 @@ export default function Feed() {
     } catch (err) {
       console.error('Attend event error:', err);
       Alert.alert('Error', 'Failed to attend event');
+    }
+  };
+
+  // Pull-to-refresh handler used by FlatList
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetchFeedData();
+    } catch (err) {
+      console.error('Error on manual refresh:', err);
+    } finally {
+      setRefreshing(false);
     }
   };
 

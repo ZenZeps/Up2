@@ -10,7 +10,8 @@ export const createEventChat = async (eventId: string): Promise<Chat> => {
             eventId,
         };
 
-        const response = await databases.createDocument(
+        const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+        const response = await createDocumentSafe(
             config.databaseID!,
             config.chatsCollectionID!,
             ID.unique(),
@@ -33,7 +34,8 @@ export const createGroupChat = async (groupId: string): Promise<Chat> => {
             groupId,
         };
 
-        const response = await databases.createDocument(
+        const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+        const response = await createDocumentSafe(
             config.databaseID!,
             config.chatsCollectionID!,
             ID.unique(),

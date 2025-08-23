@@ -11,7 +11,8 @@ class TicketService {
     // Create a business event
     async createBusinessEvent(eventData: Omit<BusinessEvent, '$id' | '$createdAt' | '$updatedAt' | 'ticketsSold'>): Promise<BusinessEvent> {
         try {
-            const newEvent = await databases.createDocument(
+            const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+            const newEvent = await createDocumentSafe(
                 DATABASE_ID,
                 BUSINESS_EVENTS_COLLECTION_ID,
                 ID.unique(),
@@ -102,7 +103,8 @@ class TicketService {
                 const ticketNumber = this.generateTicketNumber();
                 const qrCode = this.generateQRCode(eventId, ticketNumber);
 
-                const ticket = await databases.createDocument(
+                const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+                const ticket = await createDocumentSafe(
                     DATABASE_ID,
                     TICKETS_COLLECTION_ID,
                     ID.unique(),
@@ -336,7 +338,8 @@ class TicketService {
                 );
             } else {
                 // Create new record
-                await databases.createDocument(
+                const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+                await createDocumentSafe(
                     DATABASE_ID,
                     TICKET_SALES_COLLECTION_ID,
                     ID.unique(),

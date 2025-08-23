@@ -100,8 +100,9 @@ export async function sendFriendRequest(fromUserId: string, toUserId: string): P
         const userId1 = fromUserId < toUserId ? fromUserId : toUserId;
         const userId2 = fromUserId < toUserId ? toUserId : fromUserId;
 
+        const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
         const requestId = ID.unique();
-        const friendship = await databases.createDocument(
+        const friendship = await createDocumentSafe(
             config.databaseID!,
             config.userFriendshipsCollectionID!,
             requestId,

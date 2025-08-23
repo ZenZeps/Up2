@@ -57,6 +57,23 @@ class CacheManager {
     }
 
     /**
+     * Get the raw cache entry (with timestamp and ttl) so callers can implement SWR logic
+     * Returns null if entry is missing or expired
+     */
+    getEntry<T>(key: string): CacheEntry<T> | null {
+        const entry = this.cache.get(key) as CacheEntry<T> | undefined;
+        if (!entry) return null;
+
+        if (Date.now() - entry.timestamp < entry.ttl) {
+            return entry;
+        }
+
+        // expired -> remove and return null
+        this.cache.delete(key);
+        return null;
+    }
+
+    /**
      * Set an item in the cache
      * @param key Cache key
      * @param data Data to cache

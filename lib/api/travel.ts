@@ -17,15 +17,15 @@ export async function createTravelAnnouncement(travel: Omit<TravelAnnouncement, 
             endDate: travel.endDate,
             description: travel.description || '',
             isPublic: travel.isPublic,
-            createdAt: now,
-            updatedAt: now,
         };
+
+        const { stripSystemTimestamps } = await import('@/lib/utils/appwriteSanitizer');
 
         const response = await databases.createDocument(
             config.databaseID!,
             config.travelCollectionID!, // We'll need to add this to the config
             travelId,
-            travelData,
+            stripSystemTimestamps(travelData),
             [
                 Permission.read(Role.any()), // Friends can see public travel announcements
                 Permission.update(Role.user(travel.userId)),
@@ -35,8 +35,10 @@ export async function createTravelAnnouncement(travel: Omit<TravelAnnouncement, 
 
         return {
             $id: response.$id,
-            id: response.$id, // Set id to match $id for consistency
+            id: response.$id,
             ...travelData,
+            createdAt: response.$createdAt,
+            updatedAt: response.$updatedAt,
         } as TravelAnnouncement;
     } catch (error) {
         console.error('Error creating travel announcement:', error);

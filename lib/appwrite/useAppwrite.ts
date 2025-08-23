@@ -8,9 +8,9 @@ import { dbUsageMonitor } from "../debug/dbUsageMonitor";
 // Rate limit configuration (calls per minute) - Optimized for 100k users
 const RATE_LIMIT = 15; // Slightly increased for better UX
 const RATE_WINDOW = 60 * 1000; // 1 minute window
-const DEFAULT_CACHE_TTL = 3 * 60 * 1000; // Reduced to 3 minutes for fresher data
+const DEFAULT_CACHE_TTL = 3 * 60 * 1000; // 3 minutes for semi-static data
 const PROFILE_CACHE_TTL = 30 * 60 * 1000; // 30 minutes for profile data (session-level)
-const EVENT_CACHE_TTL = 1 * 60 * 1000; // 1 minute for events (frequent updates)
+const EVENT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes for events (balanced freshness / reads)
 const DEBOUNCE_DELAY = 200; // Reduced debounce for better responsiveness
 
 // Rate limiter tracking

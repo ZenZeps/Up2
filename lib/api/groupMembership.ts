@@ -62,7 +62,8 @@ export async function addGroupMember(
         }
 
         // Create new membership
-        await databases.createDocument(
+        const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+        await createDocumentSafe(
             config.databaseID!,
             config.groupMembershipsCollectionID!,
             ID.unique(),

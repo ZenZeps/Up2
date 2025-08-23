@@ -41,7 +41,9 @@ export async function createUserProfile(profile: UserProfile) {
   try {
     authDebug.info(`Creating user profile for: ${profile.$id}`);
 
-    const res = await databases.createDocument(
+    const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+
+    const res = await createDocumentSafe(
       config.databaseID!,
       config.usersCollectionID!,
       profile.$id,

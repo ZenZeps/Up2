@@ -22,7 +22,8 @@ export const createMessage = async (messageInput: MessageInput, authorId: string
             isEdited: false,
         };
 
-        const response = await databases.createDocument(
+        const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+        const response = await createDocumentSafe(
             config.databaseID!,
             config.messagesCollectionID!,
             ID.unique(),

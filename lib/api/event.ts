@@ -8,7 +8,7 @@ import { getGroupById } from "./group";
 import { getUserProfile } from "./user";
 
 // Cache constants
-const EVENT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const EVENT_CACHE_TTL = 10 * 60 * 1000; // 10 minutes (increased to reduce reads)
 const EVENT_COLLECTION_CACHE_KEY = 'all-events';
 
 /**
@@ -324,7 +324,8 @@ export async function createEvent(event: Event) {
     }
 
     // Create the event
-    const createdEvent = await databases.createDocument(
+    const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+    const createdEvent = await createDocumentSafe(
       config.databaseID,
       config.eventsCollectionID,
       sanitizedEvent.$id || ID.unique(),
@@ -529,7 +530,7 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
         {
           attendeeCount: newAttendeeCount,
           inviteCount: newInviteCount,
-          lastActivtyAt: new Date().toISOString(),
+          lastActivityAt: new Date().toISOString(),
         }
       );
 
@@ -546,7 +547,9 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
         eventId,
         userId,
         status: 'attending',
-        createdAt: new Date().toISOString(),
+        // Note: do not set `createdAt` — Appwrite uses system attribute `$createdAt` and
+        // the collection schema does not include a custom `createdAt` field. Adding it
+        // causes a document_invalid_structure error.
       }
     );
 
@@ -560,7 +563,7 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
       eventId,
       {
         attendeeCount: newCount,
-        lastActivtyAt: new Date().toISOString(),
+        lastActivityAt: new Date().toISOString(),
       }
     );
 
@@ -627,7 +630,7 @@ export async function removeEventAttendee(eventId: string, userId: string): Prom
       {
         attendeeCount: newAttendeeCount,
         inviteCount: newInviteCount,
-        lastActivtyAt: new Date().toISOString(),
+        lastActivityAt: new Date().toISOString(),
       }
     );
 
@@ -697,7 +700,7 @@ export async function addEventInvitation(eventId: string, userId: string): Promi
       eventId,
       {
         inviteCount: newCount,
-        lastActivtyAt: new Date().toISOString(),
+        lastActivityAt: new Date().toISOString(),
       }
     );
 
@@ -936,7 +939,7 @@ export async function updateEventAttendance(eventId: string, userId: string, isA
     if (sanitizedEventData.responseRate === undefined) {
       sanitizedEventData.responseRate = true;
     }
-    sanitizedEventData.lastActivtyAt = new Date().toISOString();
+    sanitizedEventData.lastActivityAt = new Date().toISOString();
 
     // Remove legacy fields that no longer exist in the optimized database schema
     delete sanitizedEventData.inviteeIds;

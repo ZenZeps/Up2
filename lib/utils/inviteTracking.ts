@@ -21,7 +21,8 @@ export const logInviteEvent = async (
     try {
         // Try to create the log document
         // This will only work if you've manually created the 'invites_sent' collection
-        await databases.createDocument(
+        const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+        await createDocumentSafe(
             config.databaseID!,
             'invites_sent', // Create this collection manually in Appwrite console
             'unique()',

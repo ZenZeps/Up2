@@ -20,7 +20,7 @@ export interface Event {
   viewCount?: number; // Number of views (engagement metric)
   popularityScore?: number; // Computed popularity score (0.0-1.0)
   responseRate?: boolean; // Whether responses are being tracked
-  lastActivtyAt?: string; // ISO timestamp of last activity
+  lastActivityAt?: string; // ISO timestamp of last activity
 }
 
 export interface EventWithDetails extends Event {

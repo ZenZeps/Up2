@@ -100,9 +100,12 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
   const refetchEvents = useCallback(async () => {
     if (!userId) return;
 
-    authDebug.info(`Refetching events for user: ${userId}`);
-    invalidateCache(new RegExp(`events-user-${userId}`)); // Invalidate user-specific cache
-    await refetch();
+    // Deduplicate concurrent refetch calls for the same user to avoid duplicate updates
+    return requestDeduplicator.deduplicate(`refetchEvents-${userId}`, async () => {
+      authDebug.info(`Refetching events for user: ${userId}`);
+      invalidateCache(new RegExp(`events-user-${userId}`)); // Invalidate user-specific cache
+      await refetch();
+    });
   }, [refetch, userId]);
 
   // Add event with optimistic update

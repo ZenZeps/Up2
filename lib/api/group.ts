@@ -154,7 +154,8 @@ export const createGroup = async (
         const groupId = ID.unique();
 
         // Create the group document first (without users array for new system)
-        const response = await databases.createDocument(
+        const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+        const response = await createDocumentSafe(
             config.databaseID!,
             config.groupsCollectionID!,
             groupId,

@@ -93,7 +93,8 @@ export class NotificationTokenService {
                 console.log('📱 Updated existing notification token');
             } else {
                 // Create new token record
-                await databases.createDocument(
+                const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+                await createDocumentSafe(
                     config.databaseID!,
                     this.COLLECTION_ID,
                     ID.unique(),
