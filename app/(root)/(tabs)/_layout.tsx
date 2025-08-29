@@ -132,7 +132,9 @@ const TabsLayout = () => {
             title: 'Feed',
             headerShown: false,
             tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.bell} focused={focused} title="Feed" colors={colors} hasNotifications={hasNotifications} />
+              // Do not show the notification badge on the bottom Feed tab for invites.
+              // Invite highlighting is handled inside the Home screen UI's bell icon.
+              <TabIcon icon={icons.bell} focused={focused} title="Feed" colors={colors} hasNotifications={false} />
             )
           }}
         />
