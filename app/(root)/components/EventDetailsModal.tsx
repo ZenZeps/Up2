@@ -1,6 +1,6 @@
 import { getEventEmoji } from '@/constants/categories';
 import icons from '@/constants/icons';
-import { addEventAttendee, addEventInvitation, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
+import { addEventAttendee, addEventInvitation, getEventAttendees, getEventInvitees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriends, getUsersByIds } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
@@ -96,7 +96,12 @@ const EventDetailsModal = ({
         await addEventAttendee(event.$id, currentUserId);
       } catch (err) {
         console.error('Fallback attend error:', err);
-        Alert.alert('Error', 'Failed to attend event');
+        // If the server disallowed attending a private event, show a clearer message
+        if (err instanceof Error && /not invited to this private event/i.test(err.message)) {
+          Alert.alert('Private Event', 'You are not invited to this private event. Ask the organizer to invite you.');
+        } else {
+          Alert.alert('Error', 'Failed to attend event');
+        }
         return;
       }
     }
@@ -124,9 +129,22 @@ const EventDetailsModal = ({
 
   useEffect(() => {
     const fetchAttendeeProfiles = async () => {
-      if (event?.attendees?.length > 0) {
+      // Prefer junction table for attendees; fallback to legacy array only if junction fails
+      let attendeeIds: string[] = [];
+      try {
+        // Prefer junction table
+        const junction = await getEventAttendees(event.$id);
+        if (Array.isArray(junction) && junction.length > 0) {
+          attendeeIds = junction;
+        }
+      } catch (err) {
+        // fallback to legacy in-document attendees if present
+        if (Array.isArray(event?.attendees)) attendeeIds = event.attendees;
+      }
+
+      if (attendeeIds.length > 0) {
         try {
-          const profiles = await getUsersByIds(event.attendees);
+          const profiles = await getUsersByIds(attendeeIds);
           setAttendeeProfiles(profiles);
 
           // Fetch profile photos for attendees
@@ -148,7 +166,7 @@ const EventDetailsModal = ({
     };
 
     fetchAttendeeProfiles();
-  }, [event?.attendees]);
+  }, [event?.$id]);
 
   // Fetch creator's profile photo
   useEffect(() => {
@@ -171,10 +189,19 @@ const EventDetailsModal = ({
   const handleInviteFriend = async () => {
     try {
       const friendsList = await getFriends(currentUserId);
-      // Filter out friends who are already attendees or invitees
+      // Filter out friends who are already attendees or invitees using junction-derived IDs when available
+      const attendeeIdSet = new Set(attendeeProfiles.map((p: any) => p.$id));
+      let inviteeIds: string[] = [];
+      try {
+        const junctionInvites = await getEventInvitees(event.$id);
+        if (Array.isArray(junctionInvites) && junctionInvites.length > 0) inviteeIds = junctionInvites;
+      } catch (err) {
+        // fallback to legacy field
+        if (Array.isArray((event as any).inviteeIds)) inviteeIds = (event as any).inviteeIds as string[];
+      }
+      const inviteeIdSet = new Set(inviteeIds);
       const availableFriends = friendsList.filter(friend =>
-        !event.attendees?.includes(friend.$id) &&
-        !event.inviteeIds?.includes(friend.$id)
+        !attendeeIdSet.has(friend.$id) && !inviteeIdSet.has(friend.$id)
       );
 
       if (availableFriends.length === 0) {

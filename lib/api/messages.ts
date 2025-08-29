@@ -51,14 +51,25 @@ export const createMessage = async (messageInput: MessageInput, authorId: string
             let participantIds: string[] = [];
 
             if (chat.eventId) {
-                // For event chats, get event attendees with LIMIT to prevent crashes
-                const event = await databases.getDocument(
-                    config.databaseID!,
-                    config.eventsCollectionID!,
-                    chat.eventId
-                );
-                // SCALABILITY FIX: Limit notifications to first 100 participants to prevent spam/crashes
-                participantIds = (event.attendees || []).slice(0, 100);
+                // For event chats, prefer junction-attendees lookup with LIMIT to prevent crashes
+                try {
+                    const { getEventAttendees } = await import('./event');
+                    const attendees = await getEventAttendees(chat.eventId);
+                    participantIds = Array.isArray(attendees) ? attendees.slice(0, 100) : [];
+                } catch (e) {
+                    // Fallback: read legacy attendees if present on the event document (very rare)
+                    try {
+                        const event = await databases.getDocument(
+                            config.databaseID!,
+                            config.eventsCollectionID!,
+                            chat.eventId
+                        );
+                        participantIds = (event.attendees || []).slice(0, 100);
+                    } catch (innerErr) {
+                        // If even that fails, leave participantIds empty to avoid crashing
+                        participantIds = [];
+                    }
+                }
             } else if (chat.groupId) {
                 // For group chats, get group members with LIMIT
                 const group = await databases.getDocument(

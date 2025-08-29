@@ -77,6 +77,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [friendProfiles, setFriendProfiles] = useState<any[]>([]);
   const [friendPhotoUrls, setFriendPhotoUrls] = useState<Record<string, string | null>>({});
   const [loadingFriends, setLoadingFriends] = useState(false);
+  const [isAttending, setIsAttending] = useState<boolean>(false);
 
   // Safely parse date with validation and proper time information
   const safeParseDate = (dateString: string): Date => {
@@ -167,6 +168,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setLocation(event.location || '');
       setDescription(event.description || '');
       setTags(event.tags || []);
+      // Keep legacy inviteeIds only as a local UI list; authoritative source is junction table
       setInviteeIds(event.inviteeIds || []);
       setIsPrivate(event.isPrivate === true); // Fix: properly handle boolean value
 
@@ -193,6 +195,9 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setInviteeIds([]);
       setIsPrivate(false);
 
+      // Reset attendance state for new events
+      setIsAttending(false);
+
       // Safely set default dates
       try {
         const newStartDate = new Date(selectedDateTime);
@@ -207,6 +212,23 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       }
     }
   }, [event, selectedDateTime]);
+
+  // Check attendance using junction helper when event/currentUserId available
+  useEffect(() => {
+    let mounted = true;
+    const checkAttendance = async () => {
+      try {
+        if (!event || !currentUserId) return;
+        const { isUserAttendingEvent } = await import('@/lib/api/event');
+        const attending = await isUserAttendingEvent(currentUserId, event.$id);
+        if (mounted) setIsAttending(Boolean(attending));
+      } catch (err) {
+        console.error('Error checking attendance in EventForm:', err);
+      }
+    };
+    checkAttendance();
+    return () => { mounted = false; };
+  }, [event, currentUserId]);
 
   // Early return for visibility check
   if (!visible) {
@@ -899,7 +921,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
           {/* Join/Leave event functionality */}
           {event && !isCreator && (
             <View className="mb-4">
-              {inviteeIds.includes(currentUserId) || event?.attendees?.includes(currentUserId) ? (
+              {(inviteeIds.includes(currentUserId) || isAttending) ? (
                 <TouchableOpacity
                   onPress={async () => {
                     try {
@@ -907,6 +929,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                       await removeEventAttendee(event.$id, currentUserId);
                       // Also remove from local invitee state if present
                       setInviteeIds(inviteeIds.filter((id) => id !== currentUserId));
+                      setIsAttending(false);
                       await refetchEvents();
                       onClose();
                     } catch (err) {
@@ -926,6 +949,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                       await addEventAttendee(event.$id, currentUserId);
                       // Optionally add to local invitee state for UX
                       setInviteeIds([...inviteeIds, currentUserId]);
+                      setIsAttending(true);
                       await refetchEvents();
                       onClose();
                     } catch (err) {

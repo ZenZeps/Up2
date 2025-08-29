@@ -128,7 +128,7 @@ export default function RootLayout() {
           type?: string;
         };
         if (type === 'event-invite' && eventId) {
-          router.push(`/(root)/InviteLanding?eventId=${eventId}&inviter=${inviter || ''}`);
+          router.push(`/InviteLanding?eventId=${eventId}&inviter=${inviter || ''}`);
         }
       }
     };
@@ -161,13 +161,13 @@ export default function RootLayout() {
 
           if (data?.type === 'event_invite' && data?.eventId) {
             // Navigate to event details
-            router.push(`/(root)/event/${data.eventId}` as any);
+            router.push(`/event/${data.eventId}` as any);
           } else if (data?.type === 'chat_message' && data?.chatId) {
             // Navigate to chat
-            router.push(`/(root)/Messages/${data.chatId}` as any);
+            router.push(`/Messages/${data.chatId}` as any);
           } else if (data?.type === 'friend_request') {
             // Navigate to invites page
-            router.push('/(root)/Invites' as any);
+            router.push('/Invites' as any);
           }
         }
       );
@@ -193,6 +193,9 @@ export default function RootLayout() {
 
   if (!fontsLoaded || !isAppReady || isAuthenticated === null) return null;
 
+  // Decide whether to expose debug screens (dev or explicit flag)
+  const showDebugScreens = __DEV__ || process.env.EXPO_PUBLIC_SHOW_CONFIG_SCREEN === '1';
+
   // Wrap the Stack in ThemeProvider, AlertProvider, GlobalProvider, and ErrorBoundary for crash protection
   return (
     <ErrorBoundary>
@@ -206,6 +209,7 @@ export default function RootLayout() {
               <Stack.Screen name="SignUp" />
               <Stack.Screen name="Verify" />
               <Stack.Screen name="ResetPassword" />
+              {showDebugScreens && <Stack.Screen name="DebugConfig" />}
             </Stack>
           </GlobalProvider>
         </AlertProvider>

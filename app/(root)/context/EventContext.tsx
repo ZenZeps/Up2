@@ -85,10 +85,9 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
         authDebug.debug(`EventContext: Preloading ${cached.length} cached events for user ${userId}`);
         const sanitizedEvents = cached.map(event => ({
           ...event,
-          inviteeIds: Array.isArray(event.inviteeIds) ? event.inviteeIds : [],
-          attendees: Array.isArray(event.attendees) ? event.attendees : [],
+          // Legacy arrays removed from central Event type. Keep tags normalized for UI code that expects it.
           tags: Array.isArray(event.tags) ? event.tags : []
-        }));
+        } as any));
         setEvents(sanitizedEvents);
         // Mark we had an initial load so smartRefetch may respect intervals
         // Note: hasInitialLoad is local to Home; EventContext doesn't track it here
@@ -106,14 +105,12 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
       userId
     });
     if (fetchedEvents && Array.isArray(fetchedEvents)) {
-      // Ensure all events have proper array fields
+      // Ensure events have normalized tags; do not inject legacy arrays here.
       const sanitizedEvents = fetchedEvents.map(event => ({
         ...event,
-        inviteeIds: Array.isArray(event.inviteeIds) ? event.inviteeIds : [],
-        attendees: Array.isArray(event.attendees) ? event.attendees : [],
         tags: Array.isArray(event.tags) ? event.tags : []
-      }));
-      setEvents(sanitizedEvents);
+      } as any));
+      setEvents(sanitizedEvents as any[]);
     } else if (!loading && userId) {
       // If we have a user but no events and not loading, it means no events found
       setEvents([]);

@@ -1,5 +1,5 @@
 import { getEventEmoji } from '@/constants/categories';
-import { addEventAttendee, addEventInvitation, getEventById, removeEventAttendee } from '@/lib/api/event';
+import { addEventAttendee, addEventInvitation, getEventAttendees, getEventById, getEventInvitees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
@@ -62,7 +62,14 @@ const EventDetail = () => {
           return;
         }
         setUserId(globalUser.$id);
-        setAttending(res.attendees?.includes(globalUser.$id));
+        // Prefer junction table to determine attending state, fallback to legacy attendees array only if junction check fails
+        try {
+          const junctionAttending = await isUserAttendingEvent(globalUser.$id, res.$id as string);
+          setAttending(Boolean(junctionAttending));
+        } catch (e) {
+          // fallback to legacy in-document attendees array
+          setAttending(Array.isArray(res.attendees) ? res.attendees.includes(globalUser.$id) : false);
+        }
 
         // Fetch creator's profile and photo
         const creatorProfile = await getUserProfile(res.creatorId);
@@ -76,9 +83,16 @@ const EventDetail = () => {
           console.error('Error fetching creator photo:', error);
         }
 
-        // Fetch attendee profiles and photos
-        if (res.attendees && res.attendees.length > 0) {
-          const attendees = await getUsersByIds(res.attendees);
+        // Fetch attendee profiles and photos - prefer junction table, fallback to legacy array
+        let attendeeIds: string[] = [];
+        try {
+          const junction = await getEventAttendees(res.$id);
+          attendeeIds = Array.isArray(junction) ? junction : [];
+        } catch (e) {
+          attendeeIds = Array.isArray(res.attendees) ? res.attendees : [];
+        }
+        if (attendeeIds && attendeeIds.length > 0) {
+          const attendees = await getUsersByIds(attendeeIds);
           setAttendeeProfiles(attendees);
 
           // Fetch photos for attendees
@@ -95,9 +109,16 @@ const EventDetail = () => {
           setAttendeePhotoUrls(photoUrls);
         }
 
-        // Fetch invitee profiles and photos
-        if (res.inviteeIds && res.inviteeIds.length > 0) {
-          const invitees = await getUsersByIds(res.inviteeIds);
+        // Fetch invitee profiles and photos - prefer junction table, fallback to legacy array
+        let inviteeIds: string[] = [];
+        try {
+          const junctionInvites = await getEventInvitees(res.$id);
+          inviteeIds = Array.isArray(junctionInvites) ? junctionInvites : [];
+        } catch (e) {
+          inviteeIds = Array.isArray(res.inviteeIds) ? res.inviteeIds : [];
+        }
+        if (inviteeIds && inviteeIds.length > 0) {
+          const invitees = await getUsersByIds(inviteeIds);
           setInviteeProfiles(invitees);
 
           // Fetch photos for invitees
@@ -125,14 +146,17 @@ const EventDetail = () => {
 
   const handleAttend = async () => {
     if (!event || !userId) return;
-    if (event.attendees?.includes(userId)) {
+    // Prefer junction-derived attending state; legacy in-document attendees are only a fallback
+    if (attending) {
       showInfo('Already Attending', 'You are already attending this event.');
       return;
     }
 
     try {
       await addEventAttendee(event.$id, userId);
-      setEvent({ ...event, attendees: [...(event.attendees || []), userId] });
+      // Update local state conservatively: update attendeeCount and attending flag instead of mutating legacy arrays
+      const currentCount = typeof event.attendeeCount === 'number' ? event.attendeeCount : attendeeProfiles.length;
+      setEvent({ ...event, attendeeCount: currentCount + 1, isAttending: true });
       setAttending(true);
       showSuccess('Attending Event!', 'You are now attending this event!');
       refetchEvents();
@@ -147,7 +171,9 @@ const EventDetail = () => {
 
     try {
       await removeEventAttendee(event.$id, userId);
-      setEvent({ ...event, attendees: (event.attendees || []).filter((id: string) => id !== userId) });
+      // Update counts conservatively
+      const currentCount = typeof event.attendeeCount === 'number' ? event.attendeeCount : attendeeProfiles.length;
+      setEvent({ ...event, attendeeCount: Math.max(0, currentCount - 1), isAttending: false });
       setAttending(false);
       showSuccess('No Longer Attending', 'You are no longer attending this event.');
       refetchEvents();
@@ -163,10 +189,11 @@ const EventDetail = () => {
       const friendIds = await getUserFriends(userId);
       const friendsList = friendIds.length > 0 ? await getUsersByIds(friendIds) : [];
 
-      // Filter out friends who are already attendees or invitees
+      // Filter out friends who are already attendees or invitees (prefer junction-derived profiles)
+      const attendeeIdsSet = new Set(attendeeProfiles.map((p) => p.$id));
+      const inviteeIdsSet = new Set(inviteeProfiles.map((p) => p.$id));
       const availableFriends = friendsList.filter((friend: any) =>
-        !event.attendees?.includes(friend.$id) &&
-        !event.inviteeIds?.includes(friend.$id)
+        !attendeeIdsSet.has(friend.$id) && !inviteeIdsSet.has(friend.$id)
       );
 
       if (availableFriends.length === 0) {
@@ -203,13 +230,25 @@ const EventDetail = () => {
       // Create an invitation using the junction table helper
       await addEventInvitation(event.$id, friendId);
 
-      // Update local state to include the new invitee for immediate feedback
-      const updatedInviteeIds = [...(event.inviteeIds || []), friendId];
-      setEvent({ ...event, inviteeIds: updatedInviteeIds });
-
-      // Reload invitee profiles
-      const invitees = await getUsersByIds(updatedInviteeIds);
-      setInviteeProfiles(invitees);
+      // Refresh invitee list from junction table and update counts/profiles
+      try {
+        const inviteIds = await getEventInvitees(event.$id);
+        const inviteProfiles = inviteIds.length > 0 ? await getUsersByIds(inviteIds) : [];
+        setEvent({ ...event, inviteCount: inviteIds.length });
+        setInviteeProfiles(inviteProfiles);
+      } catch (e) {
+        // Fallback: optimistic local update using profiles/counts
+        const newInviteeProfiles = [...inviteeProfiles];
+        try {
+          const newProfiles = await getUsersByIds([friendId]);
+          newInviteeProfiles.push(...newProfiles);
+        } catch (e2) {
+          // If profile fetch fails, push a lightweight placeholder
+          newInviteeProfiles.push({ $id: friendId, firstName: 'Someone' });
+        }
+        setInviteeProfiles(newInviteeProfiles);
+        setEvent({ ...event, inviteCount: (typeof event.inviteCount === 'number' ? event.inviteCount + 1 : newInviteeProfiles.length) });
+      }
 
       // Send push notification to the invited friend
       await sendEventInviteNotification([friendId], event.title, creatorName, event.$id);
@@ -447,7 +486,7 @@ const EventDetail = () => {
           <View style={styles.detailsHeader}>
             <MaterialIcons name="people" size={20} color={colors.primary} />
             <Text style={[styles.detailsHeaderText, { color: colors.text }]}>
-              Attendance ({attendeeProfiles.length} attending)
+              Attendance ({typeof event.attendeeCount === 'number' ? event.attendeeCount : attendeeProfiles.length} attending)
             </Text>
           </View>
 

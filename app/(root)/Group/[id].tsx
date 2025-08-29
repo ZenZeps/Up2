@@ -94,30 +94,28 @@ const GroupPage = () => {
             if (groupData) {
                 setGroup(groupData);
 
-                // Format events for big calendar
+                // Format events for big calendar (prefer attendeeCount/isAttending flags)
                 const formattedEvents = (groupEvents || []).map(event => ({
                     ...event,
                     start: new Date(event.startTime),
                     end: new Date(event.endTime),
                     title: event.title,
                     color: getEventColor(event.tags || []),
-                    isAttending: event.attendees?.includes(currentUserId || '') || false,
+                    // Prefer explicit isAttending flag or attendeeCount; do not treat legacy attendees array as primary source
+                    isAttending: !!event.isAttending || (typeof event.attendeeCount === 'number' ? event.attendeeCount > 0 && !!currentUserId : false),
                 }));
                 setEvents(formattedEvents);
 
-                // Load member details - handle both junction table (UserProfile[]) and legacy (string[]) formats
+                // Load member details - prefer junction-derived UserProfile[]; fallback to fetching by IDs when necessary
                 if (groupData.users && groupData.users.length > 0) {
-                    // Check if we have UserProfile objects (from junction table) or string IDs (legacy fallback)
                     const firstUser = groupData.users[0];
-                    if (typeof firstUser === 'string') {
-                        // Legacy format: users is string[]
-                        console.log('Using legacy user format, fetching profiles');
+                    if (firstUser && typeof firstUser === 'object' && '$id' in firstUser) {
+                        // Junction table format: users is already UserProfile[]
+                        setMembers(groupData.users as unknown as UserProfile[]);
+                    } else {
+                        // Legacy format: users is string[] - fetch profiles
                         const memberProfiles = await getUsersByIds(groupData.users as string[]);
                         setMembers(memberProfiles);
-                    } else if (firstUser && typeof firstUser === 'object' && '$id' in firstUser) {
-                        // Junction table format: users is already UserProfile[]
-                        console.log('Using junction table user format');
-                        setMembers(groupData.users as unknown as UserProfile[]);
                     }
                 }
             }
@@ -147,7 +145,8 @@ const GroupPage = () => {
     const handleAttendEvent = useCallback(async (event: AppEvent) => {
         if (!user?.$id) return;
 
-        if (event.attendees?.includes(user.$id)) {
+        // Prefer isAttending flag or attendeeCount to determine current state; legacy attendees array is only fallback
+        if ((event as any).isAttending || (typeof event.attendeeCount === 'number' ? event.attendeeCount > 0 : false)) {
             Alert.alert('Info', 'You are already attending this event.');
             return;
         }
@@ -155,11 +154,11 @@ const GroupPage = () => {
         try {
             await addEventAttendee(event.$id, user.$id);
 
-            // Update local state
+            // Update local state conservatively
             setEvents(prevEvents =>
                 prevEvents.map(e =>
                     e.$id === event.$id
-                        ? { ...e, attendees: [...(e.attendees || []), user.$id], isAttending: true }
+                        ? { ...e, attendeeCount: (typeof e.attendeeCount === 'number' ? e.attendeeCount + 1 : 1), isAttending: true }
                         : e
                 )
             );
@@ -177,11 +176,11 @@ const GroupPage = () => {
         try {
             await removeEventAttendee(event.$id, user.$id);
 
-            // Update local state
+            // Update local state conservatively: decrement attendeeCount and mark not attending
             setEvents(prevEvents =>
                 prevEvents.map(e =>
                     e.$id === event.$id
-                        ? { ...e, attendees: (e.attendees || []).filter((id: string) => id !== user.$id), isAttending: false }
+                        ? { ...e, attendeeCount: Math.max(0, (typeof e.attendeeCount === 'number' ? e.attendeeCount - 1 : 0)), isAttending: false }
                         : e
                 )
             );
@@ -252,8 +251,8 @@ const GroupPage = () => {
                 start: new Date(event.startTime),
                 end: new Date(event.endTime),
                 title: event.title,
-                color: getEventColor(event.tags || []), // Use tags instead of category
-                isAttending: event.attendees?.includes(currentUserId || '') || false,
+                color: getEventColor(event.tags || []),
+                isAttending: !!event.isAttending || false,
             }));
             setEvents(formattedEvents);
         } catch (error) {

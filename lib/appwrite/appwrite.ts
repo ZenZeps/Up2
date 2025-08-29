@@ -43,8 +43,10 @@ export const config = {
   usersCollectionID: process.env.EXPO_PUBLIC_APPWRITE_USERS_COLLECTION_ID || "685bb460000e2c55b3a5",
   eventsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_EVENTS_COLLECTION_ID || "68594f3e0030d3de2a3c",
   // ✅ NEW: Optimized junction tables
-  userFriendshipsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_USERFRIENDSHIPS_COLLECTION_ID || "temp_friendships_id",
-  eventAttendancesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_EVENTATTENDANCES_COLLECTION_ID || "temp_attendances_id",
+  // Support alternate env var names used in some build setups (friend requests vs friendships)
+  userFriendshipsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_USERFRIENDSHIPS_COLLECTION_ID || process.env.EXPO_PUBLIC_APPWRITE_FRIENDREQUESTS_COLLECTION_ID || process.env.EXPO_PUBLIC_APPWRITE_FRIENDREQUESTS_COLLECTION_ID || "temp_friendships_id",
+  // Common historical default name for attendances is 'event_attendances' (check .env.local), fall back accordingly
+  eventAttendancesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_EVENTATTENDANCES_COLLECTION_ID || process.env.EXPO_PUBLIC_APPWRITE_EVENT_ATTENDANCES || process.env.EXPO_PUBLIC_APPWRITE_EVENTATTENDANCES_COLLECTION_ID || "event_attendances",
   groupMembershipsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_GROUPMEMBERSHIPS_COLLECTION_ID || "68a1bee20031a75f55e6",
 
   travelCollectionID: process.env.EXPO_PUBLIC_APPWRITE_TRAVEL_COLLECTION_ID || "68594f4d0034f9a3bb1b",

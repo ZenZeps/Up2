@@ -1,14 +1,16 @@
 export interface Event {
   $id: string;  // Internal ID used by the app
-  id?: string;  // Required ID field for Appwrite - will match $id
+  id?: string;  // Optional external id (will match $id when present)
   title: string;
   location: string;
   startTime: string; // ISO format
   endTime: string;   // ISO format
   creatorId: string;
-  inviteeIds: string[]; // Users who have been invited to the event
-  attendees: string[]; // Users who have confirmed attendance
-  isAttending?: boolean;
+  // Note: legacy arrays (inviteeIds/attendees) were removed as part of the junction-table migration.
+  // These optional fields are temporarily present as deprecated compatibility shims so the
+  // UI can be migrated incrementally. Remove these once the codebase no longer depends on them.
+  inviteeIds?: string[]; // DEPRECATED: use getEventInvitees / inviteCount instead
+  attendees?: string[]; // DEPRECATED: use getEventAttendees / attendeeCount instead
   description?: string;
   tags: string[]; // Event categories/tags (sports, music, art, etc.)
   isPrivate?: boolean; // Whether the event is private (only visible to invitees)
@@ -25,5 +27,4 @@ export interface Event {
 
 export interface EventWithDetails extends Event {
   description: string;
-  attendees: string[]; // Array of attendee user IDs
 }

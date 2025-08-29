@@ -1,7 +1,7 @@
 import { CATEGORIES, getCategoriesByValues, getEventEmoji } from '@/constants/categories';
-import { addEventAttendee, enrichEventsWithGroupNames, isUserAttendingEvent, removeEventInvitation } from '@/lib/api/event';
+import { addEventAttendee, enrichEventsWithGroupNames, fetchEventsWithGroupNames, isUserAttendingEvent, removeEventInvitation } from '@/lib/api/event';
 import { cancelFriendRequest, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
-import { getPublicGroups, getUserGroups, joinGroup, searchPublicGroups } from '@/lib/api/group';
+import { getDiscoverableGroups, getPublicGroups, getUserGroups, joinGroup, searchPublicGroups } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { config, databases } from '@/lib/appwrite/appwrite';
@@ -17,22 +17,12 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Linking,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
-} from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Query } from 'react-native-appwrite';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserAvatar from '../components/UserAvatar';
 import { useEvents } from '../context/EventContext';
+
 dayjs.extend(relativeTime);
 
 const Explore = () => {
@@ -182,21 +172,23 @@ const Explore = () => {
       // Build Explore event set from all app events (global discovery), then filter out attended/past/private as needed
       const now = new Date();
 
-      // Fetch all events from the events collection (small limit to avoid huge payloads)
+      // Fetch events via fetchEventsWithGroupNames which handles caching and server-side filters
       let allEvents: any[] = [];
       try {
-        const res = await databases.listDocuments(
-          config.databaseID!,
-          config.eventsCollectionID!,
-          [
-            Query.limit(500), // reasonable client-side cap for Explore
-            // Optionally could filter server-side for upcoming events
-          ]
-        );
-        allEvents = res.documents || [];
+        allEvents = await fetchEventsWithGroupNames();
       } catch (err) {
-        console.error('Explore: failed to fetch all events from DB, falling back to events context', err);
-        allEvents = events || [];
+        console.error('Explore: failed to fetch events via fetchEventsWithGroupNames, falling back to raw DB or context', err);
+        try {
+          const res = await databases.listDocuments(
+            config.databaseID!,
+            config.eventsCollectionID!,
+            [Query.limit(500)]
+          );
+          allEvents = res.documents || [];
+        } catch (err2) {
+          console.error('Explore: raw DB fallback failed, using events context', err2);
+          allEvents = events || [];
+        }
       }
 
       // First filter out basic criteria (past events, user's own events)
@@ -220,6 +212,22 @@ const Explore = () => {
         })
       );
 
+      // Diagnostic logging: show up to 20 sample events and their attending flag
+      try {
+        const sampleCount = Math.min(20, eventsWithAttendanceCheck.length);
+        const samples = eventsWithAttendanceCheck.slice(0, sampleCount).map(({ event, isAttending }) => ({
+          id: event.$id,
+          title: event.title,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          inviteCount: (event as any).inviteCount,
+          isAttending
+        }));
+        console.log('Explore: attendance samples:', samples);
+      } catch (e) {
+        console.warn('Explore: failed to log attendance samples', e);
+      }
+
       // Filter out events the user is attending
       const finalFilteredEvents = eventsWithAttendanceCheck
         .filter(({ isAttending }) => !isAttending)
@@ -227,7 +235,11 @@ const Explore = () => {
         .filter(event => {
           // For private events, only show if user has access (invited but not attending)
           if (event.isPrivate) {
-            return (event.inviteeIds && event.inviteeIds.includes(userId)); // User is invited but not attending
+            // Prefer denormalized inviteCount or junction-based invite checks server-side; fallback to legacy inviteeIds if present
+            // Prefer denormalized inviteCount or a junction-based invite check on the server; fallback to legacy inviteeIds only if present
+            if (typeof event.inviteCount === 'number') return event.inviteCount > 0 && (Array.isArray(event.inviteeIds) ? event.inviteeIds.includes(userId) : true);
+            // Prefer server-side/junction checks, but fallback to legacy inviteeIds only if present
+            return (Array.isArray(event.inviteeIds) && event.inviteeIds.includes(userId));
           }
 
           // Show all public events from other users that user is not attending
@@ -235,7 +247,8 @@ const Explore = () => {
         });
 
       console.log('Explore Events Filter:', {
-        totalEvents: events.length,
+        allEventsCount: allEvents.length,
+        totalEventsContext: events.length,
         basicFiltered: basicFilteredEvents.length,
         finalFiltered: finalFilteredEvents.length,
         userId,
@@ -270,7 +283,8 @@ const Explore = () => {
       setEventsWithCreatorNames(eventsWithNames);
     };
 
-    if (events.length > 0) {
+    // Run enrichment once we have a userId; don't require `events` context to contain items
+    if (userId) {
       addCreatorNames();
     }
   }, [events, userId]);
@@ -280,10 +294,12 @@ const Explore = () => {
     const loadGroups = async () => {
       try {
         setLoadingGroups(true);
-        const publicGroups = await getPublicGroups();
-        setGroups(publicGroups || []);
+        // Load all discoverable groups (public + visible private) so we can show groups
+        // the user is not a member of. Private groups will show a Request-to-Join action.
+        const discoverable = await getDiscoverableGroups();
+        setGroups(discoverable || []);
         setGroupsLoaded(true);
-        console.log(`Explore: Loaded ${publicGroups.length} public groups`);
+        console.log(`Explore: Loaded ${discoverable.length} discoverable groups`);
       } catch (err) {
         console.error('Error loading groups for Explore:', err);
         setGroups([]);
@@ -437,7 +453,7 @@ const Explore = () => {
     return (
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <TouchableOpacity
-          onPress={() => router.push(`/(root)/UserProfile/${user.$id}` as any)}
+          onPress={() => router.push(`/UserProfile/${user.$id}` as any)}
           style={styles.userItem}
         >
           <View style={styles.userInfo}>
@@ -764,8 +780,18 @@ const Explore = () => {
     if (query.trim()) return [];
     const upcoming = filteredEvents.filter((e: any) => new Date(e.endTime) > new Date());
 
-    // Exclude events user is attending (should already be excluded upstream) but double-check
-    const nonAttending = upcoming.filter((e: any) => !e.attendees || !e.attendees.includes(userId));
+    // Exclude events the current user is attending. Use per-user flags first, then legacy attendees array.
+    // Do NOT use aggregate attendee counts as a proxy for whether the current user is attending.
+    const nonAttending = upcoming.filter((e: any) => {
+      // If we have an explicit per-user attendance flag, use it.
+      if (typeof e.isAttending === 'boolean') return !e.isAttending;
+
+      // If we have a legacy attendees array, exclude only if the user appears in it.
+      if (Array.isArray(e.attendees)) return !e.attendees.includes(userId);
+
+      // If we can't determine per-user attendance, be permissive and show the event.
+      return true;
+    });
 
     const map = new Map<string, { key: string; label: string; emoji: string; events: any[] }>();
 
@@ -796,6 +822,15 @@ const Explore = () => {
     return sections;
   }, [filteredEvents, query, userId, scoreEvent]);
 
+  // Diagnostic: log grouped sections counts for debugging UI empty state
+  try {
+    const debugSectionsCount = groupedSections.length;
+    const debugFilteredCount = filteredEvents.length;
+    console.log('Explore Debug: filteredEvents length', debugFilteredCount, 'groupedSections length', debugSectionsCount, groupedSections.map(s => ({ key: s.key, events: s.events.length })));
+  } catch (e) {
+    // ignore logging errors in render
+  }
+
   const renderHorizontalEventCard = ({ item }: { item: any }) => {
     // Force explicit dark palette so horizontal minicards match dark-mode exactly regardless of theme
     const darkCard = {
@@ -811,7 +846,7 @@ const Explore = () => {
       //The Minicard Layout
       <TouchableOpacity
         style={[styles.eventMiniCard, { backgroundColor: darkCard.card, borderColor: darkCard.border }]}
-        onPress={() => router.push(`/(root)/event/${item.$id}?from=explore` as any)}
+        onPress={() => router.push(`/event/${item.$id}?from=explore` as any)}
       >
         <LinearGradient colors={['#FF6B6B', '#FFD166']} style={styles.eventMiniEmoji}>
           <Text style={styles.eventEmojiSmall}>{getEventEmoji(item.tags)}</Text>
@@ -827,7 +862,7 @@ const Explore = () => {
           {/* Date (In number of days from today)*/}
           <Text style={[styles.eventMiniMeta, { color: darkCard.textSecondary }]}>{dayjs(item.startTime).fromNow()}</Text>
         </View>
-        <TouchableOpacity style={styles.goIconSmall} onPress={() => router.push(`/(root)/event/${item.$id}?from=explore` as any)}>
+        <TouchableOpacity style={styles.goIconSmall} onPress={() => router.push(`/event/${item.$id}?from=explore` as any)}>
           <MaterialIcons name="arrow-forward" size={18} color={darkCard.primary} />
         </TouchableOpacity>
       </TouchableOpacity>
@@ -836,7 +871,8 @@ const Explore = () => {
 
   // Handler for attending an event (not used in UI here, but available)
   const handleAttendEvent = async (event: any) => {
-    if (!event.inviteeIds?.includes(userId)) {
+    // Use inviteCount when available, otherwise fallback to legacy inviteeIds check
+    if (!(typeof event.inviteCount === 'number' ? (event.inviteCount > 0 && (Array.isArray(event.inviteeIds) ? event.inviteeIds.includes(userId) : true)) : (Array.isArray(event.inviteeIds) && event.inviteeIds.includes(userId)))) {
       try {
         // Create attendance record and remove any invitation records
         await addEventAttendee(event.$id || event.id, userId);
@@ -1223,12 +1259,77 @@ const Explore = () => {
                 </TouchableOpacity>
               ))
             ) : (
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.emptyState}>
-                  <MaterialIcons name="event" size={48} color={colors.textSecondary} />
-                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No events found</Text>
+              // If grouping produced no sections but we still have filtered events, show a vertical fallback list
+              groupedSections.length > 0 ? (
+                groupedSections.map(section => (
+                  <View key={section.key} style={styles.categorySection}>
+                    <View style={styles.categoryHeader}>
+                      <Text style={[styles.sectionHeaderTitle, { color: colors.text }]}>{section.emoji} {section.label}</Text>
+                      <TouchableOpacity onPress={() => console.log('See all', section.key)}>
+                        <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <FlatList
+                      data={section.events}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyExtractor={(it) => it.$id}
+                      renderItem={renderHorizontalEventCard}
+                      contentContainerStyle={styles.horizontalList}
+                    />
+                  </View>
+                ))
+              ) : filteredEvents.length > 0 ? (
+                // Vertical fallback: render each filtered event
+                filteredEvents.map((event) => (
+                  <TouchableOpacity
+                    key={event.$id}
+                    onPress={() => router.push(`/event/${event.$id}`)}
+                    style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  >
+                    <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={styles.feedThumb}>
+                      <Text style={styles.eventEmojiThumb}>{getEventEmoji(event.tags)}</Text>
+                    </LinearGradient>
+
+                    <View style={styles.feedBody}>
+                      <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{event.title}</Text>
+
+                      <View style={styles.feedMetaRow}>
+                        <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
+                        <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{dayjs(event.startTime).format('DD MMM, YYYY')}</Text>
+                        <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
+                        <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
+                        <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{event.location || ''}</Text>
+                      </View>
+
+                      <View style={styles.feedSubRow}>
+                        <UserAvatar photoUrl={creatorPhotoUrls[event.creatorId] || null} name={event.creatorName} size={28} />
+                        <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{event.creatorName || 'Unknown'}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.feedRightCol}>
+                      {((event as any).price !== undefined && (event as any).price !== null) ? (
+                        <View style={styles.pricePill}>
+                          <Text style={styles.priceText}>${(event as any).price}</Text>
+                        </View>
+                      ) : null}
+
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{(typeof event.attendeeCount === 'number' ? event.attendeeCount : (event.attendees?.length || 0))} attending</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={styles.emptyState}>
+                    <MaterialIcons name="event" size={48} color={colors.textSecondary} />
+                    <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No events found</Text>
+                  </View>
                 </View>
-              </View>
+              )
             )
           ) : (
             // Default Explore: grouped category horizontal lists (same as Feed)

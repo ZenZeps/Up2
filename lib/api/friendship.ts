@@ -269,6 +269,14 @@ export async function cancelFriendRequest(fromUserId: string, toUserId: string):
  */
 export async function getUserFriends(userId: string): Promise<string[]> {
     try {
+        // Guard: if collection id is clearly a placeholder, log and return empty to avoid noisy errors in prod
+        const friendshipIdStr = String(config.userFriendshipsCollectionID || '');
+        authDebug.debug('Using userFriendshipsCollectionID', { collectionId: friendshipIdStr });
+
+        if (!friendshipIdStr || /^temp|YOUR_|placeholder_/i.test(friendshipIdStr)) {
+            authDebug.error('getUserFriends aborted: userFriendshipsCollectionID appears to be a placeholder or missing', { userId, collectionId: config.userFriendshipsCollectionID });
+            return [];
+        }
         const response = await databases.listDocuments(
             config.databaseID!,
             config.userFriendshipsCollectionID!,

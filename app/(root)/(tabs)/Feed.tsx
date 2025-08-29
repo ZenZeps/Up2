@@ -30,7 +30,11 @@ import { useEvents } from '../context/EventContext';
 dayjs.extend(relativeTime);
 
 // Combined feed item type
-type FeedItem = (AppEvent & { type: 'event'; creatorName?: string }) | (TravelAnnouncementWithUserInfo & { type: 'travel' });
+// Local extended event type used in the UI layer during migration. This keeps the runtime shape
+// (attendees/inviteeIds may be present temporarily) without changing the central Event type.
+type ExtendedEvent = AppEvent & { attendees?: string[]; inviteeIds?: string[]; isAttending?: boolean; attendeeCount?: number; creatorName?: string };
+
+type FeedItem = (ExtendedEvent & { type: 'event' }) | (TravelAnnouncementWithUserInfo & { type: 'travel' });
 export default function Feed() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -38,7 +42,7 @@ export default function Feed() {
   const { user: globalUser } = useGlobalContext();
   const router = useRouter();
   const params = useLocalSearchParams();
-  const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<AppEvent[]>([]);
+  const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<ExtendedEvent[]>([]);
   const [travelAnnouncements, setTravelAnnouncements] = useState<TravelAnnouncementWithUserInfo[]>([]);
   const [friendProfiles, setFriendProfiles] = useState<any[]>([]);
   const [friendPhotoUrls, setFriendPhotoUrls] = useState<Record<string, string | null>>({});
@@ -50,10 +54,21 @@ export default function Feed() {
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [creatorPhotoUrls, setCreatorPhotoUrls] = useState<Record<string, string | null>>({});
   const backgroundRevalidating = useRef(false);
+  const lastFeedFetch = useRef<number>(0);
+  const MIN_FETCH_INTERVAL = 30 * 1000; // 30s rate limit for automatic fetches
+  const attendingCache = useRef<Map<string, { ids: Set<string>; ts: number }>>(new Map());
+  const ATTENDING_CACHE_TTL = 60 * 1000; // 60s
 
   // Optimized fetch function for scalability (clean SWR-first implementation)
-  const fetchFeedData = useCallback(async () => {
+  const fetchFeedData = useCallback(async (force: boolean = false) => {
     if (!globalUser?.$id) return;
+    // Rate limit automatic fetches to avoid repeated DB reads
+    if (!force && Date.now() - lastFeedFetch.current < MIN_FETCH_INTERVAL) {
+      console.log('Feed: skipping fetch - rate limited');
+      return;
+    }
+
+    lastFeedFetch.current = Date.now();
     setRefreshing(true);
     setCurrentUserId(globalUser.$id);
 
@@ -89,10 +104,17 @@ export default function Feed() {
             .filter((ev: any) => new Date(ev.endTime || ev.date) >= now);
 
           // Fetch the user's attending events quickly so we can filter cached feed before rendering
+          // Get attending IDs from cache or fetch and cache them
           let attendingIds = new Set<string>();
           try {
-            const attendingEventsForUser = await getUserAttendingEvents(globalUser.$id);
-            attendingIds = new Set(attendingEventsForUser.map((a: any) => a.$id));
+            const cached = attendingCache.current.get(globalUser.$id || '');
+            if (cached && Date.now() - cached.ts < ATTENDING_CACHE_TTL) {
+              attendingIds = new Set(cached.ids);
+            } else {
+              const attendingEventsForUser = await getUserAttendingEvents(globalUser.$id);
+              attendingIds = new Set(attendingEventsForUser.map((a: any) => a.$id));
+              attendingCache.current.set(globalUser.$id || '', { ids: attendingIds, ts: Date.now() });
+            }
           } catch (err) {
             console.warn('Feed: failed to load attending events for cached flow', err);
           }
@@ -126,19 +148,36 @@ export default function Feed() {
               const creatorProfiles = await batchProcess(uniqueCreatorIds, async (batch: string[]) => await getUsersByIds(batch), 25);
               const creatorMap = new Map(creatorProfiles.flat().map((profile: any) => [profile.$id, userDisplayUtils.getFullName(profile)]));
 
+              // Limit profile photo fetches to a small number to avoid many DB reads
               const creatorPhotoMap: Record<string, string | null> = {};
-              await Promise.all(uniqueCreatorIds.map(async (creatorId: string) => {
+              const PHOTO_FETCH_LIMIT = 20;
+              const creatorIdsForPhotos = uniqueCreatorIds.slice(0, PHOTO_FETCH_LIMIT);
+              await Promise.all(creatorIdsForPhotos.map(async (creatorId: string) => {
                 try {
                   creatorPhotoMap[creatorId] = await getUserProfilePhotoUrl(creatorId);
                 } catch {
                   creatorPhotoMap[creatorId] = null;
                 }
               }));
+              // Ensure remaining creators have explicit null to avoid undefined lookups
+              uniqueCreatorIds.forEach(id => { if (!Object.prototype.hasOwnProperty.call(creatorPhotoMap, id)) creatorPhotoMap[id] = null; });
               setCreatorPhotoUrls(creatorPhotoMap);
 
               // Optimize attendance checks: fetch all attending event IDs once and use a Set for lookups
-              const attendingEventsForUser = await getUserAttendingEvents(globalUser.$id);
-              const attendingIds = new Set(attendingEventsForUser.map((a: any) => a.$id));
+              // Fetch attending IDs with cache to avoid repeated DB reads
+              let attendingIds = new Set<string>();
+              try {
+                const cached = attendingCache.current.get(globalUser.$id || '');
+                if (cached && Date.now() - cached.ts < ATTENDING_CACHE_TTL) {
+                  attendingIds = new Set(cached.ids);
+                } else {
+                  const attendingEventsForUser = await getUserAttendingEvents(globalUser.$id);
+                  attendingIds = new Set(attendingEventsForUser.map((a: any) => a.$id));
+                  attendingCache.current.set(globalUser.$id || '', { ids: attendingIds, ts: Date.now() });
+                }
+              } catch (err) {
+                console.warn('Feed: failed to load attending events during revalidation', err);
+              }
 
               // Batch fetch attendees for all relevant events to avoid per-event DB calls
               const eventIds = relevantFresh.map((ev: any) => ev.$id);
@@ -148,17 +187,16 @@ export default function Feed() {
                 .filter((ev: any) => new Date(ev.endTime || ev.date) >= new Date())
                 .map(async (event: any) => {
                   const isAttending = attendingIds.has(event.$id);
-                  let attendeesList: string[] = Array.isArray(event.attendees) ? event.attendees : [];
-                  let attendeeCount: number | undefined = typeof event.attendeeCount === 'number' ? event.attendeeCount : (attendeesList.length > 0 ? attendeesList.length : undefined);
-                  if ((attendeeCount === undefined || attendeeCount === 0) && !Array.isArray(event.attendees)) {
-                    try {
-                      const junctionAttendees = attendeesMap[event.$id] || [];
-                      attendeesList = Array.isArray(junctionAttendees) ? junctionAttendees : [];
-                      attendeeCount = attendeesList.length;
-                    } catch (err) {
-                      attendeeCount = attendeeCount ?? 0;
-                    }
+                  // Prefer junction table attendees when available, otherwise fallback to legacy in-document attendees
+                  let attendeesList: string[] = [];
+                  const junctionAttendees = Array.isArray(attendeesMap[event.$id]) ? attendeesMap[event.$id] : [];
+                  if (junctionAttendees.length > 0) {
+                    attendeesList = junctionAttendees;
+                  } else {
+                    // Do not treat legacy in-document attendees as primary source; use only as a guarded fallback
+                    attendeesList = Array.isArray(event.attendees) ? event.attendees : [];
                   }
+                  let attendeeCount: number | undefined = typeof event.attendeeCount === 'number' ? event.attendeeCount : (junctionAttendees.length > 0 ? junctionAttendees.length : (Array.isArray(event.attendees) ? event.attendees.length : undefined));
                   return {
                     ...(event as unknown as AppEvent),
                     creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
@@ -227,18 +265,33 @@ export default function Feed() {
       const creatorMapSync = new Map(creatorProfilesSync.flat().map((p: any) => [p.$id, userDisplayUtils.getFullName(p)]));
 
       const creatorPhotoMapSync: Record<string, string | null> = {};
-      await Promise.all(uniqueCreatorIdsSync.map(async (creatorId: string) => {
+      const PHOTO_FETCH_LIMIT = 20;
+      const creatorIdsForPhotosSync = uniqueCreatorIdsSync.slice(0, PHOTO_FETCH_LIMIT);
+      await Promise.all(creatorIdsForPhotosSync.map(async (creatorId: string) => {
         try {
           creatorPhotoMapSync[creatorId] = await getUserProfilePhotoUrl(creatorId);
         } catch {
           creatorPhotoMapSync[creatorId] = null;
         }
       }));
+      uniqueCreatorIdsSync.forEach(id => { if (!Object.prototype.hasOwnProperty.call(creatorPhotoMapSync, id)) creatorPhotoMapSync[id] = null; });
       setCreatorPhotoUrls(creatorPhotoMapSync);
 
       // Optimize attendance checks for synchronous fetch as well
-      const attendingEventsForUserSync = await getUserAttendingEvents(globalUser.$id);
-      const attendingIdsSync = new Set(attendingEventsForUserSync.map((a: any) => a.$id));
+      // Use cache for attending IDs in synchronous flow
+      let attendingIdsSync = new Set<string>();
+      try {
+        const cached = attendingCache.current.get(globalUser.$id || '');
+        if (cached && Date.now() - cached.ts < ATTENDING_CACHE_TTL) {
+          attendingIdsSync = new Set(cached.ids);
+        } else {
+          const attendingEventsForUserSync = await getUserAttendingEvents(globalUser.$id);
+          attendingIdsSync = new Set(attendingEventsForUserSync.map((a: any) => a.$id));
+          attendingCache.current.set(globalUser.$id || '', { ids: attendingIdsSync, ts: Date.now() });
+        }
+      } catch (err) {
+        console.warn('Feed: failed to load attending events for sync flow', err);
+      }
 
       // Batch fetch attendees for relevant events
       const eventIdsSync = relevantEvents.map((ev: any) => ev.$id);
@@ -248,17 +301,15 @@ export default function Feed() {
         .filter((ev: any) => new Date(ev.endTime || ev.date) >= new Date())
         .map(async (event: any) => {
           const isAttending = attendingIdsSync.has(event.$id);
-          let attendeesList: string[] = Array.isArray(event.attendees) ? event.attendees : [];
-          let attendeeCount: number | undefined = typeof event.attendeeCount === 'number' ? event.attendeeCount : (attendeesList.length > 0 ? attendeesList.length : undefined);
-          if ((attendeeCount === undefined || attendeeCount === 0) && !Array.isArray(event.attendees)) {
-            try {
-              const junctionAttendees = attendeesMapSync[event.$id] || [];
-              attendeesList = Array.isArray(junctionAttendees) ? junctionAttendees : [];
-              attendeeCount = attendeesList.length;
-            } catch (err) {
-              attendeeCount = attendeeCount ?? 0;
-            }
+          // Prefer junction table attendees when available, otherwise fallback to legacy in-document attendees
+          let attendeesList: string[] = [];
+          const junctionAttendees = Array.isArray(attendeesMapSync[event.$id]) ? attendeesMapSync[event.$id] : [];
+          if (junctionAttendees.length > 0) {
+            attendeesList = junctionAttendees;
+          } else {
+            attendeesList = Array.isArray(event.attendees) ? event.attendees : [];
           }
+          let attendeeCount: number | undefined = typeof event.attendeeCount === 'number' ? event.attendeeCount : (junctionAttendees.length > 0 ? junctionAttendees.length : (Array.isArray(event.attendees) ? event.attendees.length : undefined));
           return {
             ...(event as unknown as AppEvent),
             creatorName: creatorMapSync.get(event.creatorId) || 'Unknown Creator',
@@ -378,25 +429,26 @@ export default function Feed() {
     Linking.openURL(url);
   };
 
-  const handleAttend = async (event: AppEvent) => {
+  const handleAttend = async (event: ExtendedEvent) => {
     if (!currentUserId) return;
-    if (event.attendees?.includes(currentUserId)) {
+    // Prefer junction-based flag when available, fallback to legacy array check
+    // Rely on the precomputed isAttending flag. Legacy per-document arrays have been deprecated.
+    if (event.isAttending) {
       Alert.alert('Info', 'You are already attending this event.');
       return;
     }
 
     try {
-      const updatedAttendees = [...(event.attendees || []), currentUserId];
-      // Use updateEvent function to ensure all required fields are included
       await addEventAttendee(event.$id, currentUserId);
-      // Update the local state to reflect the change
+      // Update the local state conservatively: increment attendeeCount and mark attending
       setEventsWithCreatorNames(prevEvents =>
         prevEvents.map(e =>
-          e.$id === event.$id ? { ...e, attendees: updatedAttendees, isAttending: true } : e
+          e.$id === event.$id
+            ? { ...e, attendeeCount: (typeof e.attendeeCount === 'number' ? e.attendeeCount + 1 : 1), isAttending: true }
+            : e
         )
       );
       Alert.alert('Success', 'You are now attending this event!');
-      refetchEvents();
     } catch (err) {
       console.error('Attend event error:', err);
       Alert.alert('Error', 'Failed to attend event');
@@ -415,21 +467,20 @@ export default function Feed() {
     }
   };
 
-  const handleNotAttend = async (event: AppEvent) => {
+  const handleNotAttend = async (event: ExtendedEvent) => {
     if (!currentUserId) return;
 
     try {
-      const updatedAttendees = (event.attendees || []).filter((id: string) => id !== currentUserId);
-      // Use updateEvent function to ensure all required fields are included
       await removeEventAttendee(event.$id, currentUserId);
-      // Update the local state to reflect the change
+      // Update local state conservatively: decrement attendeeCount (floor at 0) and mark not attending
       setEventsWithCreatorNames(prevEvents =>
         prevEvents.map(e =>
-          e.$id === event.$id ? { ...e, attendees: updatedAttendees, isAttending: false } : e
+          e.$id === event.$id
+            ? { ...e, attendeeCount: Math.max(0, (typeof e.attendeeCount === 'number' ? e.attendeeCount - 1 : 0)), isAttending: false }
+            : e
         )
       );
       Alert.alert('Success', 'You are no longer attending this event.');
-      refetchEvents();
     } catch (err) {
       console.error('Not attend event error:', err);
       Alert.alert('Error', 'Failed to un-attend event');
@@ -483,9 +534,8 @@ export default function Feed() {
       };
 
       return (
-        <TouchableOpacity
+        <View
           style={[styles.eventMiniCard, { backgroundColor: darkCard.card, borderColor: darkCard.border }]}
-          onPress={() => router.push(`/(root)/event/${item.$id}?from=feed` as any)}
         >
           <LinearGradient colors={['#FF6B6B', '#FFD166']} style={styles.eventMiniEmoji}>
             <Text style={styles.eventEmojiSmall}>{getEventEmoji(item.tags)}</Text>
@@ -494,25 +544,25 @@ export default function Feed() {
             <Text style={[styles.eventMiniTitle, { color: darkCard.text }]} numberOfLines={2}>{item.title}</Text>
             <Text style={[styles.eventMiniMeta, { color: darkCard.textSecondary }]}>{dayjs(item.startTime).fromNow()}</Text>
           </View>
-          <TouchableOpacity style={styles.goIconSmall} onPress={() => router.push(`/(root)/event/${item.$id}?from=feed` as any)}>
+          <View style={styles.goIconSmall}>
             <MaterialIcons name="arrow-forward" size={18} color={darkCard.primary} />
-          </TouchableOpacity>
-        </TouchableOpacity>
+          </View>
+        </View>
       );
     })()
   );
 
   // Friend bubbles bar (horizontal scroll) - friends with new events ordered first
   const renderFriendBubble = (friend: any) => (
-    <TouchableOpacity key={friend.$id} style={styles.friendBubble} onPress={() => router.push(`/(root)/UserProfile/${friend.$id}` as any)}>
+    <View key={friend.$id} style={styles.friendBubble}>
       <UserAvatar photoUrl={friendPhotoUrls[friend.$id] || null} name={userDisplayUtils.getFullName(friend)} size={48} />
-    </TouchableOpacity>
+    </View>
   );
 
   const renderEventItem = ({ item }: { item: AppEvent & { creatorName?: string } }) => {
     return (
       <TouchableOpacity
-        onPress={() => router.push(`/(root)/event/${item.$id}?from=feed` as any)}
+        onPress={() => router.push(`/event/${item.$id}?from=feed` as any)}
         style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
       >
         <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={styles.feedThumb}>
@@ -544,7 +594,7 @@ export default function Feed() {
           ) : null}
 
           <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{(typeof item.attendeeCount === 'number' ? item.attendeeCount : (item.attendees?.length || 0))} attending</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{(item as any).attendeeCount ?? 0} attending</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -649,9 +699,8 @@ export default function Feed() {
       <View style={[styles.feedContent, { paddingBottom: 70 + insets.bottom }]}>
         {/* Compact friends summary (replaces large friend bubble bar) */}
         {friendProfiles.length > 0 && (
-          <TouchableOpacity
+          <View
             style={[styles.feedFriendSummary, { backgroundColor: colors.background }]}
-            onPress={() => router.push('/Friends' as any)}
           >
             <View style={styles.friendOverlapRow}>
               {friendProfiles.slice(0, 4).map((f, idx) => (
@@ -664,7 +713,7 @@ export default function Feed() {
               <Text style={{ color: colors.text, fontWeight: '700' }}>{friendProfiles.length} friends</Text>
               <Text style={{ color: colors.textSecondary, fontSize: 12 }}>See events from your friends</Text>
             </View>
-          </TouchableOpacity>
+          </View>
         )}
 
         {/* Main events FlatList (condensed chronological list) */}
@@ -699,7 +748,7 @@ export default function Feed() {
                       <Text style={[styles.creatorName, { color: colors.text }]}>{item.userName}</Text>
                       <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>{dayjs(item.startDate).fromNow()}</Text>
                     </View>
-                    <TouchableOpacity style={styles.moreButton} onPress={() => router.push(`/(root)/event/${item.$id}?from=feed` as any)}>
+                    <TouchableOpacity style={styles.moreButton} onPress={() => router.push(`/event/${item.$id}?from=feed` as any)}>
                       <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
                     </TouchableOpacity>
                   </View>

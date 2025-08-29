@@ -113,13 +113,21 @@ export default function UserCalendar() {
 
                     if (!isEventRelatedToUser) return null;
 
-                    // If event is private, only show if current user has access
+                    // If event is private, only show if the target user has access. Prefer junction checks for invitations/attendance.
                     if (event.isPrivate) {
-                        const currentUserHasAccess = event.creatorId === user.$id || // User is creator
-                            (event.inviteeIds && event.inviteeIds.includes(user.$id)) || // User is invited
-                            await isUserAttendingEvent(user.$id, event.$id); // User is attending
+                        // Prefer junction-based access checks; fallback to legacy invite array only if necessary
+                        let hasAccess = event.creatorId === user.$id;
+                        try {
+                            const attending = await isUserAttendingEvent(user.$id, event.$id);
+                            hasAccess = hasAccess || Boolean(attending);
+                        } catch (e) {
+                            // ignore and fallback to legacy invites
+                        }
 
-                        if (!currentUserHasAccess) return null;
+                        if (!hasAccess) {
+                            const isInvitedLegacy = Array.isArray((event as any).inviteeIds) && (event as any).inviteeIds.includes(user.$id);
+                            if (!isInvitedLegacy) return null;
+                        }
                     }
 
                     return event;
@@ -174,7 +182,7 @@ export default function UserCalendar() {
             setEvents(prevEvents =>
                 prevEvents.map(e =>
                     e.$id === event.$id
-                        ? { ...e, attendees: [...(e.attendees || []), currentUserId], isAttending: true }
+                        ? { ...e, attendeeCount: (typeof e.attendeeCount === 'number' ? e.attendeeCount + 1 : ((Array.isArray((e as any).attendees) ? (e as any).attendees.length + 1 : 1))), isAttending: true }
                         : e
                 )
             );
@@ -199,7 +207,7 @@ export default function UserCalendar() {
             setEvents(prevEvents =>
                 prevEvents.map(e =>
                     e.$id === event.$id
-                        ? { ...e, attendees: (e.attendees || []).filter((id: string) => id !== currentUserId), isAttending: false }
+                        ? { ...e, attendeeCount: Math.max(0, (typeof e.attendeeCount === 'number' ? e.attendeeCount - 1 : ((Array.isArray((e as any).attendees) ? (e as any).attendees.length - 1 : 0)))), isAttending: false }
                         : e
                 )
             );

@@ -110,7 +110,12 @@ export async function debugUserEvents() {
                 console.log(`    Title: ${event.title}`);
                 console.log(`    Creator: ${event.creatorId}`);
                 console.log(`    Start: ${event.startTime}`);
-                console.log(`    Attendees: ${event.attendees?.length || 0}`);
+                // Prefer denormalized attendeeCount when present; otherwise fall back to legacy arrays
+                const attendeeCount = typeof (event as any).attendeeCount === 'number'
+                    ? (event as any).attendeeCount
+                    : (Array.isArray((event as any).attendees) ? (event as any).attendees.length : 0);
+
+                console.log(`    Attendees: ${attendeeCount}`);
                 console.log(`    Tags: ${event.tags?.join(', ') || 'No tags'}`);
             });
         } else {

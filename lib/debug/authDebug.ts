@@ -71,7 +71,10 @@ const lastLogTimestamps: Map<string, number> = new Map();
 const SUPPRESSION_WINDOW_MS: Record<LogLevel, number> = {
     debug: 500,
     info: 1000,
-    warn: 0,
+    // Suppress repeated WARN messages for a short window to avoid log spam from
+    // predictable/deprecated routes or transient missing documents.
+    warn: 2000,
+    // Keep errors always logged
     error: 0,
 };
 

@@ -47,7 +47,20 @@ export default function PublicInviteLanding() {
                 config.eventsCollectionID!,
                 eventId
             );
-            setEvent(eventData as unknown as EventDetails);
+
+            // Prefer junction-based attendee lookup when available, but keep legacy fallback
+            let combinedEvent = eventData as unknown as EventDetails & { attendeeCount?: number };
+            try {
+                const { getEventAttendees } = await import('../lib/api/event');
+                const attendees = await getEventAttendees(eventId);
+                if (Array.isArray(attendees)) {
+                    combinedEvent = { ...combinedEvent, attendeeCount: attendees.length };
+                }
+            } catch (e) {
+                // Ignore - fall back to legacy attendees array on the event doc if present
+            }
+
+            setEvent(combinedEvent as EventDetails);
 
         } catch (error) {
             console.error('Error loading invite data:', error);
@@ -190,7 +203,7 @@ export default function PublicInviteLanding() {
                     {/* Attendee Count */}
                     <View className="mt-4 pt-4 border-t border-gray-100">
                         <Text className="text-gray-600 font-rubik-medium">
-                            {(event.attendees?.length || 0)} people attending
+                            {((typeof (event as any).attendeeCount === 'number') ? (event as any).attendeeCount : (event.attendees?.length || 0))} people attending
                         </Text>
                     </View>
                 </View>

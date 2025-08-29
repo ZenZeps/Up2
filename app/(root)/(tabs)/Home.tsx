@@ -1,6 +1,7 @@
-import { getEventColor } from '@/constants/categories';
-import { addEventAttendee, enrichEventsWithGroupNames, getEventAttendeeCount, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
+import { getEventColor, getEventEmoji } from '@/constants/categories';
+import { addEventAttendee, enrichEventsWithGroupNames, getEventAttendeeCount, getEventInvitees, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
 import { getUserGroupInvites } from '@/lib/api/group';
+import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getActiveTravelForUser } from '@/lib/api/travel';
 import { getUsersByIds } from '@/lib/api/user';
 import { useAppwrite } from '@/lib/appwrite/useAppwrite';
@@ -21,6 +22,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import EventDetailsModal from '../components/EventDetailsModal';
 import EventForm from '../components/EventForm';
 import MessageModal from '../components/MessageModal';
+import UserAvatar from '../components/UserAvatar';
 import { EventsContext } from '../context/EventContext';
 
 // Define available calendar view modes
@@ -222,6 +224,42 @@ export default function Home() {
     skip: !creatorIds.length,
   });
 
+  // Creator profile photos (small set) to render avatars in feed-style cards
+  const [creatorPhotoUrls, setCreatorPhotoUrls] = useState<Record<string, string | null>>({});
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        if (!creatorIds || creatorIds.length === 0) {
+          if (mounted) setCreatorPhotoUrls({});
+          return;
+        }
+
+        const PHOTO_FETCH_LIMIT = 20;
+        const idsForPhotos = creatorIds.slice(0, PHOTO_FETCH_LIMIT);
+        const map: Record<string, string | null> = {};
+
+        await Promise.all(idsForPhotos.map(async (id) => {
+          try {
+            map[id] = await getUserProfilePhotoUrl(id);
+          } catch {
+            map[id] = null;
+          }
+        }));
+
+        // Ensure remaining ids have explicit null to avoid undefined
+        creatorIds.forEach(id => { if (!Object.prototype.hasOwnProperty.call(map, id)) map[id] = null; });
+
+        if (mounted) setCreatorPhotoUrls(map);
+      } catch (err) {
+        if (mounted) setCreatorPhotoUrls({});
+      }
+    })();
+
+    return () => { mounted = false; };
+  }, [creatorIds]);
+
   // Create a stable function to get creator name with caching
   const getCreatorName = React.useCallback((creatorId: string): string => {
     return creatorNameCache.get(creatorId) || 'Unknown Creator';
@@ -275,21 +313,41 @@ export default function Home() {
   }, [events, currentUser]);
 
   // Check for pending invites (both event and group invites)
-  const hasInvites = useMemo(() => {
-    if (!currentUser?.$id || !events || events.length === 0) return false;
+  const [hasInvites, setHasInvites] = useState<boolean>(false);
+  useEffect(() => {
+    let mounted = true;
+    const computeInvites = async () => {
+      if (!currentUser?.$id || !events || events.length === 0) {
+        if (mounted) setHasInvites(false);
+        return;
+      }
 
-    // Check for event invites
-    const hasEventInvites = events.some(event =>
-      event.creatorId !== currentUser.$id &&
-      event.inviteeIds &&
-      Array.isArray(event.inviteeIds) &&
-      event.inviteeIds.includes(currentUser.$id)
-    );
+      let hasEventInvites = false;
+      try {
+        for (const event of events) {
+          if (event.creatorId === currentUser.$id) continue;
+          if (typeof event.inviteCount === 'number' && event.inviteCount === 0) continue;
+          try {
+            const invitees = await getEventInvitees(event.$id);
+            if (Array.isArray(invitees) && invitees.includes(currentUser.$id)) {
+              hasEventInvites = true;
+              break;
+            }
+          } catch (err) {
+            // ignore and continue
+          }
+        }
+      } catch (err) {
+        console.warn('Home: failed to compute event invites via junctions', err);
+        hasEventInvites = false;
+      }
 
-    // Check for group invites
-    const hasGroupInvites = groupInvites.length > 0;
+      const hasGroupInvites = groupInvites.length > 0;
+      if (mounted) setHasInvites(hasEventInvites || hasGroupInvites);
+    };
 
-    return hasEventInvites || hasGroupInvites;
+    computeInvites();
+    return () => { mounted = false; };
   }, [events, currentUser, groupInvites]);
 
   // Fetch group invites
@@ -783,43 +841,36 @@ export default function Home() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Enhanced Header with Black Gradient */}
-      <View style={styles.header}>
-        <LinearGradient
-          colors={['#000000', '#1a1a1a', '#2d2d2d']}
-          start={[0, 0]}
-          end={[1, 1]}
-          style={styles.headerGradient}
-        >
-          <View style={styles.headerContent}>
-            <Text style={styles.headerTitle}>UP2</Text>
-            <View style={styles.headerButtonsContainer}>
-              <TouchableOpacity
-                onPress={handleCreateEventPress}
-                style={[
-                  styles.headerButton,
-                  { marginRight: 12 }
-                ]}
-              >
-                <MaterialIcons name="add" size={24} color="white" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => router.push('/(root)/Invites')}
-                style={styles.headerButton}
-              >
-                <MaterialIcons
-                  name="notifications"
-                  size={24}
-                  color={hasInvites ? '#FF3B30' : 'white'}
-                />
-                {hasInvites && (
-                  <View style={styles.notificationDot} />
-                )}
-              </TouchableOpacity>
-            </View>
+      {/* Header matching Feed styles */}
+      <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={[styles.headerGradient]}>
+        <View style={styles.headerContent}>
+          <Text style={[styles.headerTitle, { color: '#fff' }]}>UP2 YOU</Text>
+          <View style={styles.headerButtonsContainer}>
+            <TouchableOpacity
+              onPress={handleCreateEventPress}
+              style={[
+                styles.headerButton,
+                { marginRight: 12 }
+              ]}
+            >
+              <MaterialIcons name="add" size={24} color="white" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/(root)/Invites')}
+              style={styles.headerButton}
+            >
+              <MaterialIcons
+                name="notifications"
+                size={24}
+                color={hasInvites ? '#FF3B30' : 'white'}
+              />
+              {hasInvites && (
+                <View style={styles.notificationDot} />
+              )}
+            </TouchableOpacity>
           </View>
-        </LinearGradient>
-      </View>
+        </View>
+      </LinearGradient>
 
       {/* Modern Tab Navigation */}
       <View style={[styles.tabContainer, { borderBottomColor: colors.border }]}>
@@ -898,47 +949,31 @@ export default function Home() {
                       color: getEventColor(item.tags || []),
                       rawEvent: item
                     })}
+                    style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                   >
-                    <View style={[styles.agendaCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                      <View style={styles.agendaHeader}>
-                        <Text style={[styles.agendaTitle, { color: colors.text }]} numberOfLines={2}>
-                          {item.title}
-                        </Text>
-                        <View style={[styles.eventColorDot, { backgroundColor: getEventColor(item.tags || []) || colors.primary }]} />
+                    <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={styles.feedThumb}>
+                      <Text style={styles.eventEmojiThumb}>{getEventEmoji(item.tags)}</Text>
+                    </LinearGradient>
+
+                    <View style={styles.feedBody}>
+                      <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
+                      <View style={styles.feedMetaRow}>
+                        <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
+                        <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{new Date(item.startTime).toLocaleDateString()}</Text>
+                        <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
+                        <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
+                        <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
                       </View>
 
-                      <View style={styles.agendaMeta}>
-                        <View style={styles.agendaMetaRow}>
-                          <MaterialIcons name="access-time" size={16} color={colors.primary} />
-                          <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                            {new Date(item.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(item.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </Text>
-                        </View>
+                      <View style={styles.feedSubRow}>
+                        <UserAvatar photoUrl={creatorPhotoUrls[item.creatorId] || null} name={item.creatorId ? getCreatorName(item.creatorId) : 'Unknown'} size={28} />
+                        <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(item.creatorId)}</Text>
+                      </View>
+                    </View>
 
-                        <View style={styles.agendaMetaRow}>
-                          <MaterialIcons name="people" size={16} color={colors.primary} />
-                          <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                            {(item as any).attendeeCount || 0} attending
-                          </Text>
-                        </View>
-
-                        {(item as any).creatorName && (
-                          <View style={styles.agendaMetaRow}>
-                            <MaterialIcons name="person" size={16} color={colors.primary} />
-                            <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                              By {(item as any).creatorName}
-                            </Text>
-                          </View>
-                        )}
-
-                        {item.location && item.location !== 'No location' && (
-                          <View style={styles.agendaMetaRow}>
-                            <MaterialIcons name="location-on" size={16} color={colors.primary} />
-                            <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                              {item.location}
-                            </Text>
-                          </View>
-                        )}
+                    <View style={styles.feedRightCol}>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{(item as any).attendeeCount || 0} attending</Text>
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -1282,6 +1317,111 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
     marginBottom: 32,
+  },
+
+  // New horizontal feed row styles (copied from Feed.tsx)
+  feedRowCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 12,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  feedThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  eventEmojiThumb: {
+    fontSize: 28,
+  },
+  feedBody: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  feedTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  feedMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  feedMetaText: {
+    fontSize: 12,
+  },
+  feedSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  smallCreatorName: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  feedRightCol: {
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    height: 72,
+  },
+  pricePill: {
+    backgroundColor: '#fff0f0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  priceText: {
+    color: '#d64545',
+    fontWeight: '700',
+  },
+  joinButton: {
+    backgroundColor: '#1f6feb',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  joinButtonText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  // Compact friends summary styles
+  feedFriendSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  friendOverlapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  friendOverlap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  headerActionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)'
   },
   createEventButton: {
     flexDirection: 'row',

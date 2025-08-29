@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import images from '../../constants/images';
-import { addEventAttendee, removeEventInvitation } from '../../lib/api/event';
+import { addEventAttendee, getEventInvitees, isUserAttendingEvent, removeEventInvitation } from '../../lib/api/event';
 import { getUserProfile } from '../../lib/api/user';
 import { config, databases } from '../../lib/appwrite/appwrite';
 import { useGlobalContext } from '../../lib/global-provider';
@@ -74,7 +74,20 @@ export default function InviteLanding() {
                 config.eventsCollectionID!,
                 eventId
             );
-            setEvent(eventData as unknown as EventDetails);
+
+            // Prefer junction-based attendee lookup when available, but keep legacy fallback
+            let combinedEvent = eventData as unknown as EventDetails & { attendeeCount?: number };
+            try {
+                const { getEventAttendees } = await import('../../lib/api/event');
+                const attendees = await getEventAttendees(eventId);
+                if (Array.isArray(attendees)) {
+                    combinedEvent = { ...combinedEvent, attendeeCount: attendees.length };
+                }
+            } catch (e) {
+                // Ignore - fall back to legacy attendees array on the event doc if present
+            }
+
+            setEvent(combinedEvent as EventDetails);
 
             // Fetch inviter details
             if (inviter) {
@@ -82,11 +95,22 @@ export default function InviteLanding() {
                 setInviterDetails(inviterData);
             }
 
-            // Check if user is already invited or attending
+            // Check if user is already invited or attending. Prefer junction helpers when available.
             if (globalUser) {
-                const alreadyInvited = eventData.inviteeIds?.includes(globalUser.$id) ||
-                    eventData.attendees?.includes(globalUser.$id);
-                setIsAlreadyInvited(alreadyInvited);
+                try {
+                    const attending = await isUserAttendingEvent(globalUser.$id, eventId);
+                    if (attending) {
+                        setIsAlreadyInvited(true);
+                    } else {
+                        const invites = await getEventInvitees(eventId);
+                        setIsAlreadyInvited(Array.isArray(invites) && invites.includes(globalUser.$id));
+                    }
+                } catch (err) {
+                    // Fallback to legacy in-document arrays if junction helpers fail
+                    const legacyInvited = Array.isArray((eventData as any).inviteeIds) && (eventData as any).inviteeIds.includes(globalUser.$id);
+                    const legacyAttending = Array.isArray((eventData as any).attendees) && (eventData as any).attendees.includes(globalUser.$id);
+                    setIsAlreadyInvited(legacyInvited || legacyAttending);
+                }
             }
 
         } catch (error) {
@@ -120,7 +144,7 @@ export default function InviteLanding() {
             await removeEventInvitation(event.$id, currentUser.$id);
 
             Alert.alert('Success!', 'You\'ve accepted the invite and are now attending this event!');
-            router.push(`/(root)/event/${event.$id}`);
+            router.push(`/event/${event.$id}`);
         } catch (error) {
             console.error('Error accepting invite:', error);
             Alert.alert('Error', 'Failed to accept invite. Please try again.');
@@ -253,7 +277,7 @@ export default function InviteLanding() {
                     {/* Attendee Count */}
                     <View className="mt-4 pt-4 border-t border-gray-100">
                         <Text className="text-gray-600 font-rubik-medium">
-                            {(event.attendees?.length || 0)} people attending
+                            {(typeof (event as any).attendeeCount === 'number' ? (event as any).attendeeCount : (event.attendees?.length || 0))} people attending
                         </Text>
                     </View>
                 </View>
@@ -270,7 +294,7 @@ export default function InviteLanding() {
                                     </Text>
                                 </View>
                                 <TouchableOpacity
-                                    onPress={() => router.push(`/(root)/event/${event.$id}`)}
+                                    onPress={() => router.push(`/event/${event.$id}`)}
                                     className="bg-green-600 py-3 rounded-lg mt-3"
                                 >
                                     <Text className="text-white text-center font-rubik-semibold text-lg">

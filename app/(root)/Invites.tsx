@@ -1,4 +1,4 @@
-import { addEventAttendee, removeEventInvitation } from '@/lib/api/event';
+import { addEventAttendee, getEventInvitees, removeEventInvitation } from '@/lib/api/event';
 import { acceptFriendRequest, declineFriendRequest } from '@/lib/api/friendship';
 import { acceptGroupInvite, declineGroupInvite, getGroupById, getUserGroupInvites } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
@@ -265,37 +265,50 @@ export default function Invites() {
     }
   };
 
-  // Event invites: events where user is invited but not the creator
-  const invites = events.filter(
-    (event) =>
-      userId &&
-      event.inviteeIds.includes(userId) &&
-      event.creatorId !== userId
-  );
-
   const [invitesWithCreatorNames, setInvitesWithCreatorNames] = useState<any[]>([]);
 
   useEffect(() => {
-    const fetchCreatorNames = async () => {
-      const updatedInvites = await Promise.all(
-        invites.map(async (event) => {
-          let creatorProfile = null;
-          if (event.creatorId && typeof event.creatorId === 'string') {
-            try {
-              creatorProfile = await getUserProfile(event.creatorId);
-            } catch (error) {
-              console.error('Error fetching event creator profile:', event.creatorId, error);
+    let mounted = true;
+    const computeInvites = async () => {
+      if (!userId) return;
+      try {
+        const invitedEvents: any[] = [];
+        for (const event of events) {
+          if (event.creatorId === userId) continue;
+          try {
+            const inviteProfiles = await getEventInvitees(event.$id);
+            const isInvited = Array.isArray(inviteProfiles) ? inviteProfiles.some((u: any) => u.$id === userId) : false;
+            if (isInvited) invitedEvents.push(event);
+          } catch (err) {
+            // Fallback to legacy inviteeIds if junction query fails
+            if (Array.isArray(event.inviteeIds) && event.inviteeIds.includes(userId)) {
+              invitedEvents.push(event);
             }
           }
-          return { ...event, creatorName: userDisplayUtils.getFullName(creatorProfile || {}, 'Unknown User') };
-        })
-      );
-      setInvitesWithCreatorNames(updatedInvites);
+        }
+
+        if (!mounted) return;
+        const updatedInvites = await Promise.all(
+          invitedEvents.map(async (event) => {
+            let creatorProfile = null;
+            if (event.creatorId && typeof event.creatorId === 'string') {
+              try {
+                creatorProfile = await getUserProfile(event.creatorId);
+              } catch (error) {
+                console.error('Error fetching event creator profile:', event.creatorId, error);
+              }
+            }
+            return { ...event, creatorName: userDisplayUtils.getFullName(creatorProfile || {}, 'Unknown User') };
+          })
+        );
+        if (mounted) setInvitesWithCreatorNames(updatedInvites);
+      } catch (err) {
+        console.error('Error computing invites:', err);
+      }
     };
-    if (invites.length > 0) {
-      fetchCreatorNames();
-    }
-  }, [invites]);
+    computeInvites();
+    return () => { mounted = false; };
+  }, [events, userId]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>

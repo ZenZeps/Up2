@@ -445,7 +445,7 @@ const Profile = () => {
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.friendItemModern}
-                  onPress={() => router.push(`/(root)/UserProfile/${item.$id}` as any)}
+                  onPress={() => router.push(`/UserProfile/${item.$id}` as any)}
                 >
                   <View style={styles.friendAvatarWrap}>
                     <UserAvatar

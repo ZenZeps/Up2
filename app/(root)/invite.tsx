@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import images from '../../constants/images';
-import { addEventAttendee, removeEventInvitation } from '../../lib/api/event';
+import { addEventAttendee, getEventInvitees, isUserAttendingEvent, removeEventInvitation } from '../../lib/api/event';
 import { getUserProfile } from '../../lib/api/user';
 import { config, databases } from '../../lib/appwrite/appwrite';
 import { useGlobalContext } from '../../lib/global-provider';
@@ -49,7 +49,7 @@ export default function Invite() {
     useEffect(() => {
         if (Platform.OS !== 'web') {
             if (eventId) {
-                router.replace(`/(root)/event/${eventId}` as any);
+                router.replace(`/event/${eventId}` as any);
             } else {
                 router.replace('/(root)' as any);
             }
@@ -94,11 +94,30 @@ export default function Invite() {
                 setInviterDetails(inviterData);
             }
 
-            // Check if user is already invited or attending
+            // Check if user is already invited or attending (prefer junction table checks)
             if (globalUser) {
-                const alreadyInvited = eventData.inviteeIds?.includes(globalUser.$id) ||
-                    eventData.attendees?.includes(globalUser.$id);
-                setIsAlreadyInvited(alreadyInvited);
+                try {
+                    const attending = await isUserAttendingEvent(globalUser.$id, eventData.$id);
+                    if (attending) {
+                        setIsAlreadyInvited(true);
+                    } else {
+                        // Try junction invites list
+                        try {
+                            const inviteIds = await getEventInvitees(eventData.$id);
+                            setIsAlreadyInvited(Array.isArray(inviteIds) && inviteIds.includes(globalUser.$id));
+                        } catch (e) {
+                            // Fallback to legacy arrays
+                            const alreadyInvited = (Array.isArray((eventData as any).inviteeIds) && (eventData as any).inviteeIds.includes(globalUser.$id)) ||
+                                (Array.isArray((eventData as any).attendees) && (eventData as any).attendees.includes(globalUser.$id));
+                            setIsAlreadyInvited(alreadyInvited);
+                        }
+                    }
+                } catch (e) {
+                    // On error, fallback to legacy in-document arrays
+                    const alreadyInvited = (Array.isArray((eventData as any).inviteeIds) && (eventData as any).inviteeIds.includes(globalUser.$id)) ||
+                        (Array.isArray((eventData as any).attendees) && (eventData as any).attendees.includes(globalUser.$id));
+                    setIsAlreadyInvited(alreadyInvited);
+                }
             }
 
         } catch (error) {
@@ -133,7 +152,7 @@ export default function Invite() {
             await removeEventInvitation(event.$id, currentUser.$id);
 
             Alert.alert('Success!', 'You\'ve accepted the invite and are now attending this event!');
-            router.push(`/(root)/event/${event.$id}`);
+            router.push(`/event/${event.$id}`);
         } catch (error) {
             console.error('Error accepting invite:', error);
             Alert.alert('Error', 'Failed to accept invite. Please try again.');
@@ -278,7 +297,7 @@ export default function Invite() {
                     {/* Attendee Count */}
                     <View className="mt-4 pt-4 border-t border-gray-100">
                         <Text className="text-gray-600 font-rubik-medium">
-                            {(event.attendees?.length || 0)} people attending
+                            {(typeof (event as any).attendeeCount === 'number' ? (event as any).attendeeCount : (event.attendees?.length || 0))} people attending
                         </Text>
                     </View>
                 </View>
@@ -295,7 +314,7 @@ export default function Invite() {
                                     </Text>
                                 </View>
                                 <TouchableOpacity
-                                    onPress={() => router.push(`/(root)/event/${event.$id}`)}
+                                    onPress={() => router.push(`/event/${event.$id}`)}
                                     className="bg-green-600 py-3 rounded-lg mt-3"
                                 >
                                     <Text className="text-white text-center font-rubik-semibold text-lg">

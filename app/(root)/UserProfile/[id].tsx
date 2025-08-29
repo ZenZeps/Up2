@@ -134,14 +134,14 @@ const UserProfile = () => {
 
     const handleMessageUser = () => {
         // Navigate to conversation with this user
-        router.push(`/(root)/Messages/${userId}` as any);
+        router.push(`/Messages/${userId}` as any);
     };
 
     const handleViewCalendar = () => {
         try {
             console.log('Navigating to calendar for user:', userId);
             // Navigate to user's calendar page
-            router.push(`/(root)/UserCalendar/${userId}` as any);
+            router.push(`/UserCalendar/${userId}` as any);
         } catch (error) {
             console.error('Error navigating to calendar:', error);
         }
@@ -349,7 +349,7 @@ const UserProfile = () => {
                             renderItem={({ item }) => (
                                 <TouchableOpacity
                                     style={styles.friendItem}
-                                    onPress={() => router.push(`/(root)/UserProfile/${item.$id}` as any)}
+                                    onPress={() => router.push(`/UserProfile/${item.$id}` as any)}
                                 >
                                     <UserAvatar
                                         photoUrl={item.photoId ? getProfilePhotoUrl(item.photoId) : null}
