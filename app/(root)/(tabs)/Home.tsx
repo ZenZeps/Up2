@@ -9,10 +9,12 @@ import { useTheme } from '@/lib/context/ThemeContext';
 import { authDebug } from '@/lib/debug/authDebug';
 import { useGlobalContext } from '@/lib/global-provider';
 import { useActionTracker } from '@/lib/hooks/useOptimizedData';
+import { useRealTimeUI } from '@/lib/hooks/useRealTimeUI';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
 import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
+import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -163,6 +165,35 @@ export default function Home() {
   const [messageModalVisible, setMessageModalVisible] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userAttendingEvents, setUserAttendingEvents] = useState<AppEvent[]>([]);
+  // Re-render on real-time UI actions
+  const rtTick = useRealTimeUI();
+  // When real-time UI changes happen, reconcile the visible list
+  useEffect(() => {
+    if (!Array.isArray(userAttendingEvents)) return;
+    const pendingUnattend = new Set(realTimeUI.getEventIdsByAction('unattend'));
+    const pendingAttend = new Set(realTimeUI.getEventIdsByAction('attend'));
+    let next = userAttendingEvents.filter(e => !pendingUnattend.has(e.$id));
+    try {
+      const { events: globalEvents } = require('../context/EventContext');
+      if (Array.isArray(globalEvents)) {
+        const toAdd = (globalEvents as any[]).filter(ev => pendingAttend.has(ev.$id));
+        const map = new Map(next.map(e => [e.$id, e] as const));
+        toAdd.forEach(e => { if (!map.has(e.$id)) map.set(e.$id, e); });
+        next = Array.from(map.values());
+      }
+    } catch { }
+    setEnrichedEvents(next);
+
+    // Also update agendaEvents to show only upcoming events from the reactive list
+    const upcomingEvents = (next as any[]).filter((event: any) => {
+      const eventEndTime = new Date(event.endTime || event.startTime);
+      return eventEndTime > new Date();
+    });
+    upcomingEvents.sort((a: any, b: any) =>
+      new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+    setAgendaEvents(upcomingEvents);
+  }, [rtTick, userAttendingEvents]);
 
   // Track when data was last fetched to prevent unnecessary refetches
   const lastFetchTime = useRef<number>(0);
@@ -308,6 +339,9 @@ export default function Home() {
           }
         });
 
+        // Initialize real-time UI system with base attendance data
+        const attendingEventIds = attendingEvents.map(e => e.$id);
+
         setUserAttendingEvents(allUserEvents);
 
         // Cache the data for next time
@@ -322,7 +356,8 @@ export default function Home() {
       } catch (error) {
         authDebug.error('Error fetching user attending events for calendar:', error);
         // Fallback to events user created (better than nothing)
-        setUserAttendingEvents(events.filter((e: AppEvent) => e.creatorId === currentUser.$id));
+        const fallbackEvents = events.filter((e: AppEvent) => e.creatorId === currentUser.$id);
+        setUserAttendingEvents(fallbackEvents);
       }
     } else {
       // Use cached data
@@ -331,12 +366,12 @@ export default function Home() {
           const cachedEvents = getScreenEvents('home') || [];
           const userId = currentUser.$id;
           // Include both events user is attending AND events user created
-          const attendedFromCache = cachedEvents.filter(ev =>
+          const homeEvents = cachedEvents.filter(ev =>
             isUserAttendingHeuristic(ev, userId) || ev.creatorId === userId
           );
 
-          setUserAttendingEvents(attendedFromCache);
-          authDebug.debug(`Home: Loaded ${attendedFromCache.length} user events from ${strategy.cacheStrategy} cache`);
+          setUserAttendingEvents(homeEvents);
+          authDebug.debug(`Home: Loaded ${homeEvents.length} user events from ${strategy.cacheStrategy} cache`);
         } else {
           // Fallback to current logic for storage cache
           const loadedFlag = getScreenLoadedFromDb ? getScreenLoadedFromDb('home') : false;
@@ -481,7 +516,26 @@ export default function Home() {
             // Add existing events that are not already present
             existing.forEach(ev => { if (ev && ev.$id && !map.has(ev.$id)) map.set(ev.$id, ev); });
 
-            const merged = Array.from(map.values());
+            let merged = Array.from(map.values());
+
+            // Apply real-time UI filtering to respect pending actions
+            const pendingUnattend = new Set(realTimeUI.getEventIdsByAction('unattend'));
+            const pendingAttend = new Set(realTimeUI.getEventIdsByAction('attend'));
+
+            // Filter out events with pending unattend actions
+            merged = merged.filter(event => !pendingUnattend.has(event.$id));
+
+            // Add events with pending attend actions from global events context
+            try {
+              const { events: globalEvents } = require('../context/EventContext');
+              if (Array.isArray(globalEvents)) {
+                const toAdd = (globalEvents as any[]).filter(ev => pendingAttend.has(ev.$id));
+                const mergedMap = new Map(merged.map(e => [e.$id, e] as const));
+                toAdd.forEach(e => { if (!mergedMap.has(e.$id)) mergedMap.set(e.$id, e); });
+                merged = Array.from(mergedMap.values());
+              }
+            } catch { }
+
             authDebug.debug('Home: merged enriched events', { mergedCount: merged.length, mergedIds: merged.map((e: any) => e.$id).slice(0, 10) });
 
             // Set enriched events for calendar (all events)
@@ -926,36 +980,56 @@ export default function Home() {
   const handleEventAttend = useCallback(async () => {
     if (!selectedEvent || !currentUser?.$id) return;
 
-    try {
-      await addEventAttendee(selectedEvent.$id, currentUser.$id);
-      setDetailsModalVisible(false);
+    // Apply immediate UI feedback via realTimeUI
+    realTimeUI.applyAction(selectedEvent.$id, 'attend');
 
-      // Record the action and refresh data
+    // Update local state immediately
+    const updatedEvents = [...userAttendingEvents, selectedEvent];
+    setUserAttendingEvents(updatedEvents);
+
+    setDetailsModalVisible(false);
+
+    try {
+      // Perform the actual database update
+      await addEventAttendee(selectedEvent.$id, currentUser.$id);
+
+      // Record the action for cache invalidation
       await recordAction('attend', 'home_event_attended');
-      if (eventsContext) {
-        smartRefetchEvents('manual');
-      }
     } catch (error) {
       console.error('Error attending event:', error);
+
+      // Rollback on failure - remove from local state
+      const rolledBackEvents = userAttendingEvents.filter(e => e.$id !== selectedEvent.$id);
+      setUserAttendingEvents(rolledBackEvents);
     }
-  }, [selectedEvent, currentUser?.$id, eventsContext, smartRefetchEvents, recordAction]);
+  }, [selectedEvent, currentUser?.$id, userAttendingEvents, recordAction]);
 
   const handleEventNotAttend = useCallback(async () => {
     if (!selectedEvent || !currentUser?.$id) return;
 
-    try {
-      await removeEventAttendee(selectedEvent.$id, currentUser.$id);
-      setDetailsModalVisible(false);
+    // Apply immediate UI feedback via realTimeUI
+    realTimeUI.applyAction(selectedEvent.$id, 'unattend');
 
-      // Record the action and refresh data
+    // Update local state immediately
+    const updatedEvents = userAttendingEvents.filter(e => e.$id !== selectedEvent.$id);
+    setUserAttendingEvents(updatedEvents);
+
+    setDetailsModalVisible(false);
+
+    try {
+      // Perform the actual database update
+      await removeEventAttendee(selectedEvent.$id, currentUser.$id);
+
+      // Record the action for cache invalidation
       await recordAction('unattend', 'home_event_unattended');
-      if (eventsContext) {
-        smartRefetchEvents('manual');
-      }
     } catch (error) {
       console.error('Error not attending event:', error);
+
+      // Rollback on failure - add back to local state
+      const rolledBackEvents = [...userAttendingEvents, selectedEvent];
+      setUserAttendingEvents(rolledBackEvents);
     }
-  }, [selectedEvent, currentUser?.$id, eventsContext, smartRefetchEvents, recordAction]);
+  }, [selectedEvent, currentUser?.$id, userAttendingEvents, recordAction]);
 
   const handleEventChat = useCallback((event: AppEvent) => {
     setSelectedEvent(event);

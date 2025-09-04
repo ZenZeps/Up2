@@ -5,6 +5,7 @@ import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriends, getUsersByIds } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { sendEventInviteNotification } from '@/lib/notifications/notificationUtils';
+import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -92,14 +93,29 @@ const EventDetailsModal = ({
     if (onAttend) {
       await onAttend();
     } else {
-      // fallback: call internal attendee API
+      // fallback: call internal attendee API with real-time UI feedback
       try {
         if (!currentUserId) return;
+
+        console.log('🔥 EventDetailsModal: Applying attend action for event', event.$id);
+        // Apply immediate UI feedback via realTimeUI
+        realTimeUI.applyAction(event.$id, 'attend');
+
         await addEventAttendee(event.$id, currentUserId);
+
+        console.log('🔥 EventDetailsModal: Clearing attend action for event', event.$id);
+        // Clear the pending action since DB update succeeded
+        realTimeUI.clearAction(event.$id);
+
         // Trigger a global refetch so Feed/Home/Explore reflect the mutation
         try { refetchEvents?.(); } catch (e) { console.warn('EventDetailsModal: refetchEvents failed', e); }
       } catch (err) {
         console.error('Fallback attend error:', err);
+
+        console.log('🔥 EventDetailsModal: Attend action failed for event', event.$id);
+        // Rollback on failure - clear the pending action
+        realTimeUI.clearAction(event.$id);
+
         // If the server disallowed attending a private event, show a clearer message
         if (err instanceof Error && /not invited to this private event/i.test(err.message)) {
           Alert.alert('Private Event', 'You are not invited to this private event. Ask the organizer to invite you.');
@@ -120,11 +136,25 @@ const EventDetailsModal = ({
     } else {
       try {
         if (!currentUserId) return;
+
+        console.log('🔥 EventDetailsModal: Applying unattend action for event', event.$id);
+        // Apply immediate UI feedback via realTimeUI
+        realTimeUI.applyAction(event.$id, 'unattend');
+
         await removeEventAttendee(event.$id, currentUserId);
+
+        console.log('🔥 EventDetailsModal: Clearing unattend action for event', event.$id);
+        // Clear the pending action since DB update succeeded
+        realTimeUI.clearAction(event.$id);
+
         // Trigger a global refetch so Feed/Home/Explore reflect the mutation
         try { refetchEvents?.(); } catch (e) { console.warn('EventDetailsModal: refetchEvents failed', e); }
       } catch (err) {
         console.error('Fallback not-attend error:', err);
+
+        // Rollback on failure - clear the pending action
+        realTimeUI.clearAction(event.$id);
+
         Alert.alert('Error', 'Failed to un-attend event');
         return;
       }

@@ -8,15 +8,17 @@ import { getUsersByIds } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { useActionTracker } from '@/lib/hooks/useOptimizedData';
+import { useRealTimeUI } from '@/lib/hooks/useRealTimeUI';
 import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
 import { batchProcess, dbConnectionPool } from '@/lib/utils/dbOptimization';
+import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { LinearGradient } from 'expo-linear-gradient';
 // header will be plain white
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -46,16 +48,58 @@ export default function Feed() {
   const params = useLocalSearchParams();
   const recordAction = useActionTracker();
 
-  const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<ExtendedEvent[]>([]);
-  const [travelAnnouncements, setTravelAnnouncements] = useState<TravelAnnouncementWithUserInfo[]>([]);
   const [friendProfiles, setFriendProfiles] = useState<any[]>([]);
   const [friendPhotoUrls, setFriendPhotoUrls] = useState<Record<string, string | null>>({});
   const [formVisible, setFormVisible] = useState(false);
   const [travelFormVisible, setTravelFormVisible] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [baseEventsWithCreatorNames, setBaseEventsWithCreatorNames] = useState<ExtendedEvent[]>([]);
+  const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<ExtendedEvent[]>([]);
+  // Re-render when real-time UI pending actions change
+  const rtTick = useRealTimeUI();
+
+  // Apply real-time UI overlay whenever base data or pending actions change
+  useEffect(() => {
+    console.log('🍽️ Feed reactive effect triggered', { rtTick, baseEventsCount: baseEventsWithCreatorNames?.length });
+    if (!Array.isArray(baseEventsWithCreatorNames) || !currentUserId) {
+      setEventsWithCreatorNames(baseEventsWithCreatorNames);
+      return;
+    }
+
+    const pendingAttendIds = new Set(realTimeUI.getEventIdsByAction('attend'));
+    const pendingUnattendIds = new Set(realTimeUI.getEventIdsByAction('unattend'));
+    console.log('🍽️ Feed pending actions', { attend: Array.from(pendingAttendIds), unattend: Array.from(pendingUnattendIds) });
+
+    // Feed shows non-attending events
+    // Remove events with pending 'attend' (user is joining)
+    // Add back events from context with pending 'unattend' (user is leaving)
+    let filteredEvents = baseEventsWithCreatorNames.filter(ev => !pendingAttendIds.has(ev.$id));
+
+    // Add back events with pending unattend (from global context if available)
+    if (pendingUnattendIds.size > 0) {
+      try {
+        const additionalEvents = events.filter((ev: any) => pendingUnattendIds.has(ev.$id));
+        const eventsMap = new Map(filteredEvents.map(e => [e.$id, e]));
+        additionalEvents.forEach((ev: any) => {
+          if (!eventsMap.has(ev.$id)) {
+            eventsMap.set(ev.$id, ev as ExtendedEvent);
+          }
+        });
+        filteredEvents = Array.from(eventsMap.values());
+      } catch (e) {
+        // Context not available, continue with filtered events
+      }
+    }
+
+    console.log('🍽️ Feed setting filtered events', { count: filteredEvents.length });
+    setEventsWithCreatorNames(filteredEvents);
+  }, [rtTick, baseEventsWithCreatorNames, currentUserId, events]);
+
+  const [travelAnnouncements, setTravelAnnouncements] = useState<TravelAnnouncementWithUserInfo[]>([]);
   const [friends, setFriends] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [creatorPhotoUrls, setCreatorPhotoUrls] = useState<Record<string, string | null>>({});
   const backgroundRevalidating = useRef(false);
   const lastFeedFetch = useRef<number>(0);
@@ -93,7 +137,7 @@ export default function Feed() {
               attendeeCount: typeof (e as any).attendeeCount === 'number' ? (e as any).attendeeCount : 0,
             } as ExtendedEvent));
 
-          setEventsWithCreatorNames(mapped);
+          setBaseEventsWithCreatorNames(mapped);
           setInitialLoadComplete(true);
           console.log(`Feed: Loaded ${mapped.length} events from ${strategy.cacheStrategy} cache`);
           return;
@@ -121,9 +165,9 @@ export default function Feed() {
 
       // If no social graph, nothing to show
       if (userFriends.length === 0 && userGroupIds.length === 0) {
-        setEventsWithCreatorNames([]);
+        setBaseEventsWithCreatorNames([]);
         setTravelAnnouncements([]);
-        await refetchEvents();
+        // No need to refetch global EventContext for empty feed
         return;
       }
 
@@ -141,9 +185,8 @@ export default function Feed() {
             .filter(e => (userFriends.includes(e.creatorId) || (e.groupId && userGroupIds.includes(e.groupId))))
             .filter((ev: any) => new Date(ev.endTime || ev.date) >= now);
 
-          // Fetch the user's attending events quickly so we can filter cached feed before rendering
-          // Get attending IDs from cache or fetch and cache them
-          let attendingIds = new Set<string>();
+          // Initialize attendance checking and filter using attendance data
+          let attendingIds: Set<string>;
           try {
             const cached = attendingCache.current.get(globalUser.$id || '');
             if (cached && Date.now() - cached.ts < ATTENDING_CACHE_TTL) {
@@ -155,24 +198,19 @@ export default function Feed() {
             }
           } catch (err) {
             console.warn('Feed: failed to load attending events for cached flow', err);
+            attendingIds = new Set(); // Default to empty if fetch fails
           }
 
-          const cachedMapped = relevantCached
-            .map((ev: any) => ({ ...(ev as AppEvent), creatorName: undefined, isAttending: attendingIds.has(ev.$id) } as any));
+          // Filter out events the user is attending (Feed shows non-attending events)
+          const nonAttendingEvents = relevantCached.filter(ev => !attendingIds.has(ev.$id));
 
-          const nonAttendingCached = cachedMapped.filter((ev: any) => !ev.isAttending).map((ev: any) => {
-            // Remove helper flag before storing
-            const { isAttending, ...rest } = ev;
-            return rest as AppEvent;
-          });
-
-          setEventsWithCreatorNames(nonAttendingCached);
-          console.log('Feed: Showing cached feed with', nonAttendingCached.length, 'items (filtered by attendance)');
+          setBaseEventsWithCreatorNames(nonAttendingEvents);
+          console.log('Feed: Showing cached feed with', nonAttendingEvents.length, 'items (filtered by attendance)');
 
           // Asynchronously populate creator names and a limited set of profile photos
           (async () => {
             try {
-              const uniqueCreatorIds = [...new Set(nonAttendingCached.map((ev: any) => ev.creatorId))] as string[];
+              const uniqueCreatorIds = [...new Set(nonAttendingEvents.map((ev: any) => ev.creatorId))] as string[];
               if (uniqueCreatorIds.length === 0) return;
 
               const creatorProfiles = await batchProcess(uniqueCreatorIds, async (batch: string[]) => await getUsersByIds(batch), 25);
@@ -191,7 +229,7 @@ export default function Feed() {
               uniqueCreatorIds.forEach(id => { if (!Object.prototype.hasOwnProperty.call(creatorPhotoMap, id)) creatorPhotoMap[id] = null; });
 
               // Merge creator names into events and update state
-              setEventsWithCreatorNames((prev) => prev.map(ev => ({ ...(ev as any), creatorName: creatorMap.get(ev.creatorId) || 'Unknown Creator' })) as ExtendedEvent[]);
+              setBaseEventsWithCreatorNames((prev) => prev.map(ev => ({ ...(ev as any), creatorName: creatorMap.get(ev.creatorId) || 'Unknown Creator' })) as ExtendedEvent[]);
               setCreatorPhotoUrls(creatorPhotoMap);
             } catch (err) {
               console.warn('Feed: failed to populate creator info for cached feed', err);
@@ -274,7 +312,7 @@ export default function Feed() {
                 }));
 
               const nonAttendingEvents = filteredAndMappedEvents.filter((e: any) => !e.isAttending);
-              setEventsWithCreatorNames(nonAttendingEvents as AppEvent[]);
+              setBaseEventsWithCreatorNames(nonAttendingEvents as AppEvent[]);
               try {
                 // Persist to EventContext's per-screen feed cache so Feed can restore from
                 // its own session memory without relying on Home's list.
@@ -291,12 +329,8 @@ export default function Feed() {
                 await fetchTravelAnnouncements(userFriends);
               });
 
-              // Let EventContext refresh once after background revalidation completes
-              try {
-                await refetchEvents();
-              } catch (e) {
-                console.warn('Feed: Failed to refetch events after revalidation', e);
-              }
+              // Background revalidation complete - no need to refetch EventContext
+              // since Feed manages its own state locally
             } catch (err) {
               console.error('Feed: Background revalidation error:', err);
             } finally {
@@ -397,7 +431,7 @@ export default function Feed() {
         }));
 
       const nonAttendingEventsSync = mappedEvents.filter((e: any) => !e.isAttending);
-      setEventsWithCreatorNames(nonAttendingEventsSync as AppEvent[]);
+      setBaseEventsWithCreatorNames(nonAttendingEventsSync as AppEvent[]);
 
       // Cache the processed data
       try {
@@ -412,14 +446,14 @@ export default function Feed() {
         await fetchTravelAnnouncements(userFriends);
       });
 
-      await refetchEvents();
+      // Feed manages its own state - no need to refetch global EventContext
     } catch (error) {
       console.error('Error refreshing feed:', error);
     } finally {
       setRefreshing(false);
       isInitialMount.current = false;
     }
-  }, [refetchEvents, globalUser?.$id, getScreenEvents, setScreenEvents, markScreenLoadedFromDb]);
+  }, [globalUser?.$id, getScreenEvents, setScreenEvents, markScreenLoadedFromDb]);
 
   // Initial load - happens once per session for scalability
   useEffect(() => {
@@ -445,7 +479,7 @@ export default function Feed() {
             attendeeCount: typeof (e as any).attendeeCount === 'number' ? (e as any).attendeeCount : (Array.isArray((e as any).attendees) ? (e as any).attendees.length : 0),
           } as ExtendedEvent));
 
-        setEventsWithCreatorNames(mapped);
+        setBaseEventsWithCreatorNames(mapped);
       } catch (err) {
         console.warn('Feed: failed to map feed-scoped cached events', err);
       }
@@ -461,7 +495,44 @@ export default function Feed() {
       setInitialLoadComplete(true);
     };
     init();
-  }, [fetchFeedData, refetchEvents, initialLoadComplete, hasInitialLoad, events]);
+  }, [initialLoadComplete, hasInitialLoad, events]);
+
+  // Check for cache invalidation when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (!initialLoadComplete) return; // Don't interfere with initial load
+
+      const checkCacheInvalidation = async () => {
+        try {
+          const strategy = await shouldFetchData('feed', false);
+          if (strategy.shouldFetch) {
+            console.log(`Feed: Cache invalidated (${strategy.reason}), refreshing data`);
+            // Trigger data refresh by incrementing refreshTrigger
+            setRefreshTrigger(prev => prev + 1);
+          }
+        } catch (error) {
+          console.error('Feed: Error checking cache invalidation:', error);
+        }
+      };
+
+      checkCacheInvalidation();
+    }, [initialLoadComplete])
+  );
+
+  // Handle cache invalidation refresh triggers
+  useEffect(() => {
+    if (refreshTrigger > 0 && initialLoadComplete) {
+      console.log('Feed: Refreshing due to cache invalidation trigger');
+      // Use a direct fetch to avoid dependency loops
+      (async () => {
+        try {
+          await fetchFeedData(true);
+        } catch (error) {
+          console.error('Feed: Error during cache invalidation refresh:', error);
+        }
+      })();
+    }
+  }, [refreshTrigger, initialLoadComplete]);
 
   const fetchTravelAnnouncements = async (friendIds: string[]) => {
     try {
@@ -548,29 +619,29 @@ export default function Feed() {
 
   const handleAttend = async (event: ExtendedEvent) => {
     if (!currentUserId) return;
-    // Prefer junction-based flag when available, fallback to legacy array check
-    // Rely on the precomputed isAttending flag. Legacy per-document arrays have been deprecated.
-    if (event.isAttending) {
+
+    // Simple local check - if event not in feed, user is already attending
+    if (eventsWithCreatorNames.findIndex(e => e.$id === event.$id) === -1) {
       Alert.alert('Info', 'You are already attending this event.');
       return;
     }
 
+    // Apply immediate UI feedback - the reactive overlay will handle list updates
+    realTimeUI.applyAction(event.$id, 'attend');
+
     try {
+      // Perform the actual database update
       await addEventAttendee(event.$id, currentUserId);
-      // Update the local state conservatively: increment attendeeCount and mark attending
-      setEventsWithCreatorNames(prevEvents =>
-        prevEvents.map(e =>
-          e.$id === event.$id
-            ? { ...e, attendeeCount: (typeof e.attendeeCount === 'number' ? e.attendeeCount + 1 : 1), isAttending: true }
-            : e
-        )
-      );
-      // Trigger global refresh so other screens (Home/Explore) update
-      try { await refetchEvents(); } catch (e) { console.warn('Feed: refetchEvents failed after attend', e); }
       Alert.alert('Success', 'You are now attending this event!');
+
+      // Clear the pending action since it succeeded
+      realTimeUI.clearAction(event.$id);
     } catch (err) {
       console.error('Attend event error:', err);
       Alert.alert('Error', 'Failed to attend event');
+
+      // Clear the pending action on failure too
+      realTimeUI.clearAction(event.$id);
     }
   };
 
@@ -589,22 +660,22 @@ export default function Feed() {
   const handleNotAttend = async (event: ExtendedEvent) => {
     if (!currentUserId) return;
 
+    // Apply immediate UI feedback - the reactive overlay will handle list updates
+    realTimeUI.applyAction(event.$id, 'unattend');
+
     try {
+      // Perform the actual database update
       await removeEventAttendee(event.$id, currentUserId);
-      // Update local state conservatively: decrement attendeeCount (floor at 0) and mark not attending
-      setEventsWithCreatorNames(prevEvents =>
-        prevEvents.map(e =>
-          e.$id === event.$id
-            ? { ...e, attendeeCount: Math.max(0, (typeof e.attendeeCount === 'number' ? e.attendeeCount - 1 : 0)), isAttending: false }
-            : e
-        )
-      );
-      // Trigger global refresh so other screens (Home/Explore) update
-      try { await refetchEvents(); } catch (e) { console.warn('Feed: refetchEvents failed after not-attend', e); }
       Alert.alert('Success', 'You are no longer attending this event.');
+
+      // Clear the pending action since it succeeded
+      realTimeUI.clearAction(event.$id);
     } catch (err) {
       console.error('Not attend event error:', err);
       Alert.alert('Error', 'Failed to un-attend event');
+
+      // Clear the pending action on failure too
+      realTimeUI.clearAction(event.$id);
     }
   };
 

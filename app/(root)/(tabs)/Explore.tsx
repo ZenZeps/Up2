@@ -9,10 +9,12 @@ import { useAlert } from '@/lib/context/AlertContext';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { useActionTracker } from '@/lib/hooks/useOptimizedData';
+import { useRealTimeUI } from '@/lib/hooks/useRealTimeUI';
 import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
 import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
 import { emit as emitEvent } from '@/lib/utils/eventBus';
+import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -45,6 +47,7 @@ const Explore = () => {
   const [loadingMoreUsers, setLoadingMoreUsers] = useState(false); // Loading more users
   const [mode, setMode] = useState<'events' | 'users' | 'groups'>('events'); // 'events', 'users', or 'groups' - default to events
   const [isInitialMount, setIsInitialMount] = useState(true);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // New filtering state
   const [dateFilter, setDateFilter] = useState<'any' | 'today' | 'tomorrow' | 'week'>('any');
@@ -60,7 +63,47 @@ const Explore = () => {
   const [currentUserPhotoUrl, setCurrentUserPhotoUrl] = useState<string | null>(null); // Current user's profile photo
   const [userPhotoUrls, setUserPhotoUrls] = useState<Record<string, string | null>>({}); // All users' profile photos
   const [requestedUsers, setRequestedUsers] = useState<string[]>([]); // Users who have sent friend requests
+  const [baseEventsWithCreatorNames, setBaseEventsWithCreatorNames] = useState<any[]>([]);
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<any[]>([]);
+  // Re-render when real-time UI pending actions change
+  const rtTick = useRealTimeUI();
+
+  // Apply real-time UI overlay whenever base data or pending actions change
+  useEffect(() => {
+    if (!Array.isArray(baseEventsWithCreatorNames) || !userId) {
+      setEventsWithCreatorNames(baseEventsWithCreatorNames);
+      return;
+    }
+
+    const pendingAttendIds = new Set(realTimeUI.getEventIdsByAction('attend'));
+    const pendingUnattendIds = new Set(realTimeUI.getEventIdsByAction('unattend'));
+
+    // Explore shows non-attending events (like Feed)
+    // Remove events with pending 'attend' (user is joining)
+    // Add back events with pending 'unattend' (user is leaving) - though less likely in Explore
+    let filteredEvents = baseEventsWithCreatorNames.filter((ev: any) => !pendingAttendIds.has(ev.$id));
+
+    // Add back events with pending unattend if any (from global context)
+    if (pendingUnattendIds.size > 0) {
+      try {
+        const { events: globalEvents } = require('../context/EventContext');
+        if (Array.isArray(globalEvents)) {
+          const additionalEvents = globalEvents.filter((ev: any) => pendingUnattendIds.has(ev.$id));
+          const eventsMap = new Map(filteredEvents.map((e: any) => [e.$id, e]));
+          additionalEvents.forEach((ev: any) => {
+            if (!eventsMap.has(ev.$id)) {
+              eventsMap.set(ev.$id, ev);
+            }
+          });
+          filteredEvents = Array.from(eventsMap.values());
+        }
+      } catch (e) {
+        // Context not available, continue with filtered events
+      }
+    }
+
+    setEventsWithCreatorNames(filteredEvents);
+  }, [rtTick, baseEventsWithCreatorNames, userId]);
   // Cache for creator photos (used by horizontal cards)
   const [creatorPhotoUrls, setCreatorPhotoUrls] = useState<Record<string, string | null>>({});
   // Groups state
@@ -175,6 +218,28 @@ const Explore = () => {
     }, [refreshFriends])
   );
 
+  // Check for cache invalidation when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (isInitialMount) return; // Don't interfere with initial load
+
+      const checkCacheInvalidation = async () => {
+        try {
+          const strategy = await shouldFetchData('explore', false);
+          if (strategy.shouldFetch) {
+            console.log(`Explore: Cache invalidated (${strategy.reason}), refreshing data`);
+            // Trigger data refresh by incrementing refreshTrigger
+            setRefreshTrigger(prev => prev + 1);
+          }
+        } catch (error) {
+          console.error('Explore: Error checking cache invalidation:', error);
+        }
+      };
+
+      checkCacheInvalidation();
+    }, [isInitialMount])
+  );
+
   useEffect(() => {
     const addCreatorNames = async () => {
       // Build Explore event set from all app events (global discovery), then filter out attended/past/private as needed
@@ -287,7 +352,7 @@ const Explore = () => {
         ...event,
         creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
       }));
-      setEventsWithCreatorNames(eventsWithNames);
+      setBaseEventsWithCreatorNames(eventsWithNames);
       try {
         setScreenEvents('explore', eventsWithNames);
         try { markScreenLoadedFromDb?.('explore', true); } catch { }
@@ -299,7 +364,7 @@ const Explore = () => {
     // Try to reuse an explore-scoped session cache first
     const exploreCache = getScreenEvents('explore');
     if (Array.isArray(exploreCache) && exploreCache.length > 0) {
-      setEventsWithCreatorNames(exploreCache);
+      setBaseEventsWithCreatorNames(exploreCache);
       setLoading(false);
       return;
     }
@@ -308,7 +373,7 @@ const Explore = () => {
     if (userId) {
       addCreatorNames();
     }
-  }, [events, userId]);
+  }, [events, userId, refreshTrigger]);
 
   // Optimized data fetching with smart caching strategy
   useEffect(() => {
@@ -321,7 +386,7 @@ const Explore = () => {
       if (!shouldRefresh) {
         const exploreCache = getScreenEvents('explore');
         if (Array.isArray(exploreCache) && exploreCache.length > 0) {
-          setEventsWithCreatorNames(exploreCache);
+          setBaseEventsWithCreatorNames(exploreCache);
           setLoading(false);
           setIsInitialMount(false);
           return;
@@ -360,7 +425,7 @@ const Explore = () => {
 
         if (!userId || allEvents.length === 0) {
           console.log('Explore: No userId or events available, setting empty');
-          setEventsWithCreatorNames([]);
+          setBaseEventsWithCreatorNames([]);
           setLoading(false);
           return;
         }
@@ -453,7 +518,7 @@ const Explore = () => {
           ...event,
           creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
         }));
-        setEventsWithCreatorNames(eventsWithNames);
+        setBaseEventsWithCreatorNames(eventsWithNames);
         try {
           setScreenEvents('explore', eventsWithNames);
           try { markScreenLoadedFromDb?.('explore', true); } catch { }
@@ -474,7 +539,7 @@ const Explore = () => {
     };
 
     fetchExploreData();
-  }, [events, userId, isInitialMount]);
+  }, [events, userId, isInitialMount, refreshTrigger]);
 
   // Load public groups when entering groups mode (or on mount)
   useEffect(() => {
@@ -1069,17 +1134,25 @@ const Explore = () => {
     // Use inviteCount when available, otherwise fallback to legacy inviteeIds check
     if (!(typeof event.inviteCount === 'number' ? (event.inviteCount > 0 && (Array.isArray(event.inviteeIds) ? event.inviteeIds.includes(userId) : true)) : isUserAttendingHeuristic(event, userId))) {
       try {
+        // Apply immediate UI feedback
+        realTimeUI.applyAction(event.$id || event.id, 'attend');
+
         // Create attendance record and remove any invitation records
         await addEventAttendee(event.$id || event.id, userId);
         await removeEventInvitation(event.$id || event.id, userId);
+
         // Record the action to trigger cache refresh
         recordAction('attend');
-        // Refresh
-        await refetchEvents();
         Alert.alert('Success', 'You are now attending this event!');
+
+        // Clear the pending action since it succeeded
+        realTimeUI.clearAction(event.$id || event.id);
       } catch (err) {
         console.error('Attend event error:', err);
         Alert.alert('Error', 'Failed to attend event');
+
+        // Clear the pending action on failure
+        realTimeUI.clearAction(event.$id || event.id);
       }
     }
   };

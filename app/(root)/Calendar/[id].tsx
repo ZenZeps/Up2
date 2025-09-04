@@ -4,6 +4,7 @@ import { account } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
+import { recordAction } from '@/lib/utils/dataFetchingOptimizer';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -98,6 +99,9 @@ export default function FriendCalendar() {
         if (!currentUserId) return;
         try {
             await addEventAttendee(event.$id, currentUserId);
+
+            // Record the action for cache invalidation
+            await recordAction('attend', 'calendar_event_attended');
             await refetchEvents();
         } catch (err) {
             console.error('Attend error', err);
@@ -109,6 +113,9 @@ export default function FriendCalendar() {
         if (!currentUserId) return;
         try {
             await removeEventAttendee(event.$id, currentUserId);
+
+            // Record the action for cache invalidation
+            await recordAction('unattend', 'calendar_event_unattended');
             await refetchEvents();
         } catch (err) {
             console.error('Un-attend error', err);

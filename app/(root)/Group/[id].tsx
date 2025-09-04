@@ -8,6 +8,8 @@ import { useGlobalContext } from '@/lib/global-provider';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { Group } from '@/lib/types/Groups';
 import { UserProfile } from '@/lib/types/Users';
+import { recordAction } from '@/lib/utils/dataFetchingOptimizer';
+import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -152,7 +154,18 @@ const GroupPage = () => {
         }
 
         try {
+            console.log('🔥 GroupPage: Applying attend action for event', event.$id);
+            // Apply immediate UI feedback via realTimeUI
+            realTimeUI.applyAction(event.$id, 'attend');
+
             await addEventAttendee(event.$id, user.$id);
+
+            console.log('🔥 GroupPage: Clearing attend action for event', event.$id);
+            // Clear the pending action since DB update succeeded
+            realTimeUI.clearAction(event.$id);
+
+            // Record the action for cache invalidation
+            await recordAction('attend', 'group_event_attended');
 
             // Update local state conservatively
             setEvents(prevEvents =>
@@ -166,6 +179,11 @@ const GroupPage = () => {
             Alert.alert('Success', 'You are now attending this event!');
         } catch (err) {
             console.error('Attend event error:', err);
+
+            console.log('🔥 GroupPage: Attend action failed for event', event.$id);
+            // Rollback on failure - clear the pending action
+            realTimeUI.clearAction(event.$id);
+
             Alert.alert('Error', 'Failed to attend event');
         }
     }, [user?.$id]);
@@ -175,6 +193,9 @@ const GroupPage = () => {
 
         try {
             await removeEventAttendee(event.$id, user.$id);
+
+            // Record the action for cache invalidation
+            await recordAction('unattend', 'group_event_unattended');
 
             // Update local state conservatively: decrement attendeeCount and mark not attending
             setEvents(prevEvents =>

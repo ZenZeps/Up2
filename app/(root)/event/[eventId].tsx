@@ -8,6 +8,7 @@ import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { sendEventInviteNotification } from '@/lib/notifications/notificationUtils';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
+import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -158,7 +159,16 @@ const EventDetail = () => {
     }
 
     try {
+      console.log('🔥 EventPage: Applying attend action for event', event.$id);
+      // Apply immediate UI feedback via realTimeUI
+      realTimeUI.applyAction(event.$id, 'attend');
+
       await addEventAttendee(event.$id, userId);
+
+      console.log('🔥 EventPage: Clearing attend action for event', event.$id);
+      // Clear the pending action since DB update succeeded
+      realTimeUI.clearAction(event.$id);
+
       // Update local state conservatively: update attendeeCount and attending flag instead of mutating legacy arrays
       const currentCount = typeof event.attendeeCount === 'number' ? event.attendeeCount : attendeeProfiles.length;
       setEvent({ ...event, attendeeCount: currentCount + 1, isAttending: true });
@@ -167,6 +177,11 @@ const EventDetail = () => {
       refetchEvents();
     } catch (err) {
       console.error('Attend event error:', err);
+
+      console.log('🔥 EventPage: Attend action failed for event', event.$id);
+      // Rollback on failure - clear the pending action
+      realTimeUI.clearAction(event.$id);
+
       showError('Error', 'Failed to attend event');
     }
   };

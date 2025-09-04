@@ -5,6 +5,7 @@ import { account } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
+import { recordAction } from '@/lib/utils/dataFetchingOptimizer';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -180,6 +181,9 @@ export default function UserCalendar() {
         try {
             await addEventAttendee(event.$id, currentUserId);
 
+            // Record the action for cache invalidation
+            await recordAction('attend', 'user_calendar_event_attended');
+
             // Update local state
             setEvents(prevEvents =>
                 prevEvents.map(e =>
@@ -204,6 +208,9 @@ export default function UserCalendar() {
 
         try {
             await removeEventAttendee(event.$id, currentUserId);
+
+            // Record the action for cache invalidation
+            await recordAction('unattend', 'user_calendar_event_unattended');
 
             // Update local state
             setEvents(prevEvents =>
