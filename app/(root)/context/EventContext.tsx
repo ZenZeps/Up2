@@ -7,7 +7,7 @@ import { cacheManager } from '@/lib/debug/cacheManager';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Event } from '@/lib/types/Events';
 import { requestDeduplicator } from '@/lib/utils/dbOptimization';
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 
 interface EventsContextType {
   events: Event[];
@@ -16,6 +16,17 @@ interface EventsContextType {
   updateEvent: (event: Event) => void;
   deleteEvent: (id: string) => void;
   refetchEvents: () => Promise<void>;
+  hasInitialLoad?: boolean;
+  // Per-screen in-memory cache helpers. Screens can use these to keep their own session-local
+  // view of events (Feed/Home/Explore) without reading each other's lists.
+  getScreenEvents: (screen: string) => Event[];
+  setScreenEvents: (screen: string, events: Event[]) => void;
+  clearScreenEvents: (screen?: string) => void;
+  getScreenLoadedFromDb: (screen: string) => boolean;
+  markScreenLoadedFromDb: (screen: string, loaded?: boolean) => void;
+  // Expose cache metadata helpers so consumers can reason about freshness
+  getScreenCacheTimestamp: (screen: string) => number;
+  getLastFetchedAt: () => number;
 }
 
 export const EventsContext = createContext<EventsContextType | undefined>(undefined);
@@ -66,12 +77,62 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Local state to track events with optimistic updates
   const [events, setEvents] = useState<Event[]>([]);
+  // Track whether we've performed the initial fetch for this session (reactive)
+  const [hasInitialLoad, setHasInitialLoad] = useState<boolean>(false);
+  // Per-screen caches (in-memory, session-scoped) with timestamps. Use a ref so
+  // updates don't force provider re-renders; screens explicitly read/write when needed.
+  const screenCaches = useRef<Map<string, { events: Event[]; ts: number }>>(new Map());
+  // Track whether a screen has already performed its initial DB load this session.
+  const screenLoadedFromDb = useRef<Map<string, boolean>>(new Map());
+  // Track when EventContext last fetched events from DB
+  const lastFetchedAt = useRef<number | null>(null);
+
+  const getScreenEvents = useCallback((screen: string) => {
+    const entry = screenCaches.current.get(screen);
+    return entry && Array.isArray(entry.events) ? entry.events : [];
+  }, []);
+
+  const getScreenCacheTimestamp = useCallback((screen: string) => {
+    const entry = screenCaches.current.get(screen);
+    return entry ? entry.ts : 0;
+  }, []);
+
+  const setScreenEvents = useCallback((screen: string, evts: Event[]) => {
+    try {
+      screenCaches.current.set(screen, { events: evts || [], ts: Date.now() });
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  const clearScreenEvents = useCallback((screen?: string) => {
+    if (screen) screenCaches.current.delete(screen);
+    else screenCaches.current.clear();
+  }, []);
+
+  const getScreenLoadedFromDb = useCallback((screen: string) => {
+    return !!screenLoadedFromDb.current.get(screen);
+  }, []);
+
+  const markScreenLoadedFromDb = useCallback((screen: string, loaded: boolean = true) => {
+    screenLoadedFromDb.current.set(screen, !!loaded);
+  }, []);
+
+  const getLastFetchedAt = useCallback(() => {
+    return lastFetchedAt.current || 0;
+  }, []);
 
   // Clear local state when user changes
   React.useEffect(() => {
     if (!userId) {
       authDebug.info('EventContext: User logged out, clearing local events');
       setEvents([]);
+      // Also clear any screen-scoped session caches when the user logs out
+      try {
+        screenCaches.current.clear();
+      } catch (err) {
+        authDebug.debug('EventContext: failed to clear screen caches on logout', err);
+      }
     }
   }, [userId]);
 
@@ -111,6 +172,36 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
         tags: Array.isArray(event.tags) ? event.tags : []
       } as any));
       setEvents(sanitizedEvents as any[]);
+      // mark that we have loaded events at least once this session
+      setHasInitialLoad(true);
+      // Also persist these fetched events into the 'home' screen cache so Home restores
+      // the most recent DB-loaded data on remount instead of older cached lists.
+      // NOTE: merge with any existing home cache to avoid overwriting enriched or
+      // junction-derived attending events that may have been written by Home.
+      try {
+        if (Array.isArray(sanitizedEvents) && sanitizedEvents.length > 0) {
+          // Merge fetched events with existing home cache (prefer fetched values)
+          const existingEntry = screenCaches.current.get('home');
+          const existingEvents = existingEntry && Array.isArray(existingEntry.events) ? existingEntry.events : [];
+
+          const map = new Map<string, Event>();
+          (sanitizedEvents as Event[]).forEach(ev => { if (ev && ev.$id) map.set(ev.$id, ev); });
+          existingEvents.forEach(ev => { if (ev && ev.$id && !map.has(ev.$id)) map.set(ev.$id, ev); });
+
+          const merged = Array.from(map.values());
+
+          // Persist merged result and mark home as loaded
+          screenCaches.current.set('home', { events: merged as Event[], ts: Date.now() });
+          screenLoadedFromDb.current.set('home', true);
+          lastFetchedAt.current = Date.now();
+          authDebug.debug('EventContext: persisted merged events into home screen cache', { count: merged.length, ids: merged.map(e => e.$id).slice(0, 10) });
+        } else {
+          // Skip persisting empty fetches to avoid overwriting an existing valid cache
+          authDebug.debug('EventContext: fetchedEvents empty — skipping persist to home cache');
+        }
+      } catch (err) {
+        authDebug.debug('EventContext: failed to persist fetched events into home cache', err);
+      }
     } else if (!loading && userId) {
       // If we have a user but no events and not loading, it means no events found
       setEvents([]);
@@ -126,6 +217,8 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
       authDebug.info(`Refetching events for user: ${userId}`);
       invalidateCache(`events-user-${userId}`); // Invalidate user-specific cache (exact key)
       await refetch();
+      // mark that we have loaded events at least once this session
+      setHasInitialLoad(true);
     });
   }, [refetch, userId]);
 
@@ -229,7 +322,16 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
     updateEvent,
     deleteEvent,
     refetchEvents,
-  }), [events, loading, addEvent, updateEvent, deleteEvent, refetchEvents]);
+    // expose a session-persistent flag indicating we've already loaded events
+    hasInitialLoad,
+    getScreenEvents,
+    setScreenEvents,
+    clearScreenEvents,
+    getScreenLoadedFromDb,
+    markScreenLoadedFromDb,
+    getScreenCacheTimestamp,
+    getLastFetchedAt,
+  }), [events, loading, addEvent, updateEvent, deleteEvent, refetchEvents, hasInitialLoad]);
 
   return (
     <EventsContext.Provider value={contextValue}>

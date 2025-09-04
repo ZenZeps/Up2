@@ -8,6 +8,7 @@ import { useAlert, useAlertHelpers } from '@/lib/context/AlertContext';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { sendFriendRequestAcceptedNotification } from '@/lib/notifications/notificationUtils';
+import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -280,8 +281,8 @@ export default function Invites() {
             const isInvited = Array.isArray(inviteProfiles) ? inviteProfiles.some((u: any) => u.$id === userId) : false;
             if (isInvited) invitedEvents.push(event);
           } catch (err) {
-            // Fallback to legacy inviteeIds if junction query fails
-            if (Array.isArray(event.inviteeIds) && event.inviteeIds.includes(userId)) {
+            // Fallback to legacy inviteeIds if junction query fails — use centralized heuristic
+            if ((Array.isArray(event.inviteeIds) && event.inviteeIds.includes(userId)) || isUserAttendingHeuristic(event, userId)) {
               invitedEvents.push(event);
             }
           }

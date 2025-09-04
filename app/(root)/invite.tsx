@@ -19,6 +19,7 @@ import { addEventAttendee, getEventInvitees, isUserAttendingEvent, removeEventIn
 import { getUserProfile } from '../../lib/api/user';
 import { config, databases } from '../../lib/appwrite/appwrite';
 import { useGlobalContext } from '../../lib/global-provider';
+import { isUserAttendingHeuristic } from '../../lib/utils/attendance';
 import { userDisplayUtils } from '../../lib/utils/userDisplay';
 
 interface EventDetails {
@@ -106,16 +107,16 @@ export default function Invite() {
                             const inviteIds = await getEventInvitees(eventData.$id);
                             setIsAlreadyInvited(Array.isArray(inviteIds) && inviteIds.includes(globalUser.$id));
                         } catch (e) {
-                            // Fallback to legacy arrays
-                            const alreadyInvited = (Array.isArray((eventData as any).inviteeIds) && (eventData as any).inviteeIds.includes(globalUser.$id)) ||
-                                (Array.isArray((eventData as any).attendees) && (eventData as any).attendees.includes(globalUser.$id));
+                            // Fallback to legacy arrays using centralized heuristic
+                            const legacyCheck = (eventData as any);
+                            const alreadyInvited = (Array.isArray(legacyCheck.inviteeIds) && legacyCheck.inviteeIds.includes(globalUser.$id)) || isUserAttendingHeuristic(legacyCheck, globalUser.$id);
                             setIsAlreadyInvited(alreadyInvited);
                         }
                     }
                 } catch (e) {
                     // On error, fallback to legacy in-document arrays
-                    const alreadyInvited = (Array.isArray((eventData as any).inviteeIds) && (eventData as any).inviteeIds.includes(globalUser.$id)) ||
-                        (Array.isArray((eventData as any).attendees) && (eventData as any).attendees.includes(globalUser.$id));
+                    const legacyCheck = (eventData as any);
+                    const alreadyInvited = (Array.isArray(legacyCheck.inviteeIds) && legacyCheck.inviteeIds.includes(globalUser.$id)) || isUserAttendingHeuristic(legacyCheck, globalUser.$id);
                     setIsAlreadyInvited(alreadyInvited);
                 }
             }

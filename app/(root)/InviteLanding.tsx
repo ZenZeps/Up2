@@ -19,6 +19,7 @@ import { addEventAttendee, getEventInvitees, isUserAttendingEvent, removeEventIn
 import { getUserProfile } from '../../lib/api/user';
 import { config, databases } from '../../lib/appwrite/appwrite';
 import { useGlobalContext } from '../../lib/global-provider';
+import { isUserAttendingHeuristic } from '../../lib/utils/attendance';
 import { userDisplayUtils } from '../../lib/utils/userDisplay';
 
 interface EventDetails {
@@ -106,9 +107,10 @@ export default function InviteLanding() {
                         setIsAlreadyInvited(Array.isArray(invites) && invites.includes(globalUser.$id));
                     }
                 } catch (err) {
-                    // Fallback to legacy in-document arrays if junction helpers fail
-                    const legacyInvited = Array.isArray((eventData as any).inviteeIds) && (eventData as any).inviteeIds.includes(globalUser.$id);
-                    const legacyAttending = Array.isArray((eventData as any).attendees) && (eventData as any).attendees.includes(globalUser.$id);
+                    // Fallback to legacy in-document arrays if junction helpers fail — use centralized heuristic
+                    const legacyCheck = (eventData as any);
+                    const legacyInvited = Array.isArray(legacyCheck.inviteeIds) && legacyCheck.inviteeIds.includes(globalUser.$id);
+                    const legacyAttending = isUserAttendingHeuristic(legacyCheck, globalUser.$id);
                     setIsAlreadyInvited(legacyInvited || legacyAttending);
                 }
             }

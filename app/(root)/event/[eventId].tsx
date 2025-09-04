@@ -7,6 +7,7 @@ import { useAlert, useAlertHelpers } from '@/lib/context/AlertContext';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { sendEventInviteNotification } from '@/lib/notifications/notificationUtils';
+import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -67,8 +68,8 @@ const EventDetail = () => {
           const junctionAttending = await isUserAttendingEvent(globalUser.$id, res.$id as string);
           setAttending(Boolean(junctionAttending));
         } catch (e) {
-          // fallback to legacy in-document attendees array
-          setAttending(Array.isArray(res.attendees) ? res.attendees.includes(globalUser.$id) : false);
+          // fallback to legacy in-document attendees array or heuristic
+          setAttending(Array.isArray(res.attendees) ? res.attendees.includes(globalUser.$id) : isUserAttendingHeuristic(res, globalUser.$id));
         }
 
         // Fetch creator's profile and photo
@@ -116,6 +117,10 @@ const EventDetail = () => {
           inviteeIds = Array.isArray(junctionInvites) ? junctionInvites : [];
         } catch (e) {
           inviteeIds = Array.isArray(res.inviteeIds) ? res.inviteeIds : [];
+          // If inviteeIds missing, try heuristic fallback to preserve UX
+          if ((!inviteeIds || inviteeIds.length === 0) && isUserAttendingHeuristic(res, globalUser.$id)) {
+            inviteeIds = [globalUser.$id];
+          }
         }
         if (inviteeIds && inviteeIds.length > 0) {
           const invitees = await getUsersByIds(inviteeIds);

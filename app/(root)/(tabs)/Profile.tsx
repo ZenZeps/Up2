@@ -4,7 +4,9 @@ import { getProfilePhotoUrl, uploadProfilePhoto } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
+import { useActionTracker } from '@/lib/hooks/useOptimizedData';
 import { Group } from '@/lib/types/Groups';
+import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
 import { on as onEvent } from '@/lib/utils/eventBus';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -47,13 +49,28 @@ const Profile = () => {
     friends: 0,
     groups: 0,
   });
+  const [isInitialMount, setIsInitialMount] = useState(true);
 
-  // Load user data
+  // Track actions for cache invalidation
+  const recordAction = useActionTracker();
+
+  // Optimized data loading with smart caching strategy
   useEffect(() => {
-    const loadUserData = async () => {
+    const fetchProfileData = async () => {
       if (!userId) return;
 
+      // For Profile, only refresh on specific actions (friend/group/profile changes)
+      const fetchResult = await shouldFetchData('profile', isInitialMount);
+      const shouldRefresh = fetchResult.shouldFetch;
+
+      if (!shouldRefresh) {
+        console.log('Profile: Using cached data, no action recorded');
+        setIsInitialMount(false);
+        return;
+      }
+
       try {
+        console.log('Profile: Fetching fresh data from database');
         // Load user profile, friends and groups
         const [freshProfile, userFriendIds, userGroups] = await Promise.all([
           getUserProfile(userId),
@@ -85,13 +102,20 @@ const Profile = () => {
           const photoUrl = await getProfilePhotoUrl(freshProfile.photoId);
           setProfilePhotoUrl(photoUrl);
         }
+
+        // Cache the combined data (friends and groups as arrays)
+        const cacheData = [...(userFriends || []), ...(userGroups || [])];
+        cacheScreenData('profile', cacheData);
+
       } catch (error) {
         console.error('Error loading user data:', error);
+      } finally {
+        setIsInitialMount(false);
       }
     };
 
-    loadUserData();
-  }, [userId]);
+    fetchProfileData();
+  }, [userId, isInitialMount]);
 
   // Update local state when user profile changes (fallback for context updates)
   useEffect(() => {
@@ -151,23 +175,31 @@ const Profile = () => {
     loadUserData();
   }, [loadUserData]);
 
-  // Refresh data when screen comes into focus
+  // Refresh data when screen comes into focus - using optimized strategy
   useFocusEffect(
     useCallback(() => {
-      loadUserData();
+      const checkAndRefresh = async () => {
+        const fetchResult = await shouldFetchData('profile', false);
+        if (fetchResult.shouldFetch) {
+          loadUserData();
+        }
+      };
+      checkAndRefresh();
     }, [loadUserData])
   );
 
   // Listen for global group membership changes and reload
   useEffect(() => {
     const cb = (_payload: any) => {
+      // Record the action and trigger refresh
+      recordAction('joinGroup');
       loadUserData();
     };
     const unsubscribe = onEvent('groups:changed', cb);
     return () => {
       unsubscribe && unsubscribe();
     };
-  }, [loadUserData]);
+  }, [loadUserData, recordAction]);
 
   const handleUpdateProfilePhoto = async () => {
     try {
@@ -206,6 +238,9 @@ const Profile = () => {
           const photoUrl = await getProfilePhotoUrl(photoId);
           setProfilePhotoUrl(photoUrl);
 
+          // Record the action to trigger cache refresh
+          recordAction('updateProfile');
+
           Alert.alert('Success', 'Profile photo updated successfully!');
         }
       }
@@ -230,6 +265,8 @@ const Profile = () => {
 
       await updateUserProfile(updatedProfile);
       setIsEditing(false);
+      // Record the action to trigger cache refresh
+      recordAction('updateProfile');
       Alert.alert('Success', 'Profile updated successfully!');
     } catch (error) {
       console.error('Error updating profile:', error);

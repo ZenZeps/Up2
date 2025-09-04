@@ -70,7 +70,8 @@ const TabIcon = ({ focused, icon, title, colors, hasNotifications = false }: {
         style={{
           width: 24,
           height: 24,
-          tintColor: focused ? colors.primary : colors.textSecondary
+          // Use white for the active tab highlight to ensure visibility on dark tab bar
+          tintColor: focused ? '#FFFFFF' : colors.textSecondary
         }}
         resizeMode="contain"
       />
@@ -83,7 +84,8 @@ const TabIcon = ({ focused, icon, title, colors, hasNotifications = false }: {
     <Text
       className={`${focused ? 'font-rubik-medium' : 'font-rubik'} text-xs w-full text-center mt-1`}
       style={{
-        color: focused ? colors.primary : colors.textSecondary
+        // Ensure active tab label is white on dark tab bar
+        color: focused ? '#FFFFFF' : colors.textSecondary
       }}
     >
       {title}
@@ -105,7 +107,8 @@ const TabsLayout = () => {
         screenOptions={{
           tabBarShowLabel: false, // Hide default tab labels
           tabBarStyle: {
-            backgroundColor: colors.tabBar,
+            // Use a consistent dark tab bar appearance even in light mode so the Feed looks the same
+            backgroundColor: isDark ? colors.tabBar : '#1c1c1e',
             position: 'absolute',
             borderTopColor: colors.border,
             borderTopWidth: 1,

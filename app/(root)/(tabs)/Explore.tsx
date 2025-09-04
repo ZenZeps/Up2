@@ -8,7 +8,10 @@ import { config, databases } from '@/lib/appwrite/appwrite';
 import { useAlert } from '@/lib/context/AlertContext';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
+import { useActionTracker } from '@/lib/hooks/useOptimizedData';
 import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
+import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
+import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
 import { emit as emitEvent } from '@/lib/utils/eventBus';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -29,9 +32,10 @@ const Explore = () => {
   const router = useRouter();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { events, refetchEvents } = useEvents();
+  const { events, refetchEvents, hasInitialLoad, getScreenEvents, setScreenEvents, markScreenLoadedFromDb } = useEvents();
   const { showAlert } = useAlert();
   const { user: globalUser } = useGlobalContext();
+  const recordAction = useActionTracker();
 
   // State variables
   const [query, setQuery] = useState(''); // Search query
@@ -40,6 +44,7 @@ const Explore = () => {
   const [userOffset, setUserOffset] = useState(0); // Pagination offset
   const [loadingMoreUsers, setLoadingMoreUsers] = useState(false); // Loading more users
   const [mode, setMode] = useState<'events' | 'users' | 'groups'>('events'); // 'events', 'users', or 'groups' - default to events
+  const [isInitialMount, setIsInitialMount] = useState(true);
 
   // New filtering state
   const [dateFilter, setDateFilter] = useState<'any' | 'today' | 'tomorrow' | 'week'>('any');
@@ -144,7 +149,10 @@ const Explore = () => {
     };
     if (globalUser) {
       fetchData();
-      refetchEvents(); // Fetch latest events on mount
+      // Only trigger a global refetch if EventContext hasn't loaded events yet this session
+      if (!hasInitialLoad && typeof refetchEvents === 'function') {
+        refetchEvents();
+      }
     }
   }, [globalUser]);
 
@@ -236,10 +244,9 @@ const Explore = () => {
           // For private events, only show if user has access (invited but not attending)
           if (event.isPrivate) {
             // Prefer denormalized inviteCount or junction-based invite checks server-side; fallback to legacy inviteeIds if present
-            // Prefer denormalized inviteCount or a junction-based invite check on the server; fallback to legacy inviteeIds only if present
             if (typeof event.inviteCount === 'number') return event.inviteCount > 0 && (Array.isArray(event.inviteeIds) ? event.inviteeIds.includes(userId) : true);
-            // Prefer server-side/junction checks, but fallback to legacy inviteeIds only if present
-            return (Array.isArray(event.inviteeIds) && event.inviteeIds.includes(userId));
+            // Fallback to heuristic that includes inviteeIds/attendees when server-side checks aren't available
+            return isUserAttendingHeuristic(event, userId) || (Array.isArray(event.inviteeIds) && event.inviteeIds.includes(userId));
           }
 
           // Show all public events from other users that user is not attending
@@ -281,13 +288,193 @@ const Explore = () => {
         creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
       }));
       setEventsWithCreatorNames(eventsWithNames);
+      try {
+        setScreenEvents('explore', eventsWithNames);
+        try { markScreenLoadedFromDb?.('explore', true); } catch { }
+      } catch (err) {
+        console.warn('Explore: failed to persist explore cache', err);
+      }
     };
+
+    // Try to reuse an explore-scoped session cache first
+    const exploreCache = getScreenEvents('explore');
+    if (Array.isArray(exploreCache) && exploreCache.length > 0) {
+      setEventsWithCreatorNames(exploreCache);
+      setLoading(false);
+      return;
+    }
 
     // Run enrichment once we have a userId; don't require `events` context to contain items
     if (userId) {
       addCreatorNames();
     }
   }, [events, userId]);
+
+  // Optimized data fetching with smart caching strategy
+  useEffect(() => {
+    const fetchExploreData = async () => {
+      if (!userId) return;
+
+      const shouldRefresh = shouldFetchData('explore', isInitialMount);
+
+      // Try cache first unless we need to refresh
+      if (!shouldRefresh) {
+        const exploreCache = getScreenEvents('explore');
+        if (Array.isArray(exploreCache) && exploreCache.length > 0) {
+          setEventsWithCreatorNames(exploreCache);
+          setLoading(false);
+          setIsInitialMount(false);
+          return;
+        }
+      }
+
+      // Continue with the original addCreatorNames logic for fresh data
+      const addCreatorNames = async () => {
+        // Build Explore event set from all app events (global discovery), then filter out attended/past/private as needed
+
+        // Fetch events via fetchEventsWithGroupNames which handles caching and server-side filters
+        let allEvents: any[] = [];
+        try {
+          allEvents = await fetchEventsWithGroupNames();
+        } catch (err) {
+          console.error('Explore: failed to fetch events via fetchEventsWithGroupNames, falling back to raw DB or context', err);
+          try {
+            const res = await databases.listDocuments(
+              config.databaseID!,
+              config.eventsCollectionID!,
+              [Query.limit(500)]
+            );
+            allEvents = res.documents || [];
+          } catch (err2) {
+            console.error('Explore: raw DB fallback failed, using events context', err2);
+            allEvents = events || [];
+          }
+        }
+        const now = new Date();
+
+        console.log('Explore Events Loading:', {
+          totalEvents: allEvents.length,
+          hasUserId: !!userId,
+          sampleTitles: allEvents.slice(0, 3).map(e => e.title)
+        });
+
+        if (!userId || allEvents.length === 0) {
+          console.log('Explore: No userId or events available, setting empty');
+          setEventsWithCreatorNames([]);
+          setLoading(false);
+          return;
+        }
+
+        // First filter out basic criteria (past events, user's own events)
+        const basicFilteredEvents = allEvents.filter(event => {
+          // Filter out past events
+          if (new Date(event.endTime) <= now) return false;
+
+          // Filter out events created by current user (we want events from OTHER users)
+          if (event.creatorId === userId) return false;
+
+          return true;
+        });
+
+        // Now check attendance status using junction table for remaining events
+        const eventsWithAttendanceCheck = await Promise.all(
+          basicFilteredEvents.map(async (event) => {
+            // Check if user is attending using junction table
+            const isAttending = await isUserAttendingEvent(userId, event.$id);
+
+            return { event, isAttending };
+          })
+        );
+
+        // Diagnostic logging: show up to 20 sample events and their attending flag
+        try {
+          const sampleCount = Math.min(20, eventsWithAttendanceCheck.length);
+          const samples = eventsWithAttendanceCheck.slice(0, sampleCount).map(({ event, isAttending }) => ({
+            id: event.$id,
+            title: event.title,
+            startTime: event.startTime,
+            endTime: event.endTime,
+            inviteCount: (event as any).inviteCount,
+            isAttending
+          }));
+          console.log('Explore: attendance samples:', samples);
+        } catch (e) {
+          console.warn('Explore: failed to log attendance samples', e);
+        }
+
+        // Filter out events the user is attending
+        const finalFilteredEvents = eventsWithAttendanceCheck
+          .filter(({ isAttending }) => !isAttending)
+          .map(({ event }) => event)
+          .filter(event => {
+            // For private events, only show if user has access (invited but not attending)
+            if (event.isPrivate) {
+              // Prefer denormalized inviteCount or junction-based invite checks server-side; fallback to legacy inviteeIds if present
+              if (typeof event.inviteCount === 'number') return event.inviteCount > 0 && (Array.isArray(event.inviteeIds) ? event.inviteeIds.includes(userId) : true);
+              // Fallback to heuristic that includes inviteeIds/attendees when server-side checks aren't available
+              return isUserAttendingHeuristic(event, userId) || (Array.isArray(event.inviteeIds) && event.inviteeIds.includes(userId));
+            }
+
+            // Show all public events from other users that user is not attending
+            return true;
+          });
+
+        console.log('Explore Events Filter:', {
+          allEventsCount: allEvents.length,
+          totalEventsContext: events.length,
+          basicFiltered: basicFilteredEvents.length,
+          finalFiltered: finalFilteredEvents.length,
+          userId,
+          sampleEvent: finalFilteredEvents[0] ? {
+            title: finalFilteredEvents[0].title,
+            creator: finalFilteredEvents[0].creatorId,
+          } : null
+        });
+
+        // Enrich events with group names
+        const eventsWithGroupNames = await enrichEventsWithGroupNames(finalFilteredEvents);
+
+        const uniqueCreatorIds = [...new Set(eventsWithGroupNames.map(event => event.creatorId))];
+        const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
+        const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, userDisplayUtils.getFullName(profile)]));
+
+        // Fetch creator photos in parallel (small batches)
+        const photoMap: Record<string, string | null> = {};
+        await Promise.all(uniqueCreatorIds.map(async (cid) => {
+          try {
+            photoMap[cid] = await getUserProfilePhotoUrl(cid);
+          } catch (err) {
+            photoMap[cid] = null;
+          }
+        }));
+        setCreatorPhotoUrls(photoMap);
+
+        const eventsWithNames = eventsWithGroupNames.map(event => ({
+          ...event,
+          creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
+        }));
+        setEventsWithCreatorNames(eventsWithNames);
+        try {
+          setScreenEvents('explore', eventsWithNames);
+          try { markScreenLoadedFromDb?.('explore', true); } catch { }
+        } catch (err) {
+          console.warn('Explore: failed to persist explore cache', err);
+        }
+
+        // Cache the screen data after successful fetch
+        cacheScreenData('explore', eventsWithNames);
+      };
+
+      // Run enrichment once we have a userId; don't require `events` context to contain items
+      if (userId) {
+        await addCreatorNames();
+      }
+
+      setIsInitialMount(false);
+    };
+
+    fetchExploreData();
+  }, [events, userId, isInitialMount]);
 
   // Load public groups when entering groups mode (or on mount)
   useEffect(() => {
@@ -535,6 +722,8 @@ const Explore = () => {
         showAlert('Joined', res.message || 'Joined group', [{ text: 'OK' }], 'success');
         // Add to local joined set so UI hides it immediately
         setJoinedGroupIds(prev => new Set(prev).add(groupId));
+        // Record the action to trigger cache refresh
+        recordAction('joinGroup');
         // Emit a global event so other screens can refresh their group data
         emitEvent('groups:changed', { userId, groupId });
         // refresh groups to reflect membership changes (background)
@@ -612,6 +801,8 @@ const Explore = () => {
       await sendFriendRequestNotification(toUserId, senderName, userId);
 
       setRequestedUsers((prev) => [...prev, toUserId]); // Update state
+      // Record the action to trigger cache refresh  
+      recordAction('friend');
       console.log('🎯 Friend request process completed');
     } catch (err) {
       console.error('❌ Friend request error:', err);
@@ -640,6 +831,8 @@ const Explore = () => {
 
               // Update the UI state after successful database deletion
               setFriends((prev) => prev.filter((id) => id !== friendId));
+              // Record the action to trigger cache refresh
+              recordAction('unfriend');
               console.log('✅ Friend removed successfully from database and UI');
 
             } catch (err) {
@@ -664,6 +857,8 @@ const Explore = () => {
       }
 
       setRequestedUsers((prev) => prev.filter((id) => id !== toUserId)); // Update state
+      // Record the action to trigger cache refresh
+      recordAction('friend');
       console.log('✅ Friend request canceled successfully');
     } catch (err) {
       console.error('Cancel friend request error:', err);
@@ -787,7 +982,7 @@ const Explore = () => {
       if (typeof e.isAttending === 'boolean') return !e.isAttending;
 
       // If we have a legacy attendees array, exclude only if the user appears in it.
-      if (Array.isArray(e.attendees)) return !e.attendees.includes(userId);
+      if (Array.isArray(e.attendees)) return !isUserAttendingHeuristic(e, userId);
 
       // If we can't determine per-user attendance, be permissive and show the event.
       return true;
@@ -872,11 +1067,13 @@ const Explore = () => {
   // Handler for attending an event (not used in UI here, but available)
   const handleAttendEvent = async (event: any) => {
     // Use inviteCount when available, otherwise fallback to legacy inviteeIds check
-    if (!(typeof event.inviteCount === 'number' ? (event.inviteCount > 0 && (Array.isArray(event.inviteeIds) ? event.inviteeIds.includes(userId) : true)) : (Array.isArray(event.inviteeIds) && event.inviteeIds.includes(userId)))) {
+    if (!(typeof event.inviteCount === 'number' ? (event.inviteCount > 0 && (Array.isArray(event.inviteeIds) ? event.inviteeIds.includes(userId) : true)) : isUserAttendingHeuristic(event, userId))) {
       try {
         // Create attendance record and remove any invitation records
         await addEventAttendee(event.$id || event.id, userId);
         await removeEventInvitation(event.$id || event.id, userId);
+        // Record the action to trigger cache refresh
+        recordAction('attend');
         // Refresh
         await refetchEvents();
         Alert.alert('Success', 'You are now attending this event!');
@@ -888,400 +1085,336 @@ const Explore = () => {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header with Search */}
-      <View style={[styles.searchHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <View style={styles.searchContainer}>
-          <MaterialIcons name="search" size={20} color={colors.textSecondary} />
-          <TextInput
-            placeholder={`Search ${mode}...`}
-            value={query}
-            onChangeText={setQuery}
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholderTextColor={colors.textSecondary}
-          />
+    <LinearGradient colors={["#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]} style={[styles.container]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
+        {/* Header with Search */}
+        <View style={[styles.searchHeader, { backgroundColor: 'transparent', borderBottomColor: colors.border }]}>
+          <View style={[styles.searchContainer, { backgroundColor: '#FFFFFF' }]}>
+            <MaterialIcons name="search" size={20} color={colors.textSecondary} />
+            <TextInput
+              placeholder={`Search ${mode}...`}
+              value={query}
+              onChangeText={setQuery}
+              style={[styles.searchInput, { color: colors.text }]}
+              placeholderTextColor={colors.textSecondary}
+            />
+          </View>
+
+          {/* Filter button for events */}
+          {mode === 'events' && (
+            <TouchableOpacity
+              onPress={() => setShowFilters(!showFilters)}
+              style={[
+                styles.filterButton,
+                {
+                  // Keep filter button background transparent when inactive so gradient shows through
+                  backgroundColor: (showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') ? colors.primary : '#FFFFFF',
+                  borderColor: colors.border
+                }
+              ]}
+            >
+              <MaterialIcons
+                name="tune"
+                size={20}
+                color={showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any'
+                  ? colors.buttonText
+                  : colors.text}
+              />
+              {/* Filter count badge */}
+              {(dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') && (
+                <View style={[styles.filterBadge, { backgroundColor: colors.buttonText }]}>
+                  <Text style={[styles.filterBadgeText, { color: colors.primary }]}>
+                    {(dateFilter !== 'any' ? 1 : 0) + selectedTags.length + (priceFilter !== 'any' ? 1 : 0) + (locationFilter !== 'any' ? 1 : 0)}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Filter button for events */}
-        {mode === 'events' && (
+        {/* Mode Selection */}
+        <View style={[styles.modeContainer, { backgroundColor: 'transparent', borderBottomColor: colors.border }]}>
           <TouchableOpacity
-            onPress={() => setShowFilters(!showFilters)}
+            onPress={() => setMode('events')}
             style={[
-              styles.filterButton,
+              styles.modeButton,
               {
-                backgroundColor: showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any'
-                  ? colors.primary
-                  : colors.background,
-                borderColor: colors.border
+                backgroundColor: mode === 'events' ? colors.primary : 'transparent',
               }
             ]}
           >
             <MaterialIcons
-              name="tune"
-              size={20}
-              color={showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any'
-                ? colors.buttonText
-                : colors.text}
+              name="event"
+              size={18}
+              color={mode === 'events' ? colors.buttonText : colors.text}
             />
-            {/* Filter count badge */}
-            {(dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') && (
-              <View style={[styles.filterBadge, { backgroundColor: colors.buttonText }]}>
-                <Text style={[styles.filterBadgeText, { color: colors.primary }]}>
-                  {(dateFilter !== 'any' ? 1 : 0) + selectedTags.length + (priceFilter !== 'any' ? 1 : 0) + (locationFilter !== 'any' ? 1 : 0)}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Mode Selection */}
-      <View style={[styles.modeContainer, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <TouchableOpacity
-          onPress={() => setMode('events')}
-          style={[
-            styles.modeButton,
-            {
-              backgroundColor: mode === 'events' ? colors.primary : 'transparent',
-            }
-          ]}
-        >
-          <MaterialIcons
-            name="event"
-            size={18}
-            color={mode === 'events' ? colors.buttonText : colors.text}
-          />
-          <Text
-            style={[
-              styles.modeButtonText,
-              { color: mode === 'events' ? colors.buttonText : colors.text }
-            ]}
-          >
-            Events
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setMode('users')}
-          style={[
-            styles.modeButton,
-            {
-              backgroundColor: mode === 'users' ? colors.primary : 'transparent',
-            }
-          ]}
-        >
-          <MaterialIcons
-            name="people"
-            size={18}
-            color={mode === 'users' ? colors.buttonText : colors.text}
-          />
-          <Text
-            style={[
-              styles.modeButtonText,
-              { color: mode === 'users' ? colors.buttonText : colors.text }
-            ]}
-          >
-            Users
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setMode('groups')}
-          style={[
-            styles.modeButton,
-            {
-              backgroundColor: mode === 'groups' ? colors.primary : 'transparent',
-            }
-          ]}
-        >
-          <MaterialIcons
-            name="group"
-            size={18}
-            color={mode === 'groups' ? 'white' : colors.text}
-          />
-          <Text
-            style={[
-              styles.modeButtonText,
-              { color: mode === 'groups' ? 'white' : colors.text }
-            ]}
-          >
-            Groups
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Filter Panel for Events */}
-      {mode === 'events' && showFilters && (
-        <View style={[styles.filterPanel, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-          {/* Date Filter */}
-          <View style={styles.filterSection}>
-            <Text style={[styles.filterTitle, { color: colors.text }]}>When</Text>
-            <View style={styles.filterOptions}>
-              {[
-                { label: 'Any time', value: 'any' },
-                { label: 'Today', value: 'today' },
-                { label: 'Tomorrow', value: 'tomorrow' },
-                { label: 'This week', value: 'week' }
-              ].map(option => (
-                <TouchableOpacity
-                  key={option.value}
-                  onPress={() => setDateFilter(option.value as any)}
-                  style={[
-                    styles.filterChip,
-                    {
-                      backgroundColor: dateFilter === option.value ? colors.primary : colors.background,
-                      borderColor: colors.border
-                    }
-                  ]}
-                >
-                  <Text style={[
-                    styles.filterChipText,
-                    { color: dateFilter === option.value ? colors.buttonText : colors.text }
-                  ]}>
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Price Filter */}
-          <View style={styles.filterSection}>
-            <Text style={[styles.filterTitle, { color: colors.text }]}>Price</Text>
-            <View style={styles.filterOptions}>
-              {[
-                { label: 'Any price', value: 'any' },
-                { label: 'Free', value: 'free' },
-                { label: 'Paid', value: 'paid' }
-              ].map(option => (
-                <TouchableOpacity
-                  key={option.value}
-                  onPress={() => setPriceFilter(option.value as any)}
-                  style={[
-                    styles.filterChip,
-                    {
-                      backgroundColor: priceFilter === option.value ? colors.primary : colors.background,
-                      borderColor: colors.border
-                    }
-                  ]}
-                >
-                  <Text style={[
-                    styles.filterChipText,
-                    { color: priceFilter === option.value ? colors.buttonText : colors.text }
-                  ]}>
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Location Filter */}
-          <View style={styles.filterSection}>
-            <Text style={[styles.filterTitle, { color: colors.text }]}>Location</Text>
-            <View style={styles.filterOptions}>
-              {[
-                { label: 'Any location', value: 'any' },
-                { label: 'With location', value: 'near' }
-              ].map(option => (
-                <TouchableOpacity
-                  key={option.value}
-                  onPress={() => setLocationFilter(option.value as any)}
-                  style={[
-                    styles.filterChip,
-                    {
-                      backgroundColor: locationFilter === option.value ? colors.primary : colors.background,
-                      borderColor: colors.border
-                    }
-                  ]}
-                >
-                  <Text style={[
-                    styles.filterChipText,
-                    { color: locationFilter === option.value ? colors.buttonText : colors.text }
-                  ]}>
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Tags Filter */}
-          <View style={styles.filterSection}>
-            <Text style={[styles.filterTitle, { color: colors.text }]}>Categories</Text>
-            <View style={styles.filterTagsGrid}>
-              {CATEGORIES.map(category => (
-                <TouchableOpacity
-                  key={category.value}
-                  onPress={() => {
-                    if (selectedTags.includes(category.value)) {
-                      setSelectedTags(selectedTags.filter(tag => tag !== category.value));
-                    } else {
-                      setSelectedTags([...selectedTags, category.value]);
-                    }
-                  }}
-                  style={[
-                    styles.filterTagChip,
-                    {
-                      backgroundColor: selectedTags.includes(category.value) ? colors.primary : colors.background,
-                      borderColor: colors.border
-                    }
-                  ]}
-                >
-                  <Text style={styles.filterTagEmoji}>{category.emoji}</Text>
-                  <Text style={[
-                    styles.filterTagText,
-                    { color: selectedTags.includes(category.value) ? 'white' : colors.text }
-                  ]}>
-                    {category.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Clear Filters Button */}
-          {(dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') && (
-            <TouchableOpacity
-              onPress={() => {
-                setDateFilter('any');
-                setSelectedTags([]);
-                setPriceFilter('any');
-                setLocationFilter('any');
-              }}
-              style={[styles.clearFiltersButton, { borderColor: colors.border }]}
+            <Text
+              style={[
+                styles.modeButtonText,
+                { color: mode === 'events' ? colors.buttonText : colors.text }
+              ]}
             >
-              <MaterialIcons name="clear" size={16} color={colors.textSecondary} />
-              <Text style={[styles.clearFiltersText, { color: colors.textSecondary }]}>
-                Clear filters
-              </Text>
-            </TouchableOpacity>
-          )}
+              Events
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setMode('users')}
+            style={[
+              styles.modeButton,
+              {
+                backgroundColor: mode === 'users' ? colors.primary : 'transparent',
+              }
+            ]}
+          >
+            <MaterialIcons
+              name="people"
+              size={18}
+              color={mode === 'users' ? colors.buttonText : colors.text}
+            />
+            <Text
+              style={[
+                styles.modeButtonText,
+                { color: mode === 'users' ? colors.buttonText : colors.text }
+              ]}
+            >
+              Users
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setMode('groups')}
+            style={[
+              styles.modeButton,
+              {
+                backgroundColor: mode === 'groups' ? colors.primary : 'transparent',
+              }
+            ]}
+          >
+            <MaterialIcons
+              name="group"
+              size={18}
+              color={mode === 'groups' ? 'white' : colors.text}
+            />
+            <Text
+              style={[
+                styles.modeButtonText,
+                { color: mode === 'groups' ? 'white' : colors.text }
+              ]}
+            >
+              Groups
+            </Text>
+          </TouchableOpacity>
         </View>
-      )}
 
-      <ScrollView
-        style={styles.scrollContainer}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 70 + insets.bottom }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Content based on mode */}
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
+        {/* Filter Panel for Events */}
+        {mode === 'events' && showFilters && (
+          <View style={[styles.filterPanel, { backgroundColor: 'transparent', borderBottomColor: colors.border }]}>
+            {/* Date Filter */}
+            <View style={styles.filterSection}>
+              <Text style={[styles.filterTitle, { color: colors.text }]}>When</Text>
+              <View style={styles.filterOptions}>
+                {[
+                  { label: 'Any time', value: 'any' },
+                  { label: 'Today', value: 'today' },
+                  { label: 'Tomorrow', value: 'tomorrow' },
+                  { label: 'This week', value: 'week' }
+                ].map(option => (
+                  <TouchableOpacity
+                    key={option.value}
+                    onPress={() => setDateFilter(option.value as any)}
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor: dateFilter === option.value ? colors.primary : colors.background,
+                        borderColor: colors.border
+                      }
+                    ]}
+                  >
+                    <Text style={[
+                      styles.filterChipText,
+                      { color: dateFilter === option.value ? colors.buttonText : colors.text }
+                    ]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Price Filter */}
+            <View style={styles.filterSection}>
+              <Text style={[styles.filterTitle, { color: colors.text }]}>Price</Text>
+              <View style={styles.filterOptions}>
+                {[
+                  { label: 'Any price', value: 'any' },
+                  { label: 'Free', value: 'free' },
+                  { label: 'Paid', value: 'paid' }
+                ].map(option => (
+                  <TouchableOpacity
+                    key={option.value}
+                    onPress={() => setPriceFilter(option.value as any)}
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor: priceFilter === option.value ? colors.primary : colors.background,
+                        borderColor: colors.border
+                      }
+                    ]}
+                  >
+                    <Text style={[
+                      styles.filterChipText,
+                      { color: priceFilter === option.value ? colors.buttonText : colors.text }
+                    ]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Location Filter */}
+            <View style={styles.filterSection}>
+              <Text style={[styles.filterTitle, { color: colors.text }]}>Location</Text>
+              <View style={styles.filterOptions}>
+                {[
+                  { label: 'Any location', value: 'any' },
+                  { label: 'With location', value: 'near' }
+                ].map(option => (
+                  <TouchableOpacity
+                    key={option.value}
+                    onPress={() => setLocationFilter(option.value as any)}
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor: locationFilter === option.value ? colors.primary : colors.background,
+                        borderColor: colors.border
+                      }
+                    ]}
+                  >
+                    <Text style={[
+                      styles.filterChipText,
+                      { color: locationFilter === option.value ? colors.buttonText : colors.text }
+                    ]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Tags Filter */}
+            <View style={styles.filterSection}>
+              <Text style={[styles.filterTitle, { color: colors.text }]}>Categories</Text>
+              <View style={styles.filterTagsGrid}>
+                {CATEGORIES.map(category => (
+                  <TouchableOpacity
+                    key={category.value}
+                    onPress={() => {
+                      if (selectedTags.includes(category.value)) {
+                        setSelectedTags(selectedTags.filter(tag => tag !== category.value));
+                      } else {
+                        setSelectedTags([...selectedTags, category.value]);
+                      }
+                    }}
+                    style={[
+                      styles.filterTagChip,
+                      {
+                        backgroundColor: selectedTags.includes(category.value) ? colors.primary : colors.background,
+                        borderColor: colors.border
+                      }
+                    ]}
+                  >
+                    <Text style={styles.filterTagEmoji}>{category.emoji}</Text>
+                    <Text style={[
+                      styles.filterTagText,
+                      { color: selectedTags.includes(category.value) ? 'white' : colors.text }
+                    ]}>
+                      {category.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Clear Filters Button */}
+            {(dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') && (
+              <TouchableOpacity
+                onPress={() => {
+                  setDateFilter('any');
+                  setSelectedTags([]);
+                  setPriceFilter('any');
+                  setLocationFilter('any');
+                }}
+                style={[styles.clearFiltersButton, { borderColor: colors.border }]}
+              >
+                <MaterialIcons name="clear" size={16} color={colors.textSecondary} />
+                <Text style={[styles.clearFiltersText, { color: colors.textSecondary }]}>
+                  Clear filters
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
-        ) : mode === 'users' ? (
-          query.trim() ? (
-            filteredUsers.length > 0 ? (
+        )}
+
+        <ScrollView
+          style={styles.scrollContainer}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 70 + insets.bottom }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Content based on mode */}
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : mode === 'users' ? (
+            query.trim() ? (
+              filteredUsers.length > 0 ? (
+                <FlatList
+                  data={filteredUsers}
+                  renderItem={renderUserItem}
+                  keyExtractor={(item) => item.$id}
+                  onEndReached={loadMoreUsers}
+                  onEndReachedThreshold={0.5}
+                  ListFooterComponent={renderListFooter}
+                  showsVerticalScrollIndicator={false}
+                  scrollEnabled={false} // Disable internal scrolling as it's inside ScrollView
+                />
+              ) : (
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={styles.emptyState}>
+                    <MaterialIcons name="person-search" size={48} color={colors.textSecondary} />
+                    <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No users found</Text>
+                  </View>
+                </View>
+              )
+            ) : (
               <FlatList
-                data={filteredUsers}
+                data={nonFriendUsers}
                 renderItem={renderUserItem}
                 keyExtractor={(item) => item.$id}
                 onEndReached={loadMoreUsers}
                 onEndReachedThreshold={0.5}
                 ListFooterComponent={renderListFooter}
                 showsVerticalScrollIndicator={false}
-                scrollEnabled={false} // Disable internal scrolling as it's inside ScrollView
+                scrollEnabled={false}
+                ListEmptyComponent={() => (
+                  <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <View style={styles.emptyState}>
+                      <MaterialIcons name="people" size={48} color={colors.primary} />
+                      <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>
+                        Find Friends
+                      </Text>
+                      <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8 }]}>
+                        Use the search bar above to discover and connect with other users in your community
+                      </Text>
+                    </View>
+                  </View>
+                )}
               />
-            ) : (
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.emptyState}>
-                  <MaterialIcons name="person-search" size={48} color={colors.textSecondary} />
-                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No users found</Text>
-                </View>
-              </View>
             )
-          ) : (
-            <FlatList
-              data={nonFriendUsers}
-              renderItem={renderUserItem}
-              keyExtractor={(item) => item.$id}
-              onEndReached={loadMoreUsers}
-              onEndReachedThreshold={0.5}
-              ListFooterComponent={renderListFooter}
-              showsVerticalScrollIndicator={false}
-              scrollEnabled={false}
-              ListEmptyComponent={() => (
-                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <View style={styles.emptyState}>
-                    <MaterialIcons name="people" size={48} color={colors.primary} />
-                    <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>
-                      Find Friends
-                    </Text>
-                    <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8 }]}>
-                      Use the search bar above to discover and connect with other users in your community
-                    </Text>
-                  </View>
-                </View>
-              )}
-            />
-          )
-        ) : mode === 'events' ? (
-          // If user has typed a query, show the filtered vertical events list
-          query.trim() ? (
-            filteredEvents.length > 0 ? (
-              filteredEvents.map((event) => (
-                <TouchableOpacity
-                  key={event.$id}
-                  onPress={() => router.push(`/event/${event.$id}`)}
-                  style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                >
-                  <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={styles.feedThumb}>
-                    <Text style={styles.eventEmojiThumb}>{getEventEmoji(event.tags)}</Text>
-                  </LinearGradient>
-
-                  <View style={styles.feedBody}>
-                    <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{event.title}</Text>
-
-                    <View style={styles.feedMetaRow}>
-                      <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
-                      <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{dayjs(event.startTime).format('DD MMM, YYYY')}</Text>
-                      <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
-                      <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
-                      <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{event.location || ''}</Text>
-                    </View>
-
-                    <View style={styles.feedSubRow}>
-                      <UserAvatar photoUrl={creatorPhotoUrls[event.creatorId] || null} name={event.creatorName} size={28} />
-                      <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{event.creatorName || 'Unknown'}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.feedRightCol}>
-                    {((event as any).price !== undefined && (event as any).price !== null) ? (
-                      <View style={styles.pricePill}>
-                        <Text style={styles.priceText}>${(event as any).price}</Text>
-                      </View>
-                    ) : null}
-
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{(typeof event.attendeeCount === 'number' ? event.attendeeCount : (event.attendees?.length || 0))} attending</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))
-            ) : (
-              // If grouping produced no sections but we still have filtered events, show a vertical fallback list
-              groupedSections.length > 0 ? (
-                groupedSections.map(section => (
-                  <View key={section.key} style={styles.categorySection}>
-                    <View style={styles.categoryHeader}>
-                      <Text style={[styles.sectionHeaderTitle, { color: colors.text }]}>{section.emoji} {section.label}</Text>
-                      <TouchableOpacity onPress={() => console.log('See all', section.key)}>
-                        <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <FlatList
-                      data={section.events}
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      keyExtractor={(it) => it.$id}
-                      renderItem={renderHorizontalEventCard}
-                      contentContainerStyle={styles.horizontalList}
-                    />
-                  </View>
-                ))
-              ) : filteredEvents.length > 0 ? (
-                // Vertical fallback: render each filtered event
+          ) : mode === 'events' ? (
+            // If user has typed a query, show the filtered vertical events list
+            query.trim() ? (
+              filteredEvents.length > 0 ? (
                 filteredEvents.map((event) => (
                   <TouchableOpacity
                     key={event.$id}
@@ -1323,6 +1456,101 @@ const Explore = () => {
                   </TouchableOpacity>
                 ))
               ) : (
+                // If grouping produced no sections but we still have filtered events, show a vertical fallback list
+                groupedSections.length > 0 ? (
+                  groupedSections.map(section => (
+                    <View key={section.key} style={styles.categorySection}>
+                      <View style={styles.categoryHeader}>
+                        <Text style={[styles.sectionHeaderTitle, { color: colors.text }]}>{section.emoji} {section.label}</Text>
+                        <TouchableOpacity onPress={() => console.log('See all', section.key)}>
+                          <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <FlatList
+                        data={section.events}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        keyExtractor={(it) => it.$id}
+                        renderItem={renderHorizontalEventCard}
+                        contentContainerStyle={styles.horizontalList}
+                      />
+                    </View>
+                  ))
+                ) : filteredEvents.length > 0 ? (
+                  // Vertical fallback: render each filtered event
+                  filteredEvents.map((event) => (
+                    <TouchableOpacity
+                      key={event.$id}
+                      onPress={() => router.push(`/event/${event.$id}`)}
+                      style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    >
+                      <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={styles.feedThumb}>
+                        <Text style={styles.eventEmojiThumb}>{getEventEmoji(event.tags)}</Text>
+                      </LinearGradient>
+
+                      <View style={styles.feedBody}>
+                        <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{event.title}</Text>
+
+                        <View style={styles.feedMetaRow}>
+                          <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
+                          <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{dayjs(event.startTime).format('DD MMM, YYYY')}</Text>
+                          <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
+                          <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
+                          <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{event.location || ''}</Text>
+                        </View>
+
+                        <View style={styles.feedSubRow}>
+                          <UserAvatar photoUrl={creatorPhotoUrls[event.creatorId] || null} name={event.creatorName} size={28} />
+                          <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{event.creatorName || 'Unknown'}</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.feedRightCol}>
+                        {((event as any).price !== undefined && (event as any).price !== null) ? (
+                          <View style={styles.pricePill}>
+                            <Text style={styles.priceText}>${(event as any).price}</Text>
+                          </View>
+                        ) : null}
+
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{(typeof event.attendeeCount === 'number' ? event.attendeeCount : (event.attendees?.length || 0))} attending</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <View style={styles.emptyState}>
+                      <MaterialIcons name="event" size={48} color={colors.textSecondary} />
+                      <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No events found</Text>
+                    </View>
+                  </View>
+                )
+              )
+            ) : (
+              // Default Explore: grouped category horizontal lists (same as Feed)
+              groupedSections.length > 0 ? (
+                groupedSections.map(section => (
+                  <View key={section.key} style={styles.categorySection}>
+                    <View style={styles.categoryHeader}>
+                      <Text style={[styles.sectionHeaderTitle, { color: colors.text }]}>{section.emoji} {section.label}</Text>
+                      <TouchableOpacity onPress={() => console.log('See all', section.key)}>
+                        <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <FlatList
+                      data={section.events}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyExtractor={(it) => it.$id}
+                      renderItem={renderHorizontalEventCard}
+                      contentContainerStyle={styles.horizontalList}
+                    />
+                  </View>
+                ))
+              ) : (
                 <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={styles.emptyState}>
                     <MaterialIcons name="event" size={48} color={colors.textSecondary} />
@@ -1332,76 +1560,46 @@ const Explore = () => {
               )
             )
           ) : (
-            // Default Explore: grouped category horizontal lists (same as Feed)
-            groupedSections.length > 0 ? (
-              groupedSections.map(section => (
-                <View key={section.key} style={styles.categorySection}>
-                  <View style={styles.categoryHeader}>
-                    <Text style={[styles.sectionHeaderTitle, { color: colors.text }]}>{section.emoji} {section.label}</Text>
-                    <TouchableOpacity onPress={() => console.log('See all', section.key)}>
-                      <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
+            // Groups mode
+            <View>
+              {loadingGroups ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                </View>
+              ) : groups.length > 0 ? (
+                <FlatList
+                  data={visibleGroups}
+                  renderItem={renderGroupItem}
+                  keyExtractor={(item) => item.$id}
+                  showsVerticalScrollIndicator={false}
+                  scrollEnabled={false}
+                  ListEmptyComponent={() => (
+                    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <View style={styles.emptyState}>
+                        <MaterialIcons name="group" size={48} color={colors.textSecondary} />
+                        <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No groups found</Text>
+                      </View>
+                    </View>
+                  )}
+                />
+              ) : (
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={styles.emptyState}>
+                    <MaterialIcons name="group-add" size={48} color={colors.primary} />
+                    <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>Create Groups</Text>
+                    <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8, marginBottom: 16 }]}>Start your own group and bring together people who share your interests and passions</Text>
+                    <TouchableOpacity onPress={() => router.push('/CreateGroup')} style={[styles.actionButton, { backgroundColor: colors.primary }]}>
+                      <MaterialIcons name="add" size={16} color={colors.buttonText} />
+                      <Text style={[styles.actionButtonText, { color: colors.buttonText }]}>Create Group</Text>
                     </TouchableOpacity>
                   </View>
-
-                  <FlatList
-                    data={section.events}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    keyExtractor={(it) => it.$id}
-                    renderItem={renderHorizontalEventCard}
-                    contentContainerStyle={styles.horizontalList}
-                  />
                 </View>
-              ))
-            ) : (
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.emptyState}>
-                  <MaterialIcons name="event" size={48} color={colors.textSecondary} />
-                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No events found</Text>
-                </View>
-              </View>
-            )
-          )
-        ) : (
-          // Groups mode
-          <View>
-            {loadingGroups ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={colors.primary} />
-              </View>
-            ) : groups.length > 0 ? (
-              <FlatList
-                data={visibleGroups}
-                renderItem={renderGroupItem}
-                keyExtractor={(item) => item.$id}
-                showsVerticalScrollIndicator={false}
-                scrollEnabled={false}
-                ListEmptyComponent={() => (
-                  <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <View style={styles.emptyState}>
-                      <MaterialIcons name="group" size={48} color={colors.textSecondary} />
-                      <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No groups found</Text>
-                    </View>
-                  </View>
-                )}
-              />
-            ) : (
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.emptyState}>
-                  <MaterialIcons name="group-add" size={48} color={colors.primary} />
-                  <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>Create Groups</Text>
-                  <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8, marginBottom: 16 }]}>Start your own group and bring together people who share your interests and passions</Text>
-                  <TouchableOpacity onPress={() => router.push('/CreateGroup')} style={[styles.actionButton, { backgroundColor: colors.primary }]}>
-                    <MaterialIcons name="add" size={16} color={colors.buttonText} />
-                    <Text style={[styles.actionButtonText, { color: colors.buttonText }]}>Create Group</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          </View>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+              )}
+            </View>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 };
 
@@ -1422,14 +1620,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'transparent',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 2,
+    // subtle shadow to lift the search bar off the gradient
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
     marginLeft: 8,
+    height: 40,
+    paddingVertical: 0,
+    borderRadius: 20,
+    textAlignVertical: 'center',
+    lineHeight: 18,
   },
   filterButton: {
     marginLeft: 12,

@@ -8,8 +8,11 @@ import { useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { authDebug } from '@/lib/debug/authDebug';
 import { useGlobalContext } from '@/lib/global-provider';
+import { useActionTracker } from '@/lib/hooks/useOptimizedData';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
+import { isEventUpcoming, isUserAttendingHeuristic } from '@/lib/utils/attendance';
+import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
 import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -86,6 +89,10 @@ export default function Home() {
 
   // Safely access the context values
   const eventsContext = React.useContext(EventsContext);
+  const getScreenEvents = eventsContext?.getScreenEvents;
+  const setScreenEvents = eventsContext?.setScreenEvents;
+  const getScreenLoadedFromDb = eventsContext?.getScreenLoadedFromDb;
+  const markScreenLoadedFromDb = eventsContext?.markScreenLoadedFromDb;
 
   // Memoize derived values from context to prevent unnecessary updates
   // Use optional chaining to handle undefined context gracefully
@@ -155,11 +162,17 @@ export default function Home() {
   const [agendaEvents, setAgendaEvents] = useState<AppEvent[]>([]);
   const [messageModalVisible, setMessageModalVisible] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [userAttendingEvents, setUserAttendingEvents] = useState<AppEvent[]>([]);
 
   // Track when data was last fetched to prevent unnecessary refetches
   const lastFetchTime = useRef<number>(0);
   const previousViewMode = useRef<Mode>(viewMode);
   const hasInitialLoad = useRef<boolean>(false);
+  const isInitialMount = useRef<boolean>(true);
+  const userAttendingFromJunction = useRef<boolean>(false);
+
+  // Action tracker for optimized caching
+  const recordAction = useActionTracker();
 
   // Get route params (for user calendar view)
   const params = useLocalSearchParams();
@@ -265,31 +278,26 @@ export default function Home() {
     return creatorNameCache.get(creatorId) || 'Unknown Creator';
   }, [creatorProfiles]);
 
-  // Filter events for the current user using junction table system
-  const userEvents = useMemo(() => {
-    // Early return if no user or events to prevent unnecessary updates
-    if (!currentUser?.$id || !events || events.length === 0) return [];
+  // Filter events for the current user using optimized data fetching
+  const fetchUserAttendingEvents = useCallback(async () => {
+    if (!currentUser?.$id) {
+      setUserAttendingEvents([]);
+      return;
+    }
 
-    // For calendar display, we want to show events the user created OR is attending
-    // We'll filter these asynchronously below
-    return events.filter((e: AppEvent) => e.creatorId === currentUser.$id);
-  }, [events, currentUser]);
+    // Check if we should fetch from database or use cache
+    const strategy = await shouldFetchData('home', isInitialMount.current);
+    authDebug.debug(`Home: fetchUserAttendingEvents strategy - ${strategy.cacheStrategy} (${strategy.reason})`);
 
-  // Get events user is attending via junction table and merge with created events
-  const [userAttendingEvents, setUserAttendingEvents] = useState<AppEvent[]>([]);
-
-  useEffect(() => {
-    const fetchUserAttendingEvents = async () => {
-      if (!currentUser?.$id) {
-        setUserAttendingEvents([]);
-        return;
-      }
-
+    if (strategy.shouldFetch) {
       try {
-        // Get events user is attending via junction table
+        // Fetch fresh data from database
+        authDebug.debug('Home: Fetching user attending events from database');
+        userAttendingFromJunction.current = false;
         const attendingEvents = await getUserAttendingEvents(currentUser.$id);
+        userAttendingFromJunction.current = true;
 
-        // Also include events user created (if not already in attending list)
+        // Also include events user created
         const createdEvents = events.filter((e: AppEvent) => e.creatorId === currentUser.$id);
 
         // Merge and deduplicate by $id
@@ -300,26 +308,91 @@ export default function Home() {
           }
         });
 
-        authDebug.debug(`Home: User has ${allUserEvents.length} total events (${attendingEvents.length} attending, ${createdEvents.length} created)`);
         setUserAttendingEvents(allUserEvents);
+
+        // Cache the data for next time
+        await cacheScreenData('home', allUserEvents);
+
+        // Mark as loaded from DB
+        if (markScreenLoadedFromDb) {
+          markScreenLoadedFromDb('home', true);
+        }
+
+        authDebug.debug(`Home: Loaded ${allUserEvents.length} user events from database`);
       } catch (error) {
         authDebug.error('Error fetching user attending events for calendar:', error);
-        // Fallback to just created events
         setUserAttendingEvents(events.filter((e: AppEvent) => e.creatorId === currentUser.$id));
       }
-    };
+    } else {
+      // Use cached data
+      try {
+        if (strategy.cacheStrategy === 'memory' && getScreenEvents) {
+          const cachedEvents = getScreenEvents('home') || [];
+          const userId = currentUser.$id;
+          const attendedFromCache = cachedEvents.filter(ev => isUserAttendingHeuristic(ev, userId));
 
+          setUserAttendingEvents(attendedFromCache);
+          authDebug.debug(`Home: Loaded ${attendedFromCache.length} user events from ${strategy.cacheStrategy} cache`);
+        } else {
+          // Fallback to current logic for storage cache
+          const loadedFlag = getScreenLoadedFromDb ? getScreenLoadedFromDb('home') : false;
+          const cacheTs = (eventsContext && (eventsContext as any).getScreenCacheTimestamp) ? (eventsContext as any).getScreenCacheTimestamp('home') : 0;
+          const lastFetched = (eventsContext && (eventsContext as any).getLastFetchedAt) ? (eventsContext as any).getLastFetchedAt() : 0;
+          const homeCache = (loadedFlag && getScreenEvents) ? getScreenEvents('home') : undefined;
+
+          if (loadedFlag && cacheTs >= lastFetched && Array.isArray(homeCache) && homeCache.length > 0) {
+            const userId = currentUser.$id;
+            const attendedFromCache = (homeCache as AppEvent[]).filter(ev => isUserAttendingHeuristic(ev, userId));
+
+            const map = new Map<string, AppEvent>();
+            attendedFromCache.forEach(ev => { if (ev && ev.$id) map.set(ev.$id, ev); });
+            const merged = Array.from(map.values());
+            setUserAttendingEvents(merged);
+            authDebug.debug(`Home: Loaded ${merged.length} user events from storage cache`);
+          }
+        }
+      } catch (error) {
+        authDebug.debug('Home: Failed to load cached events, falling back to created events', error);
+        setUserAttendingEvents(events.filter((e: AppEvent) => e.creatorId === currentUser.$id));
+      }
+    }
+
+    isInitialMount.current = false;
+  }, [currentUser, events, getScreenEvents, markScreenLoadedFromDb, eventsContext]);
+
+  // Execute the fetch function when dependencies change
+  useEffect(() => {
     fetchUserAttendingEvents();
-  }, [events, currentUser]);
+  }, [fetchUserAttendingEvents]);
 
   // Check for pending invites (both event and group invites)
   const [hasInvites, setHasInvites] = useState<boolean>(false);
   useEffect(() => {
     let mounted = true;
     const computeInvites = async () => {
-      if (!currentUser?.$id || !events || events.length === 0) {
+      if (!currentUser?.$id) {
         if (mounted) setHasInvites(false);
         return;
+      }
+
+      // Prefer to compute invites from home-scoped cache when present to avoid DB calls on remount
+      try {
+        const cacheTs = (eventsContext && (eventsContext as any).getScreenCacheTimestamp) ? (eventsContext as any).getScreenCacheTimestamp('home') : 0;
+        const lastFetched = (eventsContext && (eventsContext as any).getLastFetchedAt) ? (eventsContext as any).getLastFetchedAt() : 0;
+        const homeCache = getScreenEvents ? getScreenEvents('home') : undefined;
+        authDebug.debug('Home: computeInvites - cache check', { userId: currentUser?.$id, cacheTs, lastFetched, homeCacheCount: Array.isArray(homeCache) ? homeCache.length : 0 });
+        if (cacheTs >= lastFetched && Array.isArray(homeCache) && homeCache.length > 0) {
+          const hasEventInvites = (homeCache as AppEvent[]).some(event => {
+            if (event.creatorId === currentUser.$id) return false;
+            if (typeof (event as any).inviteCount === 'number' && (event as any).inviteCount === 0) return false;
+            // Use centralized heuristic as a lightweight hint based on legacy fields
+            return isUserAttendingHeuristic(event, currentUser.$id);
+          });
+          if (mounted) setHasInvites(hasEventInvites || groupInvites.length > 0);
+          return;
+        }
+      } catch (err) {
+        console.warn('Home: failed to compute invites from cache', err);
       }
 
       let hasEventInvites = false;
@@ -371,6 +444,35 @@ export default function Home() {
   useEffect(() => {
     const fetchAgendaEvents = async () => {
       if (!currentUser?.$id) return;
+      // Prefer using home screen cache to avoid DB reads on remount
+      try {
+        const cacheTs = (eventsContext && (eventsContext as any).getScreenCacheTimestamp) ? (eventsContext as any).getScreenCacheTimestamp('home') : 0;
+        const lastFetched = (eventsContext && (eventsContext as any).getLastFetchedAt) ? (eventsContext as any).getLastFetchedAt() : 0;
+        const homeCache = getScreenEvents ? getScreenEvents('home') : undefined;
+        authDebug.debug('Home: fetchAgendaEvents - cache check', { userId: currentUser?.$id, cacheTs, lastFetched, homeCacheCount: Array.isArray(homeCache) ? homeCache.length : 0 });
+        if (cacheTs >= lastFetched && Array.isArray(homeCache) && homeCache.length > 0) {
+          const upcoming = (homeCache as AppEvent[]).filter(event => isEventUpcoming(event));
+
+          // Use centralized heuristic to pick agenda candidates from cache
+          const userId = currentUser.$id;
+          const agendaCandidates = upcoming.filter(ev => isUserAttendingHeuristic(ev, userId) || ev.creatorId === userId);
+
+          // Sort by start time
+          agendaCandidates.sort((a, b) => new Date((a as any).startTime || (a as any).date || 0).getTime() - new Date((b as any).startTime || (b as any).date || 0).getTime());
+
+          // Fill in creatorName from cache where possible and keep attendeeCount if present
+          const enrichedAgendaEvents = agendaCandidates.map(ev => ({
+            ...ev,
+            creatorName: (ev as any).creatorName || getCreatorName(ev.creatorId),
+            attendeeCount: typeof (ev as any).attendeeCount === 'number' ? (ev as any).attendeeCount : (Array.isArray((ev as any).attendees) ? (ev as any).attendees.length : 0)
+          }));
+
+          setAgendaEvents(enrichedAgendaEvents);
+          return;
+        }
+      } catch (err) {
+        authDebug.debug('Home: failed to build agenda from cache, falling back to DB', err);
+      }
 
       try {
         authDebug.debug('Fetching agenda events for user:', currentUser.$id);
@@ -406,6 +508,7 @@ export default function Home() {
 
         authDebug.debug(`Found ${enrichedAgendaEvents.length} upcoming events user is attending`);
         setAgendaEvents(enrichedAgendaEvents);
+        authDebug.debug('Home: setAgendaEvents (DB path)', { count: enrichedAgendaEvents.length, ids: enrichedAgendaEvents.map(e => e.$id).slice(0, 10) });
       } catch (error) {
         authDebug.error('Error fetching agenda events:', error);
         setAgendaEvents([]);
@@ -415,13 +518,64 @@ export default function Home() {
     fetchAgendaEvents();
   }, [currentUser, events, getCreatorName]); // Refetch when events change
 
+  // Diagnostic: log whenever agendaEvents changes so we can trace UI updates
+  useEffect(() => {
+    try {
+      authDebug.debug('Home: agendaEvents changed', { count: agendaEvents.length, ids: agendaEvents.map(e => e.$id).slice(0, 10) });
+    } catch (err) {
+      /* ignore */
+    }
+  }, [agendaEvents]);
+
   // Enrich events with group names
   useEffect(() => {
     const enrichEvents = async () => {
       if (userAttendingEvents && userAttendingEvents.length > 0) {
         try {
-          const enriched = await enrichEventsWithGroupNames(userAttendingEvents);
-          setEnrichedEvents(enriched);
+          const enrichedNew = await enrichEventsWithGroupNames(userAttendingEvents);
+          authDebug.debug('Home: enriched userAttendingEvents', { count: Array.isArray(enrichedNew) ? enrichedNew.length : 0, ids: Array.isArray(enrichedNew) ? enrichedNew.map((e: any) => e.$id).slice(0, 10) : [] });
+
+          // Merge with any existing enriched events (read from the up-to-date home screen cache)
+          try {
+            const existing = (getScreenEvents ? getScreenEvents('home') : (Array.isArray(enrichedEvents) ? enrichedEvents : [])) || [];
+            const map = new Map<string, any>();
+
+            // Prefer the freshly enriched attending events
+            (enrichedNew as any[]).forEach(ev => { if (ev && ev.$id) map.set(ev.$id, ev); });
+            // Add existing events that are not already present
+            existing.forEach(ev => { if (ev && ev.$id && !map.has(ev.$id)) map.set(ev.$id, ev); });
+
+            const merged = Array.from(map.values());
+            authDebug.debug('Home: merged enriched events', { mergedCount: merged.length, mergedIds: merged.map((e: any) => e.$id).slice(0, 10) });
+
+            setEnrichedEvents(merged);
+            try {
+              // Only persist merged enriched events to the home cache if they are authoritative
+              // (i.e., we fetched attending events from the junction DB). This avoids
+              // overwriting a valid cache with an optimistic or heuristic-derived list.
+              if (userAttendingFromJunction.current) {
+                setScreenEvents?.('home', merged);
+                // Mark that home has been loaded from DB once we persist
+                markScreenLoadedFromDb?.('home', true);
+                authDebug.debug('Home: persisted merged enriched events to home cache', { count: merged.length });
+              } else {
+                authDebug.debug('Home: skipping persist of merged enriched events because not authoritative (junction data missing)');
+              }
+            } catch (err) {
+              authDebug.debug('Home: failed to persist home cache', err);
+            }
+          } catch (err) {
+            // Fallback to using newly enriched events if merge fails
+            setEnrichedEvents(enrichedNew);
+            try {
+              if (userAttendingFromJunction.current) {
+                setScreenEvents?.('home', enrichedNew);
+                markScreenLoadedFromDb?.('home', true);
+              }
+            } catch (e) {
+              /* ignore */
+            }
+          }
         } catch (error) {
           authDebug.error('Failed to enrich events with group names:', error);
           setEnrichedEvents(userAttendingEvents); // Fallback to original events
@@ -439,6 +593,8 @@ export default function Home() {
     if (!enrichedEvents || !Array.isArray(enrichedEvents)) {
       return [];
     }
+
+    authDebug.debug('Home: mapping enrichedEvents for calendar', { count: enrichedEvents.length, ids: enrichedEvents.map((e: any) => e.$id).slice(0, 10) });
 
     // Only log once when debugging is necessary - not on every render
     const shouldLog = false; // Set to true only when debugging is needed
@@ -777,13 +933,16 @@ export default function Home() {
     setFormVisible(true);
   }, []);
 
-  const handleFormClose = useCallback(() => {
+  const handleFormClose = useCallback(async (eventWasModified?: boolean) => {
     setFormVisible(false);
-    // After creating/editing an event, refresh data immediately
-    if (eventsContext) {
+    // If an event was created or updated, record the action and refresh
+    if (eventWasModified && eventsContext) {
+      // The specific action (create/update) would ideally be passed from EventForm
+      // For now, we'll use a generic action that covers both
+      await recordAction(editingEvent ? 'update' : 'create', 'home_event_modified');
       smartRefetchEvents('manual');
     }
-  }, [eventsContext, smartRefetchEvents]);
+  }, [eventsContext, smartRefetchEvents, recordAction, editingEvent]);
 
   const handleDetailsModalClose = useCallback(() => {
     setDetailsModalVisible(false);
@@ -795,13 +954,16 @@ export default function Home() {
     try {
       await addEventAttendee(selectedEvent.$id, currentUser.$id);
       setDetailsModalVisible(false);
+
+      // Record the action and refresh data
+      await recordAction('attend', 'home_event_attended');
       if (eventsContext) {
         smartRefetchEvents('manual');
       }
     } catch (error) {
       console.error('Error attending event:', error);
     }
-  }, [selectedEvent, currentUser?.$id, eventsContext, smartRefetchEvents]);
+  }, [selectedEvent, currentUser?.$id, eventsContext, smartRefetchEvents, recordAction]);
 
   const handleEventNotAttend = useCallback(async () => {
     if (!selectedEvent || !currentUser?.$id) return;
@@ -809,13 +971,16 @@ export default function Home() {
     try {
       await removeEventAttendee(selectedEvent.$id, currentUser.$id);
       setDetailsModalVisible(false);
+
+      // Record the action and refresh data
+      await recordAction('unattend', 'home_event_unattended');
       if (eventsContext) {
         smartRefetchEvents('manual');
       }
     } catch (error) {
       console.error('Error not attending event:', error);
     }
-  }, [selectedEvent, currentUser?.$id, eventsContext, smartRefetchEvents]);
+  }, [selectedEvent, currentUser?.$id, eventsContext, smartRefetchEvents, recordAction]);
 
   const handleEventChat = useCallback((event: AppEvent) => {
     setSelectedEvent(event);
@@ -826,8 +991,38 @@ export default function Home() {
   // React to screen focus (navigation) - only fetch when navigating to this screen
   useFocusEffect(
     useCallback(() => {
+      // On first focus, if Home hasn't loaded from DB this session, fetch DB and populate home cache.
+      try {
+        const loaded = getScreenLoadedFromDb?.('home');
+        if (!loaded) {
+          authDebug.debug('Home: initial mount - performing DB fetch to populate home cache');
+          // Use smartRefetchEvents to respect rate-limits and existing logic; treat as manual
+          smartRefetchEvents('manual');
+          // We'll mark loaded when we persist the cache after enrichment
+          return;
+        }
+
+        // Otherwise attempt to restore from home cache if it's fresh compared to last fetched DB time
+        const cacheTs = (eventsContext && (eventsContext as any).getScreenCacheTimestamp) ? (eventsContext as any).getScreenCacheTimestamp('home') : 0;
+        const lastFetched = (eventsContext && (eventsContext as any).getLastFetchedAt) ? (eventsContext as any).getLastFetchedAt() : 0;
+        const homeCache = getScreenEvents ? getScreenEvents('home') : undefined;
+        if (cacheTs >= lastFetched && Array.isArray(homeCache) && homeCache.length > 0) {
+          setEnrichedEvents(homeCache as AppEvent[]);
+          hasInitialLoad.current = true;
+          authDebug.debug('Home: restored enriched events from home screen cache, skipping refetch');
+          return;
+        }
+      } catch (err) {
+        authDebug.debug('Home: focus handler failed to read cache or decide fetch', err);
+      }
+
+      // Fallback: if context events are present and we haven't initial-loaded globally, consider smartRefetch
       if (eventsContext?.events) {
-        smartRefetchEvents('navigation');
+        if (!eventsContext.hasInitialLoad) {
+          smartRefetchEvents('navigation');
+        } else {
+          authDebug.debug('Skipping navigation-triggered refetch because initial load already completed');
+        }
       }
     }, [smartRefetchEvents, eventsContext?.events])
   );
@@ -842,7 +1037,7 @@ export default function Home() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header matching Feed styles */}
-      <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={[styles.headerGradient]}>
+      <LinearGradient colors={["#9b8fb6", "#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]} style={[styles.headerGradient]}>
         <View style={styles.headerContent}>
           <Text style={[styles.headerTitle, { color: '#fff' }]}>UP2 YOU</Text>
           <View style={styles.headerButtonsContainer}>
@@ -1069,21 +1264,7 @@ export default function Home() {
                     paddingVertical: 0, // Remove vertical padding
                     paddingHorizontal: 0, // Remove horizontal padding
                   }}
-                  theme={{
-                    palette: {
-                      gray: {
-                        '200': 'transparent',
-                        '300': colors.border,
-                      },
-                    },
-                  }}
-                  headerContainerStyle={{
-                    height: 53,
-                    backgroundColor: colors.surface,
-                  }}
-                  bodyContainerStyle={{
-                    paddingBottom: 0,
-                  }}
+
                 />
               )}
             </View>

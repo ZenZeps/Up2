@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ShareInviteModal from '../../../components/ShareInviteModal';
+import { useEvents } from '../context/EventContext';
 import UserAvatar from './UserAvatar';
 
 import { Event } from '@/lib/types/Events';
@@ -39,6 +40,7 @@ const EventDetailsModal = ({
 }: EventDetailsModalProps) => {
   const router = useRouter();
   const { colors } = useTheme();
+  const { refetchEvents } = useEvents();
   const [attendeeProfiles, setAttendeeProfiles] = useState<any[]>([]);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -94,6 +96,8 @@ const EventDetailsModal = ({
       try {
         if (!currentUserId) return;
         await addEventAttendee(event.$id, currentUserId);
+        // Trigger a global refetch so Feed/Home/Explore reflect the mutation
+        try { refetchEvents?.(); } catch (e) { console.warn('EventDetailsModal: refetchEvents failed', e); }
       } catch (err) {
         console.error('Fallback attend error:', err);
         // If the server disallowed attending a private event, show a clearer message
@@ -117,6 +121,8 @@ const EventDetailsModal = ({
       try {
         if (!currentUserId) return;
         await removeEventAttendee(event.$id, currentUserId);
+        // Trigger a global refetch so Feed/Home/Explore reflect the mutation
+        try { refetchEvents?.(); } catch (e) { console.warn('EventDetailsModal: refetchEvents failed', e); }
       } catch (err) {
         console.error('Fallback not-attend error:', err);
         Alert.alert('Error', 'Failed to un-attend event');

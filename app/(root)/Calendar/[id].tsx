@@ -3,6 +3,7 @@ import { getUserProfile } from '@/lib/api/user';
 import { account } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { Event as AppEvent } from '@/lib/types/Events';
+import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -33,7 +34,7 @@ export default function FriendCalendar() {
                 const profile = await getUserProfile(friendId);
                 if (mounted && profile) setFriendName(userDisplayUtils.getFullName(profile) || 'Friend');
 
-                const all = await getAllEvents();
+                const all = await getAllEvents(true);
                 const out: AppEvent[] = [];
 
                 for (const e of all) {
@@ -45,7 +46,8 @@ export default function FriendCalendar() {
                                     const invitees = await getEventInvitees(e.$id);
                                     allowed = Array.isArray(invitees) && invitees.includes(user.$id);
                                 } catch {
-                                    allowed = false;
+                                    // Fallback to heuristic when junction invite lookup fails
+                                    allowed = isUserAttendingHeuristic(e, user.$id);
                                 }
                                 if (!allowed) {
                                     try { allowed = await isUserAttendingEvent(user.$id, e.$id); } catch { allowed = false; }

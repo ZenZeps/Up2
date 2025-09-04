@@ -7,6 +7,8 @@ import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
 import { getUsersByIds } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
+import { useActionTracker } from '@/lib/hooks/useOptimizedData';
+import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
 import { batchProcess, dbConnectionPool } from '@/lib/utils/dbOptimization';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -38,10 +40,12 @@ type FeedItem = (ExtendedEvent & { type: 'event' }) | (TravelAnnouncementWithUse
 export default function Feed() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { events, refetchEvents } = useEvents();
+  const { events, refetchEvents, hasInitialLoad, getScreenEvents, setScreenEvents, markScreenLoadedFromDb, getScreenLoadedFromDb } = useEvents();
   const { user: globalUser } = useGlobalContext();
   const router = useRouter();
   const params = useLocalSearchParams();
+  const recordAction = useActionTracker();
+
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<ExtendedEvent[]>([]);
   const [travelAnnouncements, setTravelAnnouncements] = useState<TravelAnnouncementWithUserInfo[]>([]);
   const [friendProfiles, setFriendProfiles] = useState<any[]>([]);
@@ -58,17 +62,51 @@ export default function Feed() {
   const MIN_FETCH_INTERVAL = 30 * 1000; // 30s rate limit for automatic fetches
   const attendingCache = useRef<Map<string, { ids: Set<string>; ts: number }>>(new Map());
   const ATTENDING_CACHE_TTL = 60 * 1000; // 60s
+  const isInitialMount = useRef<boolean>(true);
 
   // Optimized fetch function for scalability (clean SWR-first implementation)
   const fetchFeedData = useCallback(async (force: boolean = false) => {
     if (!globalUser?.$id) return;
-    // Rate limit automatic fetches to avoid repeated DB reads
+
+    // Check if we should fetch from database or use cache
+    const strategy = force ?
+      { shouldFetch: true, reason: 'forced', cacheStrategy: 'database' as const } :
+      await shouldFetchData('feed', isInitialMount.current);
+
+    console.log(`Feed: Fetch strategy - ${strategy.cacheStrategy} (${strategy.reason})`);
+
+    if (!strategy.shouldFetch) {
+      // Use cached data
+      if (strategy.cacheStrategy === 'memory' && getScreenEvents) {
+        const cachedEvents = getScreenEvents('feed') || [];
+        if (cachedEvents.length > 0) {
+          const now = new Date();
+          const mapped = (cachedEvents as ExtendedEvent[])
+            .filter(e => {
+              const end = (e as any).endTime || (e as any).date || (e as any).startTime;
+              return new Date(end) >= now;
+            })
+            .map(e => ({
+              ...(e as ExtendedEvent),
+              creatorName: (e as any).creatorName || undefined,
+              isAttending: (e as any).isAttending ?? false,
+              attendeeCount: typeof (e as any).attendeeCount === 'number' ? (e as any).attendeeCount : 0,
+            } as ExtendedEvent));
+
+          setEventsWithCreatorNames(mapped);
+          setInitialLoadComplete(true);
+          console.log(`Feed: Loaded ${mapped.length} events from ${strategy.cacheStrategy} cache`);
+          return;
+        }
+      }
+    }
+
+    // Rate limit automatic fetches to avoid repeated DB reads  
     if (!force && Date.now() - lastFeedFetch.current < MIN_FETCH_INTERVAL) {
       console.log('Feed: skipping fetch - rate limited');
       return;
     }
 
-    lastFeedFetch.current = Date.now();
     setRefreshing(true);
     setCurrentUserId(globalUser.$id);
 
@@ -130,6 +168,35 @@ export default function Feed() {
 
           setEventsWithCreatorNames(nonAttendingCached);
           console.log('Feed: Showing cached feed with', nonAttendingCached.length, 'items (filtered by attendance)');
+
+          // Asynchronously populate creator names and a limited set of profile photos
+          (async () => {
+            try {
+              const uniqueCreatorIds = [...new Set(nonAttendingCached.map((ev: any) => ev.creatorId))] as string[];
+              if (uniqueCreatorIds.length === 0) return;
+
+              const creatorProfiles = await batchProcess(uniqueCreatorIds, async (batch: string[]) => await getUsersByIds(batch), 25);
+              const creatorMap = new Map(creatorProfiles.flat().map((p: any) => [p.$id, userDisplayUtils.getFullName(p)]));
+
+              const PHOTO_FETCH_LIMIT = 20;
+              const creatorPhotoMap: Record<string, string | null> = {};
+              const creatorIdsForPhotos = uniqueCreatorIds.slice(0, PHOTO_FETCH_LIMIT);
+              await Promise.all(creatorIdsForPhotos.map(async (creatorId: string) => {
+                try {
+                  creatorPhotoMap[creatorId] = await getUserProfilePhotoUrl(creatorId);
+                } catch {
+                  creatorPhotoMap[creatorId] = null;
+                }
+              }));
+              uniqueCreatorIds.forEach(id => { if (!Object.prototype.hasOwnProperty.call(creatorPhotoMap, id)) creatorPhotoMap[id] = null; });
+
+              // Merge creator names into events and update state
+              setEventsWithCreatorNames((prev) => prev.map(ev => ({ ...(ev as any), creatorName: creatorMap.get(ev.creatorId) || 'Unknown Creator' })) as ExtendedEvent[]);
+              setCreatorPhotoUrls(creatorPhotoMap);
+            } catch (err) {
+              console.warn('Feed: failed to populate creator info for cached feed', err);
+            }
+          })();
         } catch (err) {
           console.warn('Feed: failed to map cached feed', err);
         }
@@ -208,6 +275,16 @@ export default function Feed() {
 
               const nonAttendingEvents = filteredAndMappedEvents.filter((e: any) => !e.isAttending);
               setEventsWithCreatorNames(nonAttendingEvents as AppEvent[]);
+              try {
+                // Persist to EventContext's per-screen feed cache so Feed can restore from
+                // its own session memory without relying on Home's list.
+                setScreenEvents('feed', nonAttendingEvents as AppEvent[]);
+                await cacheScreenData('feed', nonAttendingEvents);
+                // Mark feed as loaded from DB for this session
+                try { markScreenLoadedFromDb?.('feed', true); } catch { }
+              } catch (err) {
+                console.warn('Feed: failed to persist feed cache', err);
+              }
               console.log('Feed: Background revalidation updated feed with', nonAttendingEvents.length, 'items');
 
               await dbConnectionPool.acquire(async () => {
@@ -322,6 +399,15 @@ export default function Feed() {
       const nonAttendingEventsSync = mappedEvents.filter((e: any) => !e.isAttending);
       setEventsWithCreatorNames(nonAttendingEventsSync as AppEvent[]);
 
+      // Cache the processed data
+      try {
+        setScreenEvents('feed', nonAttendingEventsSync as AppEvent[]);
+        await cacheScreenData('feed', nonAttendingEventsSync);
+        try { markScreenLoadedFromDb?.('feed', true); } catch { }
+      } catch (err) {
+        console.warn('Feed: failed to persist feed cache (sync flow)', err);
+      }
+
       await dbConnectionPool.acquire(async () => {
         await fetchTravelAnnouncements(userFriends);
       });
@@ -331,20 +417,51 @@ export default function Feed() {
       console.error('Error refreshing feed:', error);
     } finally {
       setRefreshing(false);
+      isInitialMount.current = false;
     }
-  }, [refetchEvents, globalUser?.$id]);
+  }, [refetchEvents, globalUser?.$id, getScreenEvents, setScreenEvents, markScreenLoadedFromDb]);
 
   // Initial load - happens once per session for scalability
   useEffect(() => {
-    if (!initialLoadComplete) {
-      const init = async () => {
-        await fetchFeedData();
-        // Do not call refetchEvents here - fetchFeedData will perform background revalidation
-        setInitialLoadComplete(true);
-      };
-      init();
+    if (initialLoadComplete) return;
+
+    // If EventContext already performed the initial load for the session,
+    // populate Feed's local view from the cached events instead of making DB reads.
+    // Prefer Feed-scoped session cache (separate from Home/Explore) so each screen
+    // can present its own curated list without clobbering others.
+    const feedCache = getScreenEvents('feed');
+    if (Array.isArray(feedCache) && feedCache.length > 0) {
+      try {
+        const now = new Date();
+        const mapped = (feedCache as AppEvent[])
+          .filter(e => {
+            const end = (e as any).endTime || (e as any).date || (e as any).startTime;
+            return new Date(end) >= now;
+          })
+          .map(e => ({
+            ...(e as AppEvent),
+            creatorName: (e as any).creatorName || undefined,
+            isAttending: (e as any).isAttending ?? false,
+            attendeeCount: typeof (e as any).attendeeCount === 'number' ? (e as any).attendeeCount : (Array.isArray((e as any).attendees) ? (e as any).attendees.length : 0),
+          } as ExtendedEvent));
+
+        setEventsWithCreatorNames(mapped);
+      } catch (err) {
+        console.warn('Feed: failed to map feed-scoped cached events', err);
+      }
+
+      setInitialLoadComplete(true);
+      return;
     }
-  }, [fetchFeedData, refetchEvents, initialLoadComplete]);
+
+    // No feed-scoped cache available: always load Feed's own data on first mount.
+    const init = async () => {
+      await fetchFeedData();
+      // fetchFeedData performs background revalidation and will persist to the feed cache
+      setInitialLoadComplete(true);
+    };
+    init();
+  }, [fetchFeedData, refetchEvents, initialLoadComplete, hasInitialLoad, events]);
 
   const fetchTravelAnnouncements = async (friendIds: string[]) => {
     try {
@@ -448,6 +565,8 @@ export default function Feed() {
             : e
         )
       );
+      // Trigger global refresh so other screens (Home/Explore) update
+      try { await refetchEvents(); } catch (e) { console.warn('Feed: refetchEvents failed after attend', e); }
       Alert.alert('Success', 'You are now attending this event!');
     } catch (err) {
       console.error('Attend event error:', err);
@@ -480,6 +599,8 @@ export default function Feed() {
             : e
         )
       );
+      // Trigger global refresh so other screens (Home/Explore) update
+      try { await refetchEvents(); } catch (e) { console.warn('Feed: refetchEvents failed after not-attend', e); }
       Alert.alert('Success', 'You are no longer attending this event.');
     } catch (err) {
       console.error('Not attend event error:', err);
@@ -537,7 +658,7 @@ export default function Feed() {
         <View
           style={[styles.eventMiniCard, { backgroundColor: darkCard.card, borderColor: darkCard.border }]}
         >
-          <LinearGradient colors={['#FF6B6B', '#FFD166']} style={styles.eventMiniEmoji}>
+          <LinearGradient colors={["#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]} style={styles.eventMiniEmoji}>
             <Text style={styles.eventEmojiSmall}>{getEventEmoji(item.tags)}</Text>
           </LinearGradient>
           <View style={styles.eventMiniContent}>
@@ -563,26 +684,27 @@ export default function Feed() {
     return (
       <TouchableOpacity
         onPress={() => router.push(`/event/${item.$id}?from=feed` as any)}
-        style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+        // Force the main row card to use dark card colors so light-mode matches dark-mode style
+        style={[styles.feedRowCard, { backgroundColor: '#2c2c2e', borderColor: '#333333' }]}
       >
-        <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={styles.feedThumb}>
+        <LinearGradient colors={["#c78aa5", "#db7d95", "#f2948f", "#f6b793"]} style={styles.feedThumb}>
           <Text style={styles.eventEmojiThumb}>{getEventEmoji(item.tags)}</Text>
         </LinearGradient>
 
         <View style={styles.feedBody}>
-          <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
+          <Text style={[styles.feedTitle, { color: '#FFFFFF' }]} numberOfLines={1}>{item.title}</Text>
 
           <View style={styles.feedMetaRow}>
-            <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
-            <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{dayjs(item.startTime).format('DD MMM, YYYY')}</Text>
-            <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
-            <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
-            <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
+            <MaterialIcons name="calendar-today" size={12} color={'#bdbdbd'} />
+            <Text style={[styles.feedMetaText, { color: '#bdbdbd', marginLeft: 6 }]}>{dayjs(item.startTime).format('DD MMM, YYYY')}</Text>
+            <Text style={[styles.feedMetaText, { color: '#bdbdbd', marginHorizontal: 8 }]}>•</Text>
+            <MaterialIcons name="location-on" size={12} color={'#bdbdbd'} />
+            <Text style={[styles.feedMetaText, { color: '#bdbdbd', marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
           </View>
 
           <View style={styles.feedSubRow}>
             <UserAvatar photoUrl={creatorPhotoUrls[item.creatorId] || null} name={item.creatorName} size={28} />
-            <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{item.creatorName || 'Unknown'}</Text>
+            <Text style={[styles.smallCreatorName, { color: '#FFFFFF', marginLeft: 8 }]} numberOfLines={1}>{item.creatorName || 'Unknown'}</Text>
           </View>
         </View>
 
@@ -602,7 +724,7 @@ export default function Feed() {
   };
 
   const renderTravelItem = ({ item }: { item: TravelAnnouncementWithUserInfo }) => (
-    <View style={[styles.feedCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View style={[styles.feedCard, { backgroundColor: '#2c2c2e', borderColor: '#333333' }]}>
       {/* Travel Header */}
       <View style={styles.cardHeader}>
         <UserAvatar
@@ -679,112 +801,114 @@ export default function Feed() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Improved gradient header */}
-      <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={[styles.headerGradient]}>
-        <View style={styles.headerContent}>
-          <Text style={[styles.headerTitle, { color: '#fff' }]}>UP2 YOU</Text>
-          <View style={styles.headerActions}>
-            <TouchableOpacity onPress={() => setTravelFormVisible(true)} style={styles.headerActionButton}>
-              <MaterialIcons name="flight" size={18} color={'#fff'} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setFormVisible(true)} style={styles.headerActionButton}>
-              <MaterialIcons name="add" size={18} color={'#fff'} />
-            </TouchableOpacity>
+    <LinearGradient colors={["#9b8fb6", "#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]} style={[styles.container]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
+        {/* Improved gradient header (transparent so the full-screen gradient shows through) */}
+        <View style={[styles.headerGradient, { backgroundColor: 'transparent' }]}>
+          <View style={styles.headerContent}>
+            <Text style={[styles.headerTitle, { color: '#fff' }]}>UP2 YOU</Text>
+            <View style={styles.headerActions}>
+              <TouchableOpacity onPress={() => setTravelFormVisible(true)} style={styles.headerActionButton}>
+                <MaterialIcons name="flight" size={18} color={'#fff'} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setFormVisible(true)} style={styles.headerActionButton}>
+                <MaterialIcons name="add" size={18} color={'#fff'} />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </LinearGradient>
 
-      {/* Event Feed as a single vertical FlatList with pull-to-refresh */}
-      <View style={[styles.feedContent, { paddingBottom: 70 + insets.bottom }]}>
-        {/* Compact friends summary (replaces large friend bubble bar) */}
-        {friendProfiles.length > 0 && (
-          <View
-            style={[styles.feedFriendSummary, { backgroundColor: colors.background }]}
-          >
-            <View style={styles.friendOverlapRow}>
-              {friendProfiles.slice(0, 4).map((f, idx) => (
-                <View key={f.$id} style={[styles.friendOverlap, { marginLeft: idx === 0 ? 0 : -12 }]}>
-                  <UserAvatar photoUrl={friendPhotoUrls[f.$id] || null} name={userDisplayUtils.getFullName(f)} size={40} />
-                </View>
-              ))}
-            </View>
-            <View style={{ marginLeft: 12 }}>
-              <Text style={{ color: colors.text, fontWeight: '700' }}>{friendProfiles.length} friends</Text>
-              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>See events from your friends</Text>
-            </View>
-          </View>
-        )}
-
-        {/* Main events FlatList (condensed chronological list) */}
-        <FlatList
-          data={eventsWithCreatorNames}
-          keyExtractor={(item) => item.$id}
-          renderItem={renderEventItem}
-          ListEmptyComponent={() => (
-            <View style={{ padding: 24, alignItems: 'center' }}>
-              <Text style={{ color: colors.textSecondary }}>No events yet. Pull to refresh.</Text>
+        {/* Event Feed as a single vertical FlatList with pull-to-refresh */}
+        <View style={[styles.feedContent, { paddingBottom: 70 + insets.bottom }]}>
+          {/* Compact friends summary (replaces large friend bubble bar) */}
+          {friendProfiles.length > 0 && (
+            <View
+              style={[styles.feedFriendSummary, { backgroundColor: 'transparent' }]}
+            >
+              <View style={styles.friendOverlapRow}>
+                {friendProfiles.slice(0, 4).map((f, idx) => (
+                  <View key={f.$id} style={[styles.friendOverlap, { marginLeft: idx === 0 ? 0 : -12 }]}>
+                    <UserAvatar photoUrl={friendPhotoUrls[f.$id] || null} name={userDisplayUtils.getFullName(f)} size={40} />
+                  </View>
+                ))}
+              </View>
+              <View style={{ marginLeft: 12 }}>
+                <Text style={{ color: colors.text, fontWeight: '700' }}>{friendProfiles.length} friends</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>See events from your friends</Text>
+              </View>
             </View>
           )}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 70 + insets.bottom }}
-        />
 
-        {/* Travel announcements (kept below the main feed) */}
-        {travelAnnouncements.length > 0 && (
-          <View style={{ marginTop: 12 }}>
-            <Text style={[styles.sectionHeaderTitle, { color: colors.text, marginLeft: 16 }]}>Travel Announcements</Text>
-            <FlatList
-              data={travelAnnouncements}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(t) => t.$id}
-              renderItem={({ item }) => (
-                <View style={[styles.feedCard, { width: 300, marginHorizontal: 12, backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <View style={styles.cardHeader}>
-                    <UserAvatar photoUrl={item.userPhotoUrl || null} name={item.userName} size={40} />
-                    <View style={styles.headerText}>
-                      <Text style={[styles.creatorName, { color: colors.text }]}>{item.userName}</Text>
-                      <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>{dayjs(item.startDate).fromNow()}</Text>
+          {/* Main events FlatList (condensed chronological list) */}
+          <FlatList
+            data={eventsWithCreatorNames}
+            keyExtractor={(item) => item.$id}
+            renderItem={renderEventItem}
+            ListEmptyComponent={() => (
+              <View style={{ padding: 24, alignItems: 'center' }}>
+                <Text style={{ color: colors.textSecondary }}>No events yet. Pull to refresh.</Text>
+              </View>
+            )}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 70 + insets.bottom }}
+          />
+
+          {/* Travel announcements (kept below the main feed) */}
+          {travelAnnouncements.length > 0 && (
+            <View style={{ marginTop: 12 }}>
+              <Text style={[styles.sectionHeaderTitle, { color: colors.text, marginLeft: 16 }]}>Travel Announcements</Text>
+              <FlatList
+                data={travelAnnouncements}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(t) => t.$id}
+                renderItem={({ item }) => (
+                  <View style={[styles.feedCard, { width: 300, marginHorizontal: 12, backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <View style={styles.cardHeader}>
+                      <UserAvatar photoUrl={item.userPhotoUrl || null} name={item.userName} size={40} />
+                      <View style={styles.headerText}>
+                        <Text style={[styles.creatorName, { color: colors.text }]}>{item.userName}</Text>
+                        <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>{dayjs(item.startDate).fromNow()}</Text>
+                      </View>
+                      <TouchableOpacity style={styles.moreButton} onPress={() => router.push(`/event/${item.$id}?from=feed` as any)}>
+                        <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
                     </View>
-                    <TouchableOpacity style={styles.moreButton} onPress={() => router.push(`/event/${item.$id}?from=feed` as any)}>
-                      <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
-                    </TouchableOpacity>
                   </View>
-                </View>
-              )}
-            />
-          </View>
+                )}
+              />
+            </View>
+          )}
+        </View>
+
+        {/* Event Form Modal */}
+        {formVisible && (
+          <EventForm
+            visible={formVisible}
+            onClose={() => setFormVisible(false)}
+            currentUserId={currentUserId ?? ''}
+            friends={friends}
+            selectedDateTime={new Date().toISOString()}
+          />
         )}
-      </View>
 
-      {/* Event Form Modal */}
-      {formVisible && (
-        <EventForm
-          visible={formVisible}
-          onClose={() => setFormVisible(false)}
-          currentUserId={currentUserId ?? ''}
-          friends={friends}
-          selectedDateTime={new Date().toISOString()}
-        />
-      )}
-
-      {/* Travel Form Modal */}
-      {travelFormVisible && (
-        <TravelForm
-          visible={travelFormVisible}
-          onClose={() => setTravelFormVisible(false)}
-          onSuccess={() => {
-            // Refresh travel announcements
-            if (friends.length > 0) {
-              fetchTravelAnnouncements(friends);
-            }
-          }}
-          currentUserId={currentUserId ?? ''}
-        />
-      )}
-    </SafeAreaView>
+        {/* Travel Form Modal */}
+        {travelFormVisible && (
+          <TravelForm
+            visible={travelFormVisible}
+            onClose={() => setTravelFormVisible(false)}
+            onSuccess={() => {
+              // Refresh travel announcements
+              if (friends.length > 0) {
+                fetchTravelAnnouncements(friends);
+              }
+            }}
+            currentUserId={currentUserId ?? ''}
+          />
+        )}
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
@@ -797,8 +921,10 @@ const styles = StyleSheet.create({
     borderBottomColor: '#333333',
   },
   headerGradient: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'transparent',
   },
   headerContent: {
     flexDirection: 'row',
@@ -1143,9 +1269,9 @@ const styles = StyleSheet.create({
   feedFriendSummary: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
+    padding: 8,
     marginHorizontal: 12,
-    marginBottom: 12,
+    marginBottom: 8,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'transparent',

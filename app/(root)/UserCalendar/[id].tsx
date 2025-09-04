@@ -4,6 +4,7 @@ import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { account } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { Event as AppEvent } from '@/lib/types/Events';
+import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -103,7 +104,7 @@ export default function UserCalendar() {
                 setUserName(userDisplayUtils.getFullName(profile));
 
                 // Get all events
-                const allEvents = await getAllEvents();
+                const allEvents = await getAllEvents(true);
 
                 // Filter events for this user (created by them or they're attending)
                 // Use junction table to check attendance
@@ -126,7 +127,8 @@ export default function UserCalendar() {
 
                         if (!hasAccess) {
                             const isInvitedLegacy = Array.isArray((event as any).inviteeIds) && (event as any).inviteeIds.includes(user.$id);
-                            if (!isInvitedLegacy) return null;
+                            // fallback to heuristic which safely checks legacy attendees/invitee arrays
+                            if (!isInvitedLegacy && !isUserAttendingHeuristic(event, user.$id)) return null;
                         }
                     }
 

@@ -52,7 +52,11 @@ export async function fetchEventsWithGroupNames(): Promise<Event[]> {
 /**
  * Fetch all events with caching
  */
-export async function fetchEvents(): Promise<Event[]> {
+export async function fetchEvents(params?: any): Promise<Event[]> {
+  // Backwards compatible: callers may pass a boolean includePast or a params object
+  let includePast = false;
+  if (typeof params === 'boolean') includePast = params;
+  else if (params && typeof params.includePast === 'boolean') includePast = params.includePast;
   // Check cache first
   const cachedEvents = cacheManager.get<Event[]>(EVENT_COLLECTION_CACHE_KEY);
   if (cachedEvents) {
@@ -63,15 +67,21 @@ export async function fetchEvents(): Promise<Event[]> {
   authDebug.info('Fetching events from database');
 
   try {
+    const queries: any[] = [
+      // SCALABILITY Fix: limit and sort
+      Query.limit(100),
+      Query.orderDesc('$createdAt'),
+    ];
+
+    // If caller wants only future events (default), add a filter; otherwise fetch all
+    if (!includePast) {
+      queries.push(Query.greaterThan('endTime', new Date().toISOString())); // Only future events
+    }
+
     const res = await databases.listDocuments(
       config.databaseID!,
       config.eventsCollectionID!,
-      [
-        // SCALABILITY FIX: Add query limits and filters
-        Query.limit(100), // Limit to 100 most recent events
-        Query.orderDesc('$createdAt'), // Most recent first
-        Query.greaterThan('endTime', new Date().toISOString()) // Only future events
-      ]
+      queries
     );
 
     const events = res.documents.map((doc): Event => {
@@ -187,8 +197,8 @@ export async function fetchEventById(id: string): Promise<Event | null> {
 /**
  * Get all events (alias for fetchEvents)
  */
-export async function getAllEvents() {
-  return fetchEvents();
+export async function getAllEvents(includePast: boolean = false) {
+  return fetchEvents(includePast);
 }
 
 /**
@@ -457,6 +467,15 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
       );
 
       authDebug.info(`User ${userId} promoted from invite to attending for event ${eventId}, new attendee count: ${newAttendeeCount}`);
+      // Targeted cache invalidation for affected keys
+      try {
+        cacheManager.remove(`event-${eventId}`);
+        cacheManager.remove(`event-attendees-${eventId}`);
+        cacheManager.remove(`event-invitees-${eventId}`);
+        cacheManager.remove(`events-user-${userId}`);
+      } catch (e) {
+        authDebug.warn('Failed to invalidate caches after promoting invite to attending', e);
+      }
       return true;
     }
 
@@ -496,6 +515,14 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
     );
 
     authDebug.info(`User ${userId} added to event ${eventId}, new count: ${newCount}`);
+    // Targeted cache invalidation for the affected event and user
+    try {
+      cacheManager.remove(`event-${eventId}`);
+      cacheManager.remove(`event-attendees-${eventId}`);
+      cacheManager.remove(`events-user-${userId}`);
+    } catch (e) {
+      authDebug.warn('Failed to invalidate caches after addEventAttendee', e);
+    }
     return true;
   } catch (error) {
     authDebug.error(`Failed to add attendee to event: ${eventId}`, error);
@@ -563,6 +590,15 @@ export async function removeEventAttendee(eventId: string, userId: string): Prom
     );
 
     authDebug.info(`User ${userId} removed from event ${eventId}, attendeeDelta: -${attendingDeleted}, inviteDelta: -${invitedDeleted}`);
+    // Targeted cache invalidation for affected keys
+    try {
+      cacheManager.remove(`event-${eventId}`);
+      cacheManager.remove(`event-attendees-${eventId}`);
+      cacheManager.remove(`event-invitees-${eventId}`);
+      cacheManager.remove(`events-user-${userId}`);
+    } catch (e) {
+      authDebug.warn('Failed to invalidate caches after removeEventAttendee', e);
+    }
     return true;
   } catch (error) {
     authDebug.error(`Failed to remove attendee from event: ${eventId}`, error);
@@ -633,6 +669,14 @@ export async function addEventInvitation(eventId: string, userId: string): Promi
     );
 
     authDebug.info(`User ${userId} invited to event ${eventId}, new invite count: ${newCount}`);
+    // Invalidate invite-related caches
+    try {
+      cacheManager.remove(`event-invitees-${eventId}`);
+      cacheManager.remove(`event-${eventId}`);
+      cacheManager.remove(`events-user-${userId}`);
+    } catch (e) {
+      authDebug.warn('Failed to invalidate caches after addEventInvitation', e);
+    }
     return true;
   } catch (error) {
     authDebug.error(`Failed to add invitation to event: ${eventId}`, error);
@@ -645,28 +689,40 @@ export async function addEventInvitation(eventId: string, userId: string): Promi
  */
 export async function getEventAttendees(eventId: string): Promise<string[]> {
   try {
+    const cacheKey = `event-attendees-${eventId}`;
+    const cached = cacheManager.get<string[]>(cacheKey);
+    if (cached) return cached;
+
     // Check if we should use junction tables or fallback to traditional approach
     const collectionId = config.eventAttendancesCollectionID;
     authDebug.debug(`Checking attendees collection config: ${collectionId}`);
 
     if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
       authDebug.info('Junction table not configured, skipping attendees lookup');
+      cacheManager.set<string[]>(cacheKey, [], 60 * 1000);
       return [];
     }
 
     authDebug.debug(`Attempting to fetch attendees from collection: ${collectionId}`);
-    const attendanceRecords = await databases.listDocuments(
-      config.databaseID!,
-      collectionId,
-      [
-        Query.equal('eventId', eventId),
-        Query.equal('status', 'attending'),
-        Query.limit(1000) // Scalability limit
-      ]
-    );
+
+    // Deduplicate concurrent requests for the same event
+    const { requestDeduplicator } = await import('@/lib/utils/dbOptimization');
+    const attendanceRecords = await requestDeduplicator.deduplicate(`attendees-${eventId}`, async () => {
+      return await databases.listDocuments(
+        config.databaseID!,
+        collectionId,
+        [
+          Query.equal('eventId', eventId),
+          Query.equal('status', 'attending'),
+          Query.limit(1000) // Scalability limit
+        ]
+      );
+    });
 
     const attendeeIds = attendanceRecords.documents.map((record: any) => record.userId);
-    authDebug.debug(`Updated attendees: +${attendeeIds.length}, -0`);
+    // Cache for a short window to avoid repeated reads while navigating
+    cacheManager.set<string[]>(cacheKey, attendeeIds, 90 * 1000);
+    authDebug.debug(`Updated attendees: +${attendeeIds.length}, cached for 90s`);
     return attendeeIds;
   } catch (error) {
     authDebug.error(`Failed to get attendees for event: ${eventId}`, error);
@@ -720,26 +776,36 @@ export async function getEventAttendeesFor(eventIds: string[]): Promise<Record<s
  */
 export async function getEventInvitees(eventId: string): Promise<string[]> {
   try {
+    const cacheKey = `event-invitees-${eventId}`;
+    const cached = cacheManager.get<string[]>(cacheKey);
+    if (cached) return cached;
+
     const collectionId = config.eventAttendancesCollectionID;
     authDebug.debug(`Checking invite collection config: ${collectionId}`);
 
     if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
       authDebug.info('Junction table not configured, skipping invitees lookup');
+      cacheManager.set<string[]>(cacheKey, [], 60 * 1000);
       return [];
     }
 
-    const invitationRecords = await databases.listDocuments(
-      config.databaseID!,
-      collectionId,
-      [
-        Query.equal('eventId', eventId),
-        Query.equal('status', 'invited'),
-        Query.limit(1000)
-      ]
-    );
+    // Deduplicate concurrent requests for the same event invitees
+    const { requestDeduplicator } = await import('@/lib/utils/dbOptimization');
+    const invitationRecords = await requestDeduplicator.deduplicate(`invitees-${eventId}`, async () => {
+      return await databases.listDocuments(
+        config.databaseID!,
+        collectionId,
+        [
+          Query.equal('eventId', eventId),
+          Query.equal('status', 'invited'),
+          Query.limit(1000)
+        ]
+      );
+    });
 
     const inviteeIds = invitationRecords.documents.map((record: any) => record.userId);
-    authDebug.debug(`Found ${inviteeIds.length} invitees for event ${eventId}`);
+    cacheManager.set<string[]>(cacheKey, inviteeIds, 90 * 1000);
+    authDebug.debug(`Found ${inviteeIds.length} invitees for event ${eventId} (cached 90s)`);
     return inviteeIds;
   } catch (error) {
     authDebug.error(`Failed to get invitees for event: ${eventId}`, error);
@@ -786,6 +852,14 @@ export async function removeEventInvitation(eventId: string, userId: string): Pr
     });
 
     authDebug.info(`Removed ${invitationRecords.documents.length} invitation(s) for user ${userId} on event ${eventId}`);
+    // Invalidate invite-related caches
+    try {
+      cacheManager.remove(`event-invitees-${eventId}`);
+      cacheManager.remove(`event-${eventId}`);
+      cacheManager.remove(`events-user-${userId}`);
+    } catch (e) {
+      authDebug.warn('Failed to invalidate caches after removeEventInvitation', e);
+    }
     return true;
   } catch (error) {
     authDebug.error(`Failed to remove invitation for event: ${eventId}`, error);
@@ -1057,80 +1131,75 @@ export async function fetchUserEvents(userId: string): Promise<Event[]> {
  */
 export async function getUserAttendingEvents(userId: string): Promise<Event[]> {
   try {
+    const cacheKey = `user-attending-events-${userId}`;
+    const cached = cacheManager.get<Event[]>(cacheKey);
+    if (cached) {
+      authDebug.debug(`Returning cached attending events for user ${userId}`, { count: cached.length });
+      return cached;
+    }
+
     authDebug.debug(`Fetching events user is attending: ${userId}`);
 
     // Guard: ensure the event attendances collection is configured
     const attendanceIdStr = String(config.eventAttendancesCollectionID || '');
     authDebug.debug('Using eventAttendancesCollectionID', { collectionId: attendanceIdStr });
 
-    // Only treat clearly placeholder IDs as invalid (e.g. starting with 'temp' or 'YOUR_')
     if (!attendanceIdStr || /^temp|YOUR_|placeholder_/i.test(attendanceIdStr)) {
       authDebug.error('getUserAttendingEvents aborted: eventAttendancesCollectionID appears to be a placeholder or missing', { userId, collectionId: config.eventAttendancesCollectionID });
+      cacheManager.set<Event[]>(cacheKey, [], 60 * 1000);
       return [];
     }
 
-    // Get event IDs from event_attendances junction table
-    const attendanceRecords = await databases.listDocuments(
-      config.databaseID!,
-      config.eventAttendancesCollectionID!,
-      [Query.equal('userId', userId)]
-    );
+    // Deduplicate the attendance fetch for this user
+    const { requestDeduplicator } = await import('@/lib/utils/dbOptimization');
+    const attendanceRecords = await requestDeduplicator.deduplicate(`user-attendance-${userId}`, async () => {
+      return await databases.listDocuments(
+        config.databaseID!,
+        config.eventAttendancesCollectionID!,
+        [Query.equal('userId', userId)]
+      );
+    });
 
-    if (attendanceRecords.documents.length === 0) {
+    if (!attendanceRecords || attendanceRecords.documents.length === 0) {
       authDebug.debug(`No attendance records found for user: ${userId}`);
+      cacheManager.set<Event[]>(cacheKey, [], 60 * 1000);
       return [];
     }
 
     const eventIds = attendanceRecords.documents.map(record => record.eventId);
     authDebug.debug(`Found ${eventIds.length} events user is attending`);
 
-    // Fetch the actual event documents
-    const events = await Promise.all(
-      eventIds.map(async (eventId) => {
+    // Fetch event documents in batches to avoid many individual getDocument calls
+    const { batchProcess } = await import('@/lib/utils/dbOptimization');
+    const fetchedDocs: any[] = [];
+    await batchProcess(eventIds, async (batch) => {
+      const part = await Promise.all(batch.map(async (eventId) => {
         try {
-          const eventDoc = await databases.getDocument(
-            config.databaseID!,
-            config.eventsCollectionID!,
-            eventId
-          );
-          return eventDoc as any;
-        } catch (error) {
-          // Appwrite returns 404 for documents that were deleted or missing.
-          // This can be noisy when users have attendances for events that no longer exist.
-          // Demote the specific 'document_not_found' case to debug, and keep other errors at warn.
-          try {
-            const errAny = error as any;
-            const errText = typeof error === 'string' ? error : (errAny?.response || errAny?.message || 'Unknown error');
-            if (typeof errText === 'string' && errText.includes('document_not_found')) {
-              authDebug.debug(`Event ${eventId} missing (document_not_found)`);
-            } else {
-              authDebug.warn(`Could not fetch event ${eventId}: ${errAny?.message || ''}`);
-            }
-          } catch (inner) {
-            authDebug.warn(`Could not fetch event ${eventId}:`, error);
-          }
+          return await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
+        } catch (err) {
           return null;
         }
-      })
-    );
-
-    // Filter out null events and map to Event type
-    const validEvents = events
-      .filter(event => event !== null)
-      .map((doc: any): Event => ({
-        $id: doc.$id,
-        title: doc.title,
-        location: doc.location,
-        startTime: doc.startTime,
-        endTime: doc.endTime,
-        creatorId: doc.creatorId,
-        description: doc.description || '',
-        tags: Array.isArray(doc.tags) ? doc.tags : [],
-        attendeeCount: doc.attendeeCount || 0,
-        inviteCount: doc.inviteCount || 0,
       }));
+      fetchedDocs.push(...part.filter(Boolean));
+      return part.filter(Boolean) as any[];
+    }, 10);
 
-    authDebug.info(`Successfully fetched ${validEvents.length} attending events for user: ${userId}`);
+    const validEvents = fetchedDocs.map((doc: any): Event => ({
+      $id: doc.$id,
+      title: doc.title,
+      location: doc.location,
+      startTime: doc.startTime,
+      endTime: doc.endTime,
+      creatorId: doc.creatorId,
+      description: doc.description || '',
+      tags: Array.isArray(doc.tags) ? doc.tags : [],
+      attendeeCount: doc.attendeeCount || 0,
+      inviteCount: doc.inviteCount || 0,
+    }));
+
+    // Cache for a short window to avoid repeated reads during quick navigation
+    cacheManager.set<Event[]>(cacheKey, validEvents, 90 * 1000);
+    authDebug.info(`Successfully fetched ${validEvents.length} attending events for user: ${userId} (cached 90s)`);
     return validEvents;
   } catch (err) {
     authDebug.error(`Error fetching attending events for user: ${userId}`, err);
