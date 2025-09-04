@@ -1,5 +1,5 @@
 import { getEventColor, getEventEmoji } from '@/constants/categories';
-import { addEventAttendee, enrichEventsWithGroupNames, getEventAttendeeCount, getEventInvitees, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
+import { addEventAttendee, enrichEventsWithGroupNames, getEventInvitees, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
 import { getUserGroupInvites } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getActiveTravelForUser } from '@/lib/api/travel';
@@ -11,7 +11,7 @@ import { useGlobalContext } from '@/lib/global-provider';
 import { useActionTracker } from '@/lib/hooks/useOptimizedData';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
-import { isEventUpcoming, isUserAttendingHeuristic } from '@/lib/utils/attendance';
+import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
 import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
 import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
@@ -321,6 +321,7 @@ export default function Home() {
         authDebug.debug(`Home: Loaded ${allUserEvents.length} user events from database`);
       } catch (error) {
         authDebug.error('Error fetching user attending events for calendar:', error);
+        // Fallback to events user created (better than nothing)
         setUserAttendingEvents(events.filter((e: AppEvent) => e.creatorId === currentUser.$id));
       }
     } else {
@@ -329,7 +330,10 @@ export default function Home() {
         if (strategy.cacheStrategy === 'memory' && getScreenEvents) {
           const cachedEvents = getScreenEvents('home') || [];
           const userId = currentUser.$id;
-          const attendedFromCache = cachedEvents.filter(ev => isUserAttendingHeuristic(ev, userId));
+          // Include both events user is attending AND events user created
+          const attendedFromCache = cachedEvents.filter(ev =>
+            isUserAttendingHeuristic(ev, userId) || ev.creatorId === userId
+          );
 
           setUserAttendingEvents(attendedFromCache);
           authDebug.debug(`Home: Loaded ${attendedFromCache.length} user events from ${strategy.cacheStrategy} cache`);
@@ -342,7 +346,10 @@ export default function Home() {
 
           if (loadedFlag && cacheTs >= lastFetched && Array.isArray(homeCache) && homeCache.length > 0) {
             const userId = currentUser.$id;
-            const attendedFromCache = (homeCache as AppEvent[]).filter(ev => isUserAttendingHeuristic(ev, userId));
+            // Include both events user is attending AND events user created
+            const attendedFromCache = (homeCache as AppEvent[]).filter(ev =>
+              isUserAttendingHeuristic(ev, userId) || ev.creatorId === userId
+            );
 
             const map = new Map<string, AppEvent>();
             attendedFromCache.forEach(ev => { if (ev && ev.$id) map.set(ev.$id, ev); });
@@ -353,6 +360,7 @@ export default function Home() {
         }
       } catch (error) {
         authDebug.debug('Home: Failed to load cached events, falling back to created events', error);
+        // Fallback to events user created (better than nothing)
         setUserAttendingEvents(events.filter((e: AppEvent) => e.creatorId === currentUser.$id));
       }
     }
@@ -440,84 +448,6 @@ export default function Home() {
     fetchGroupInvites();
   }, [currentUser]);
 
-  // Fetch agenda events (events user is attending)
-  useEffect(() => {
-    const fetchAgendaEvents = async () => {
-      if (!currentUser?.$id) return;
-      // Prefer using home screen cache to avoid DB reads on remount
-      try {
-        const cacheTs = (eventsContext && (eventsContext as any).getScreenCacheTimestamp) ? (eventsContext as any).getScreenCacheTimestamp('home') : 0;
-        const lastFetched = (eventsContext && (eventsContext as any).getLastFetchedAt) ? (eventsContext as any).getLastFetchedAt() : 0;
-        const homeCache = getScreenEvents ? getScreenEvents('home') : undefined;
-        authDebug.debug('Home: fetchAgendaEvents - cache check', { userId: currentUser?.$id, cacheTs, lastFetched, homeCacheCount: Array.isArray(homeCache) ? homeCache.length : 0 });
-        if (cacheTs >= lastFetched && Array.isArray(homeCache) && homeCache.length > 0) {
-          const upcoming = (homeCache as AppEvent[]).filter(event => isEventUpcoming(event));
-
-          // Use centralized heuristic to pick agenda candidates from cache
-          const userId = currentUser.$id;
-          const agendaCandidates = upcoming.filter(ev => isUserAttendingHeuristic(ev, userId) || ev.creatorId === userId);
-
-          // Sort by start time
-          agendaCandidates.sort((a, b) => new Date((a as any).startTime || (a as any).date || 0).getTime() - new Date((b as any).startTime || (b as any).date || 0).getTime());
-
-          // Fill in creatorName from cache where possible and keep attendeeCount if present
-          const enrichedAgendaEvents = agendaCandidates.map(ev => ({
-            ...ev,
-            creatorName: (ev as any).creatorName || getCreatorName(ev.creatorId),
-            attendeeCount: typeof (ev as any).attendeeCount === 'number' ? (ev as any).attendeeCount : (Array.isArray((ev as any).attendees) ? (ev as any).attendees.length : 0)
-          }));
-
-          setAgendaEvents(enrichedAgendaEvents);
-          return;
-        }
-      } catch (err) {
-        authDebug.debug('Home: failed to build agenda from cache, falling back to DB', err);
-      }
-
-      try {
-        authDebug.debug('Fetching agenda events for user:', currentUser.$id);
-        const attendingEvents = await getUserAttendingEvents(currentUser.$id);
-
-        // Filter for upcoming events only
-        const upcomingEvents = attendingEvents.filter(event => {
-          const eventEndTime = new Date(event.endTime || event.startTime);
-          return eventEndTime > new Date();
-        });
-
-        // Sort by start time
-        upcomingEvents.sort((a, b) =>
-          new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-        );
-
-        // Enrich events with creator names and accurate attendee counts
-        const enrichedAgendaEvents = await Promise.all(
-          upcomingEvents.map(async (event) => {
-            // Get creator name
-            const creatorName = getCreatorName(event.creatorId);
-
-            // Get accurate attendee count from junction table
-            const attendeeCount = await getEventAttendeeCount(event.$id);
-
-            return {
-              ...event,
-              creatorName,
-              attendeeCount
-            };
-          })
-        );
-
-        authDebug.debug(`Found ${enrichedAgendaEvents.length} upcoming events user is attending`);
-        setAgendaEvents(enrichedAgendaEvents);
-        authDebug.debug('Home: setAgendaEvents (DB path)', { count: enrichedAgendaEvents.length, ids: enrichedAgendaEvents.map(e => e.$id).slice(0, 10) });
-      } catch (error) {
-        authDebug.error('Error fetching agenda events:', error);
-        setAgendaEvents([]);
-      }
-    };
-
-    fetchAgendaEvents();
-  }, [currentUser, events, getCreatorName]); // Refetch when events change
-
   // Diagnostic: log whenever agendaEvents changes so we can trace UI updates
   useEffect(() => {
     try {
@@ -527,9 +457,15 @@ export default function Home() {
     }
   }, [agendaEvents]);
 
-  // Enrich events with group names
+  // Enrich events with group names AND set agenda events
   useEffect(() => {
     const enrichEvents = async () => {
+      if (!currentUser?.$id) {
+        setAgendaEvents([]);
+        setEnrichedEvents([]);
+        return;
+      }
+
       if (userAttendingEvents && userAttendingEvents.length > 0) {
         try {
           const enrichedNew = await enrichEventsWithGroupNames(userAttendingEvents);
@@ -548,7 +484,27 @@ export default function Home() {
             const merged = Array.from(map.values());
             authDebug.debug('Home: merged enriched events', { mergedCount: merged.length, mergedIds: merged.map((e: any) => e.$id).slice(0, 10) });
 
+            // Set enriched events for calendar (all events)
             setEnrichedEvents(merged);
+
+            // Set agenda events (upcoming only) from the merged events
+            const upcomingEvents = merged.filter((event: any) => {
+              const eventEndTime = new Date(event.endTime || event.startTime);
+              return eventEndTime > new Date();
+            });
+
+            // Sort upcoming events by start time
+            upcomingEvents.sort((a: any, b: any) =>
+              new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+            );
+
+            setAgendaEvents(upcomingEvents);
+            authDebug.debug('Home: set agenda and enriched events', {
+              agendaCount: upcomingEvents.length,
+              totalCount: merged.length,
+              agendaIds: upcomingEvents.map((e: any) => e.$id).slice(0, 10)
+            });
+
             try {
               // Only persist merged enriched events to the home cache if they are authoritative
               // (i.e., we fetched attending events from the junction DB). This avoids
@@ -567,6 +523,17 @@ export default function Home() {
           } catch (err) {
             // Fallback to using newly enriched events if merge fails
             setEnrichedEvents(enrichedNew);
+
+            // Also set agenda events from enrichedNew
+            const upcomingEvents = (enrichedNew as any[]).filter((event: any) => {
+              const eventEndTime = new Date(event.endTime || event.startTime);
+              return eventEndTime > new Date();
+            });
+            upcomingEvents.sort((a: any, b: any) =>
+              new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+            );
+            setAgendaEvents(upcomingEvents);
+
             try {
               if (userAttendingFromJunction.current) {
                 setScreenEvents?.('home', enrichedNew);
@@ -579,14 +546,22 @@ export default function Home() {
         } catch (error) {
           authDebug.error('Failed to enrich events with group names:', error);
           setEnrichedEvents(userAttendingEvents); // Fallback to original events
+
+          // Also set agenda from fallback
+          const upcomingEvents = userAttendingEvents.filter((event: any) => {
+            const eventEndTime = new Date(event.endTime || event.startTime);
+            return eventEndTime > new Date();
+          });
+          setAgendaEvents(upcomingEvents);
         }
       } else {
         setEnrichedEvents([]);
+        setAgendaEvents([]);
       }
     };
 
     enrichEvents();
-  }, [userAttendingEvents]);
+  }, [userAttendingEvents, currentUser]);
 
   // Format events for the calendar with date validation
   const calendarEvents = useMemo(() => {
@@ -1007,9 +982,10 @@ export default function Home() {
         const lastFetched = (eventsContext && (eventsContext as any).getLastFetchedAt) ? (eventsContext as any).getLastFetchedAt() : 0;
         const homeCache = getScreenEvents ? getScreenEvents('home') : undefined;
         if (cacheTs >= lastFetched && Array.isArray(homeCache) && homeCache.length > 0) {
-          setEnrichedEvents(homeCache as AppEvent[]);
+          // Don't set enrichedEvents directly here - let the enrichEvents useEffect handle it
+          // setEnrichedEvents(homeCache as AppEvent[]);
           hasInitialLoad.current = true;
-          authDebug.debug('Home: restored enriched events from home screen cache, skipping refetch');
+          authDebug.debug('Home: home screen cache is available, will be used by enrichEvents useEffect');
           return;
         }
       } catch (err) {
