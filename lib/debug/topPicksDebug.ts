@@ -8,34 +8,34 @@ import { clearTopPicksCache, getTopPicksCacheInfo } from '@/components/TopPicks'
 
 export const debugTopPicksCache = async () => {
   console.log('🔍 TopPicks Cache Debug:');
-  
+
   const cacheInfo = await getTopPicksCacheInfo();
   console.log('Cache Info:', cacheInfo);
-  
+
   return cacheInfo;
 };
 
 export const clearAndDebugTopPicksCache = async () => {
   console.log('🧹 Clearing TopPicks Cache...');
-  
+
   const beforeInfo = await getTopPicksCacheInfo();
   console.log('Before clear:', beforeInfo);
-  
+
   await clearTopPicksCache();
-  
+
   const afterInfo = await getTopPicksCacheInfo();
   console.log('After clear:', afterInfo);
-  
+
   return { before: beforeInfo, after: afterInfo };
 };
 
 // Add this to your dev menu or call it from console for testing
 export const testTopPicksCache = async () => {
   console.log('🧪 Testing TopPicks Cache...');
-  
+
   // Get current cache state
   await debugTopPicksCache();
-  
+
   // Instructions for testing
   console.log(`
   🧪 TopPicks Cache Test Instructions:

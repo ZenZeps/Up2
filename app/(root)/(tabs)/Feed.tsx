@@ -1,3 +1,4 @@
+import TopPicks from '@/components/TopPicks';
 import { getCategoriesByValues, getEventEmoji } from '@/constants/categories';
 import { addEventAttendee, getEventAttendeesFor, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
@@ -9,20 +10,19 @@ import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { useActionTracker } from '@/lib/hooks/useOptimizedData';
 import { useRealTimeUI } from '@/lib/hooks/useRealTimeUI';
+import { useUserLocation } from '@/lib/hooks/useUserLocation';
+import { useCreatorInfo } from '@/lib/utils/creatorInfoManager';
 import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
 import { batchProcess, dbConnectionPool } from '@/lib/utils/dbOptimization';
 import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
-import { useCreatorInfo } from '@/lib/utils/creatorInfoManager';
-import { useUserLocation } from '@/lib/hooks/useUserLocation';
-import TopPicks from '@/components/TopPicks';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { LinearGradient } from 'expo-linear-gradient';
 // header will be plain white
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -265,10 +265,10 @@ export default function Feed() {
               console.log('Feed: Background revalidation of events started');
               const { fetchEvents } = await import('@/lib/api/event');
               const freshAllEvents = await fetchEvents();
-              
+
               // Store all events for top picks (not just friend/group events)
               setAllEventsForTopPicks(freshAllEvents);
-              
+
               const relevantFresh = freshAllEvents.filter((event: any) => userFriends.includes(event.creatorId) || (event.groupId && userGroupIds.includes(event.groupId)));
 
               const uniqueCreatorIds = [...new Set(relevantFresh.map((ev: any) => ev.creatorId))] as string[];
@@ -391,10 +391,10 @@ export default function Feed() {
       // No cache: fetch synchronously and map
       const { fetchEvents } = await import('@/lib/api/event');
       const allEvents = await fetchEvents();
-      
+
       // Store all events for top picks (not just friend/group events)
       setAllEventsForTopPicks(allEvents);
-      
+
       const relevantEvents = allEvents.filter((ev: any) => userFriends.includes(ev.creatorId) || (ev.groupId && userGroupIds.includes(ev.groupId)));
 
       const uniqueCreatorIdsSync = [...new Set(relevantEvents.map((ev: any) => ev.creatorId))] as string[];
@@ -779,7 +779,7 @@ export default function Feed() {
 
   const renderEventItem = ({ item }: { item: AppEvent & { creatorName?: string } }) => {
     const { formattedDistance } = getEventDistance(item.location || '');
-    
+
     return (
       <TouchableOpacity
         onPress={() => router.push(`/event/${item.$id}?from=feed` as any)}
@@ -926,10 +926,10 @@ export default function Feed() {
         {/* Event Feed as a single vertical FlatList with pull-to-refresh */}
         <View style={[styles.feedContent, { paddingBottom: 70 + insets.bottom }]}>
           {/* Top Picks Section - personalized event recommendations */}
-          <TopPicks 
-            allEvents={allEventsForTopPicks} 
-            userFriends={friends} 
-            maxPicks={8} 
+          <TopPicks
+            allEvents={allEventsForTopPicks}
+            userFriends={friends}
+            maxPicks={8}
           />
 
           {/* Main events FlatList (condensed chronological list) */}

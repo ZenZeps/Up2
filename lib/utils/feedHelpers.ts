@@ -8,11 +8,11 @@
 import { Event as AppEvent } from '@/lib/types/Events';
 
 // Extended event type for Feed component
-export type ExtendedEvent = AppEvent & { 
-  attendees?: string[]; 
-  inviteeIds?: string[]; 
-  isAttending?: boolean; 
-  attendeeCount?: number; 
+export type ExtendedEvent = AppEvent & {
+  attendees?: string[];
+  inviteeIds?: string[];
+  isAttending?: boolean;
+  attendeeCount?: number;
   creatorName?: string; // Keep for backward compatibility
 };
 
@@ -37,20 +37,20 @@ export const processFeedEvents = async (
       })
       .map(async (event) => {
         const isAttending = attendingEventIds.has(event.$id);
-        
+
         // Get attendees list (prefer junction table over legacy in-document)
         let attendeesList: string[] = [];
-        const junctionAttendees = Array.isArray(attendeesMap[event.$id]) 
-          ? attendeesMap[event.$id] 
+        const junctionAttendees = Array.isArray(attendeesMap[event.$id])
+          ? attendeesMap[event.$id]
           : [];
-        
+
         if (junctionAttendees.length > 0) {
           attendeesList = junctionAttendees;
         } else {
           // Fallback to legacy attendees if available
           attendeesList = Array.isArray(event.attendees) ? event.attendees : [];
         }
-        
+
         // Calculate attendee count
         let attendeeCount: number;
         if (typeof event.attendeeCount === 'number') {
@@ -94,16 +94,16 @@ export const applyRealTimeUIOverlay = (
 ): ExtendedEvent[] => {
   // Start with base events, filter out those with pending attend
   let filteredEvents = baseEvents.filter(event => !pendingAttendIds.has(event.$id));
-  
+
   // Add back events with pending unattend from the global context
   if (pendingUnattendIds.size > 0) {
-    const eventsToAddBack = allEventsForUnattend.filter(event => 
+    const eventsToAddBack = allEventsForUnattend.filter(event =>
       pendingUnattendIds.has(event.$id) &&
       !filteredEvents.some(existing => existing.$id === event.$id)
     );
     filteredEvents = [...filteredEvents, ...eventsToAddBack];
   }
-  
+
   return filteredEvents;
 };
 
@@ -114,6 +114,6 @@ export const extractCreatorIds = (events: ExtendedEvent[]): string[] => {
   const ids = events
     .map((event) => event.creatorId)
     .filter((id): id is string => Boolean(id));
-  
+
   return [...new Set(ids)];
 };

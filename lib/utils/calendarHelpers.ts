@@ -1,22 +1,21 @@
+import { getEventColor } from '@/constants/categories';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
-import { getEventColor } from '@/constants/categories';
-import { isDateInTravelPeriod } from './travelCalendarUtils';
 
 // Validate event for calendar rendering
 export const isValidCalendarEvent = (event: AppEvent): boolean => {
   if (!event || typeof event !== 'object') return false;
-  
+
   // Validate that start and end times are valid dates
   const startValid = event.startTime && !isNaN(new Date(event.startTime).getTime());
   const endValid = event.endTime && !isNaN(new Date(event.endTime).getTime());
-  
+
   return Boolean(startValid && endValid);
 };
 
 // Transform events for calendar display
 export const transformEventForCalendar = (
-  event: AppEvent, 
+  event: AppEvent,
   getCreatorName: (id: string) => string,
   userTravelData: TravelAnnouncement[] = []
 ) => {

@@ -10,6 +10,8 @@ export default function Verify() {
   const { refetch } = useGlobalContext();
   const [verifying, setVerifying] = useState(true);
   const [verified, setVerified] = useState(false);
+  const [hasActiveSession, setHasActiveSession] = useState(false);
+  const [needsProfileCompletion, setNeedsProfileCompletion] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -24,31 +26,47 @@ export default function Verify() {
         // Verify the email using the provided userId and secret
         await verifyEmail(String(userId), String(secret));
 
-        // After successful verification, we need to create a session for the user
-        // The user now has a verified email, so let's check if we can get their account
+        // After successful verification, check if there's an active session
+        let userHasSession = false;
         try {
-          // Try to get the user account (this might work if there's still a session)
           const user = await account.get();
           console.log("User session found after verification:", user);
+
+          if (user && user.emailVerification) {
+            // User is now verified and has an active session
+            // Check if they have a complete profile
+            const { getUserProfile } = await import('@/lib/api/user');
+            const existingProfile = await getUserProfile(user.$id);
+
+            userHasSession = true;
+            setHasActiveSession(true);
+
+            if (existingProfile) {
+              // User has complete profile, go to home
+              await refetch();
+              setTimeout(() => {
+                router.replace("/(root)/(tabs)/Home");
+              }, 2000);
+            } else {
+              // User needs to complete profile, go to SignUp for profile completion
+              setTimeout(() => {
+                router.replace("/SignUp");
+              }, 2000);
+            }
+          }
         } catch (sessionError) {
-          // No active session, but that's okay - the routing logic will handle this
-          console.log("No active session after verification - user will be prompted to sign in");
+          // No active session, user will need to sign in
+          console.log("No active session after verification - user will need to sign in");
         }
 
         setVerified(true);
 
-        // Try to refresh global context to get updated user state
-        try {
-          await refetch();
-        } catch (refreshError) {
-          console.warn("Could not refresh global context after verification");
+        // If no active session, send user to sign in
+        if (!userHasSession) {
+          setTimeout(() => {
+            router.replace("/SignIn");
+          }, 2000);
         }
-
-        // After verification, send the user to the Sign In page so they can sign in
-        // (avoids taking them back to the start of the Sign Up flow and re-entering details)
-        setTimeout(() => {
-          router.replace("/SignIn");
-        }, 2000);
 
       } catch (err: any) {
         console.error("Email verification failed:", err);
@@ -94,10 +112,13 @@ export default function Verify() {
             Email Verified Successfully!
           </Text>
           <Text style={{ fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 30 }}>
-            Great! Now please sign in to complete your profile setup.
+            {hasActiveSession
+              ? "Welcome! Please complete your profile setup to get started."
+              : "Great! Now please sign in to complete your account setup."
+            }
           </Text>
           <TouchableOpacity
-            onPress={() => router.replace("/SignIn")}
+            onPress={() => router.replace(hasActiveSession ? "/SignUp" : "/SignIn")}
             style={{
               backgroundColor: '#007AFF',
               paddingHorizontal: 30,
@@ -107,7 +128,7 @@ export default function Verify() {
             }}
           >
             <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
-              Continue
+              {hasActiveSession ? "Complete Profile" : "Continue to Sign In"}
             </Text>
           </TouchableOpacity>
           <Text style={{ fontSize: 14, color: '#999', textAlign: 'center' }}>

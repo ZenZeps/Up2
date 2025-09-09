@@ -1,9 +1,7 @@
 import { getEventColor, getEventEmoji } from '@/constants/categories';
-import { addEventAttendee, enrichEventsWithGroupNames, getEventInvitees, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
+import { enrichEventsWithGroupNames, getEventInvitees, getUserAttendingEvents } from '@/lib/api/event';
 import { getUserGroupInvites } from '@/lib/api/group';
-import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getActiveTravelForUser } from '@/lib/api/travel';
-import { getUsersByIds } from '@/lib/api/user';
 import { useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { authDebug } from '@/lib/debug/authDebug';
@@ -13,21 +11,19 @@ import { useRealTimeUI } from '@/lib/hooks/useRealTimeUI';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
-import { processCalendarEvents, validateEventForRender } from '@/lib/utils/calendarHelpers';
+import { processCalendarEvents } from '@/lib/utils/calendarHelpers';
+import { useCreatorInfo } from '@/lib/utils/creatorInfoManager';
 import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
-import { createEventAttendanceHandlers, createEventPressHandler, createSmartRefetch } from '@/lib/utils/eventHandlers';
-import { 
-  formatDateHeader, 
-  groupEventsByDay, 
-  transformGroupedEventsForList,
-  filterUpcomingEvents, 
-  mergeEventsWithRealTimeFiltering, 
+import { createEventAttendanceHandlers, createEventPressHandler } from '@/lib/utils/eventHandlers';
+import {
   filterEventsByCreator,
-  getUncachedCreatorIds 
+  filterUpcomingEvents,
+  formatDateHeader,
+  groupEventsByDay,
+  mergeEventsWithRealTimeFiltering,
+  transformGroupedEventsForList
 } from '@/lib/utils/homeHelpers';
 import { realTimeUI } from '@/lib/utils/realTimeUI';
-import { userDisplayUtils } from '@/lib/utils/userDisplay';
-import { useCreatorInfo } from '@/lib/utils/creatorInfoManager';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -127,7 +123,7 @@ export default function Home() {
   const [messageModalVisible, setMessageModalVisible] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userAttendingEvents, setUserAttendingEvents] = useState<AppEvent[]>([]);
-  
+
   // Get unique creator IDs from events
   const creatorIds = useMemo(() => {
     if (!events || events.length === 0) return [];
@@ -139,7 +135,7 @@ export default function Home() {
 
   // Use unified creator info management
   const { getCreatorName, getCreatorPhotoUrl, creatorNames, creatorPhotos, isLoading: creatorInfoLoading } = useCreatorInfo(creatorIds, 20);
-  
+
   // Re-render on real-time UI actions
   const rtTick = useRealTimeUI();
   // When real-time UI changes happen, reconcile the visible list
@@ -147,22 +143,22 @@ export default function Home() {
     if (!Array.isArray(userAttendingEvents)) return;
     const pendingUnattend = new Set(realTimeUI.getEventIdsByAction('unattend'));
     const pendingAttend = new Set(realTimeUI.getEventIdsByAction('attend'));
-    
+
     try {
       const { events: globalEvents } = require('../context/EventContext');
       const next = mergeEventsWithRealTimeFiltering(
-        userAttendingEvents, 
-        pendingUnattend, 
-        pendingAttend, 
+        userAttendingEvents,
+        pendingUnattend,
+        pendingAttend,
         globalEvents || []
       );
-      
+
       setEnrichedEvents(next);
 
       // Also update agendaEvents to show only upcoming events from the reactive list
       const upcomingEvents = filterUpcomingEvents(next);
       setAgendaEvents(upcomingEvents);
-    } catch { 
+    } catch {
       // Fallback to simple filtering if context import fails
       const next = userAttendingEvents.filter(e => !pendingUnattend.has(e.$id));
       setEnrichedEvents(next);
@@ -443,7 +439,7 @@ export default function Home() {
             // Set agenda events (upcoming only) from the merged events
             const upcomingEvents = filterUpcomingEvents(merged);
             setAgendaEvents(upcomingEvents);
-            
+
             authDebug.debug('Home: set agenda and enriched events', {
               agendaCount: upcomingEvents.length,
               totalCount: merged.length,
@@ -502,9 +498,9 @@ export default function Home() {
       return [];
     }
 
-    authDebug.debug('Home: mapping enrichedEvents for calendar', { 
-      count: enrichedEvents.length, 
-      ids: enrichedEvents.map((e: any) => e.$id).slice(0, 10) 
+    authDebug.debug('Home: mapping enrichedEvents for calendar', {
+      count: enrichedEvents.length,
+      ids: enrichedEvents.map((e: any) => e.$id).slice(0, 10)
     });
 
     return processCalendarEvents(enrichedEvents, getCreatorName, userTravelData || []);
@@ -512,7 +508,7 @@ export default function Home() {
 
   // Memoize event handlers (declare before renderEvent to avoid dependency issues)
   // Event press handler using utility function
-  const handlePressEvent = useMemo(() => 
+  const handlePressEvent = useMemo(() =>
     createEventPressHandler(setSelectedEvent, setDetailsModalVisible),
     []
   );
@@ -728,7 +724,7 @@ export default function Home() {
   }, []);
 
   // Event attendance handlers using utility functions
-  const { handleEventAttend, handleEventNotAttend } = useMemo(() => 
+  const { handleEventAttend, handleEventNotAttend } = useMemo(() =>
     createEventAttendanceHandlers(
       currentUser,
       selectedEvent,

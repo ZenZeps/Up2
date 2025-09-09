@@ -10,18 +10,18 @@ const TOP_PICKS_CACHE_KEY = 'top_picks_cache';
 // Quick cache inspection
 export const inspectTopPicksCache = async () => {
   console.log('🔍 Inspecting TopPicks Cache...');
-  
+
   try {
     const cached = await AsyncStorage.getItem(TOP_PICKS_CACHE_KEY);
-    
+
     if (!cached) {
       console.log('❌ No cache found');
       return { exists: false };
     }
-    
+
     const data = JSON.parse(cached);
     const age = Date.now() - data.timestamp;
-    
+
     console.log('✅ Cache found:', {
       age: Math.round(age / 1000) + ' seconds',
       expired: age > 600000, // 10 minutes
@@ -29,7 +29,7 @@ export const inspectTopPicksCache = async () => {
       eventsHash: data.allEventsHash,
       friendsHash: data.userFriendsHash
     });
-    
+
     return data;
   } catch (error) {
     console.error('❌ Cache inspection failed:', error);
@@ -40,7 +40,7 @@ export const inspectTopPicksCache = async () => {
 // Clear cache for testing
 export const clearTopPicksCache = async () => {
   console.log('🗑️ Clearing TopPicks Cache...');
-  
+
   try {
     await AsyncStorage.removeItem(TOP_PICKS_CACHE_KEY);
     console.log('✅ Cache cleared successfully');

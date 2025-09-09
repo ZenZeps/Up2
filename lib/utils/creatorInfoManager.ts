@@ -5,8 +5,8 @@
  * Home and Feed components to eliminate display inconsistencies.
  */
 
-import { getUsersByIds } from '@/lib/api/user';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
+import { getUsersByIds } from '@/lib/api/user';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 
 export interface CreatorInfo {
@@ -21,7 +21,7 @@ class CreatorInfoManager {
   private pendingNameFetches = new Set<string>();
   private pendingPhotoFetches = new Set<string>();
 
-  private constructor() {}
+  private constructor() { }
 
   static getInstance(): CreatorInfoManager {
     if (!CreatorInfoManager.instance) {
@@ -124,7 +124,7 @@ class CreatorInfoManager {
       return resultMap;
     } catch (error) {
       console.warn('CreatorInfoManager: Failed to fetch creator names:', error);
-      
+
       // Set fallback names for failed fetches
       const resultMap = new Map<string, string>();
       uncachedIds.forEach(id => {
@@ -165,7 +165,7 @@ class CreatorInfoManager {
 
     try {
       const resultMap = new Map<string, string | null>();
-      
+
       // Fetch photos in parallel
       await Promise.all(uncachedIds.map(async (creatorId) => {
         try {
@@ -182,7 +182,7 @@ class CreatorInfoManager {
       const remainingIds = creatorIds
         .filter(id => id && !this.photoCache.has(id))
         .slice(limit);
-      
+
       remainingIds.forEach(id => {
         this.photoCache.set(id, null);
         resultMap.set(id, null);
@@ -198,7 +198,7 @@ class CreatorInfoManager {
       return resultMap;
     } catch (error) {
       console.warn('CreatorInfoManager: Failed to fetch creator photos:', error);
-      
+
       // Set null for failed fetches
       const resultMap = new Map<string, string | null>();
       uncachedIds.forEach(id => {
@@ -263,7 +263,7 @@ export const creatorInfoManager = CreatorInfoManager.getInstance();
 /**
  * React hook for managing creator information in components
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export interface UseCreatorInfoResult {
   getCreatorName: (creatorId: string) => string;
@@ -289,7 +289,7 @@ export function useCreatorInfo(creatorIds: string[], photoLimit: number = 20): U
     setIsLoading(true);
     try {
       const { names, photos } = await creatorInfoManager.fetchCreatorInfo(creatorIds, photoLimit);
-      
+
       const nameRecord: Record<string, string> = {};
       const photoRecord: Record<string, string | null> = {};
 

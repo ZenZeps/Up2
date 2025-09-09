@@ -5,18 +5,17 @@
  * Similar to Instagram stories format with round avatars, event names, and dates
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialIcons } from '@expo/vector-icons';
-import dayjs from 'dayjs';
-import { router } from 'expo-router';
-import { useTheme } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useTheme } from '@react-navigation/native';
+import dayjs from 'dayjs';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import { Event as AppEvent } from '@/lib/types/Events';
-import { TopPickEvent, generateTopPicks as generateTopPicksAlgorithm, generateFallbackTopPicks, getUserLocation } from '@/lib/utils/topPicks';
 import { getEventEmoji } from '@/constants/categories';
+import { Event as AppEvent } from '@/lib/types/Events';
+import { TopPickEvent, generateFallbackTopPicks, generateTopPicks as generateTopPicksAlgorithm, getUserLocation } from '@/lib/utils/topPicks';
 
 interface TopPicksProps {
   allEvents: AppEvent[];
@@ -36,10 +35,10 @@ interface TopPicksProps {
 //   }
 // };
 
-const TopPicks: React.FC<TopPicksProps> = ({ 
-  allEvents, 
-  userFriends, 
-  maxPicks = 8 
+const TopPicks: React.FC<TopPicksProps> = ({
+  allEvents,
+  userFriends,
+  maxPicks = 8
 }) => {
   const { colors } = useTheme();
   const [topPicks, setTopPicks] = useState<TopPickEvent[]>([]);
@@ -69,7 +68,7 @@ const TopPicks: React.FC<TopPicksProps> = ({
         console.warn('TopPicks: Failed to load from cache:', error);
       }
     };
-    
+
     loadFromCache();
   }, []);
 
@@ -94,12 +93,12 @@ const TopPicks: React.FC<TopPicksProps> = ({
         allEventsCount: allEvents?.length || 0,
         hasEvents: Boolean(allEvents && allEvents.length > 0)
       });
-      
+
       // If we have no events, only clear if we're not currently showing picks
       // This prevents flashing when Feed is reloading data
       if (!allEvents || allEvents.length === 0) {
         console.log('🎯 TopPicks: No events available');
-        
+
         // If we already have picks displayed, keep showing them during data reload
         if (topPicks.length === 0) {
           console.log('🎯 TopPicks: No existing picks, setting loading false');
@@ -115,10 +114,10 @@ const TopPicks: React.FC<TopPicksProps> = ({
 
       try {
         console.log('🎯 TopPicks: Generating with', allEvents.length, 'events');
-        
+
         // Get user location (with fallback)
         const userLocation = await getUserLocation();
-        
+
         let picks: TopPickEvent[];
         if (userLocation) {
           console.log('📍 Using location-based algorithm');
@@ -130,7 +129,7 @@ const TopPicks: React.FC<TopPicksProps> = ({
 
         console.log('✅ Generated', picks.length, 'top picks');
         setTopPicks(picks);
-        
+
         // Simple cache save
         try {
           await AsyncStorage.setItem('simple_top_picks', JSON.stringify(picks));
@@ -138,7 +137,7 @@ const TopPicks: React.FC<TopPicksProps> = ({
         } catch (error) {
           console.warn('TopPicks: Failed to cache picks:', error);
         }
-        
+
       } catch (error) {
         console.error('❌ TopPicks generation failed:', error);
         // Don't clear existing picks on error, just log it
@@ -166,8 +165,8 @@ const TopPicks: React.FC<TopPicksProps> = ({
         <View style={styles.header}>
           <Text style={[styles.title, { color: '#FFFFFF' }]}>Top Picks</Text>
         </View>
-        <ScrollView 
-          horizontal 
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.scrollContainer}
         >
@@ -199,9 +198,9 @@ const TopPicks: React.FC<TopPicksProps> = ({
       <View style={styles.header}>
         <Text style={[styles.title, { color: '#FFFFFF' }]}>Top Picks</Text>
       </View>
-      
-      <ScrollView 
-        horizontal 
+
+      <ScrollView
+        horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContainer}
       >
@@ -219,17 +218,17 @@ const TopPicks: React.FC<TopPicksProps> = ({
             >
               <Text style={styles.pickEmoji}>{getEventEmoji(pick.tags)}</Text>
             </LinearGradient>
-            
+
             {/* Event Title */}
             <Text style={[styles.pickTitle, { color: '#FFFFFF' }]} numberOfLines={2}>
               {pick.title}
             </Text>
-            
+
             {/* Event Date */}
             <Text style={[styles.pickDate, { color: '#FFFFFF' }]}>
               {dayjs(pick.startTime).format('MMM D')}
             </Text>
-            
+
             {/* Optional: Show metrics for debugging */}
             {__DEV__ && (
               <View style={styles.debugInfo}>

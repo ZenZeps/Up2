@@ -135,147 +135,111 @@ const SignIn = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Modern Black Gradient Header */}
-      <View style={styles.headerContainer}>
-        <LinearGradient
-          colors={['#000000', '#1a1a1a', '#2d2d2d']}
-          start={[0, 0]}
-          end={[1, 1]}
-          style={styles.headerGradient}
+    <LinearGradient
+      colors={["#9b8fb6", "#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]} // Sunset gradient from Feed/Explore
+      start={[0, 0]}
+      end={[1, 1]}
+      style={styles.gradientContainer}
+    >
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.keyboardView}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         >
-          <View style={styles.headerContent}>
-            <MaterialIcons name="login" size={28} color="white" />
-            <Text style={styles.headerTitle}>Welcome Back</Text>
-            <View style={styles.headerSpacer} />
-          </View>
-        </LinearGradient>
-      </View>
-
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.keyboardView}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
-      >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Logo Section */}
-          <View style={styles.logoContainer}>
-            <Image
-              source={images.logo}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-          </View>
-
-          {/* Sign In Card */}
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <MaterialIcons name="person" size={24} color="#007AFF" />
-              <Text style={styles.cardTitle}>Sign In to Your Account</Text>
-            </View>
-
-            <View style={styles.inputContainer}>
-              <MaterialIcons name="email" size={20} color="#666" style={styles.inputIcon} />
-              <TextInput
-                placeholder="Email"
-                value={email}
-                onChangeText={setEmail}
-                style={styles.textInput}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                placeholderTextColor="#aaa"
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Logo Section */}
+            <View style={styles.logoContainer}>
+              <Image
+                source={images.logo}
+                style={styles.logoLarge}
+                resizeMode="contain"
               />
             </View>
 
-            <View style={styles.inputContainer}>
-              <MaterialIcons name="lock" size={20} color="#666" style={styles.inputIcon} />
-              <TextInput
-                placeholder="Password"
-                value={password}
-                onChangeText={setPassword}
-                style={styles.textInput}
-                secureTextEntry
-                placeholderTextColor="#aaa"
-              />
+            {/* Sign In Card */}
+            <View style={styles.cardTransparent}>
+              <View style={styles.cardHeader}>
+                <MaterialIcons name="person" size={24} color="#fff" />
+                <Text style={styles.cardTitle}>Sign In to Your Account</Text>
+              </View>
+
+              <View style={styles.inputContainerTransparent}>
+                <MaterialIcons name="email" size={20} color="#fff" style={styles.inputIcon} />
+                <TextInput
+                  placeholder="Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  style={styles.textInput}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  placeholderTextColor="rgba(255,255,255,0.6)"
+                />
+              </View>
+
+              <View style={styles.inputContainerTransparent}>
+                <MaterialIcons name="lock" size={20} color="#fff" style={styles.inputIcon} />
+                <TextInput
+                  placeholder="Password"
+                  value={password}
+                  onChangeText={setPassword}
+                  style={styles.textInput}
+                  secureTextEntry
+                  placeholderTextColor="rgba(255,255,255,0.6)"
+                />
+              </View>
+
+              <TouchableOpacity
+                onPress={handleLogin}
+                disabled={loading}
+                style={[styles.loginButtonBlack, loading && styles.loginButtonDisabled]}
+              >
+                <MaterialIcons name="login" size={20} color="#fff" />
+                <Text style={styles.loginButtonText}>
+                  {loading ? "Signing In..." : "Sign In"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleForgotPassword}
+                style={styles.forgotPasswordButton}
+              >
+                <MaterialIcons name="help-outline" size={16} color="#fff" />
+                <Text style={styles.forgotPasswordTextBlack}>
+                  Forgot Password?
+                </Text>
+              </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              onPress={handleLogin}
-              disabled={loading}
-              style={[styles.loginButton, loading && styles.loginButtonDisabled]}
-            >
-              <MaterialIcons name="login" size={20} color="white" />
-              <Text style={styles.loginButtonText}>
-                {loading ? "Signing In..." : "Sign In"}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleForgotPassword}
-              style={styles.forgotPasswordButton}
-            >
-              <MaterialIcons name="help-outline" size={16} color="#007AFF" />
-              <Text style={styles.forgotPasswordText}>
-                Forgot Password?
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Sign Up Section */}
-          <View style={styles.signUpSection}>
-            <Text style={styles.signUpText}>Don't have an account?</Text>
-            <TouchableOpacity
-              onPress={() => router.push('/SignUp')}
-              style={styles.signUpButton}
-            >
-              <MaterialIcons name="person-add" size={18} color="#007AFF" />
-              <Text style={styles.signUpButtonText}>Sign Up</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            {/* Sign Up Section */}
+            <View style={styles.signUpSection}>
+              <Text style={styles.signUpText}>Don't have an account?</Text>
+              <TouchableOpacity
+                onPress={() => router.push('/SignUp')}
+                style={styles.signUpButton}
+              >
+                <MaterialIcons name="person-add" size={18} color="#fff" />
+                <Text style={styles.signUpButtonTextBlack}>Sign Up</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  gradientContainer: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
   },
-  headerContainer: {
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  headerGradient: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#ffffff',
+  safeArea: {
     flex: 1,
-    textAlign: 'center',
-    marginHorizontal: 16,
-  },
-  headerSpacer: {
-    width: 28,
+    backgroundColor: 'transparent',
   },
   keyboardView: {
     flex: 1,
@@ -290,25 +254,22 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginVertical: 32,
+    marginVertical: 40,
+    backgroundColor: 'transparent',
   },
-  logo: {
-    width: 120,
-    height: 120,
+  logoLarge: {
+    width: 160,
+    height: 160,
+    backgroundColor: 'transparent',
+    opacity: 1.0,
   },
-  card: {
-    backgroundColor: '#ffffff',
+  cardTransparent: {
+    backgroundColor: 'transparent',
     borderRadius: 16,
     padding: 24,
     marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+    shadowColor: 'transparent',
+    elevation: 0,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -318,19 +279,19 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#333',
+    color: '#fff',
     marginLeft: 12,
   },
-  inputContainer: {
+  inputContainerTransparent: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#e1e5e9',
+    borderColor: 'rgba(255,255,255,0.3)',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 4,
     marginBottom: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
   inputIcon: {
     marginRight: 12,
@@ -338,14 +299,14 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     fontSize: 16,
-    color: '#333',
+    color: '#fff',
     paddingVertical: 12,
   },
-  loginButton: {
+  loginButtonBlack: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#007AFF',
+    backgroundColor: '#000',
     borderRadius: 12,
     paddingVertical: 16,
     marginTop: 8,
@@ -357,7 +318,7 @@ const styles = StyleSheet.create({
   loginButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#ffffff',
+    color: '#fff',
     marginLeft: 8,
   },
   forgotPasswordButton: {
@@ -366,9 +327,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 8,
   },
-  forgotPasswordText: {
+  forgotPasswordTextBlack: {
     fontSize: 14,
-    color: '#007AFF',
+    color: '#fff',
     marginLeft: 4,
   },
   signUpSection: {
@@ -379,7 +340,7 @@ const styles = StyleSheet.create({
   },
   signUpText: {
     fontSize: 16,
-    color: '#666',
+    color: '#fff',
     marginRight: 8,
   },
   signUpButton: {
@@ -388,10 +349,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  signUpButtonText: {
+  signUpButtonTextBlack: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#007AFF',
+    color: '#fff',
     marginLeft: 4,
   },
 });

@@ -24,11 +24,11 @@ export function groupEventsByDay(events: AppEvent[]): Record<string, AppEvent[]>
   return events.reduce((groups, event) => {
     const eventDate = new Date(event.startTime);
     const dateKey = eventDate.toDateString();
-    
+
     if (!groups[dateKey]) {
       groups[dateKey] = [];
     }
-    
+
     groups[dateKey].push(event);
     return groups;
   }, {} as Record<string, AppEvent[]>);
@@ -68,26 +68,26 @@ export function filterUpcomingEvents(events: any[]): any[] {
  * Removes pending unattends and adds pending attends
  */
 export function mergeEventsWithRealTimeFiltering(
-  baseEvents: any[], 
-  pendingUnattend: Set<string>, 
-  pendingAttend: Set<string>, 
+  baseEvents: any[],
+  pendingUnattend: Set<string>,
+  pendingAttend: Set<string>,
   globalEvents: any[]
 ): any[] {
   // Remove events with pending unattend actions
   let filtered = baseEvents.filter(event => !pendingUnattend.has(event.$id));
-  
+
   // Add events with pending attend actions
   if (pendingAttend.size > 0 && globalEvents?.length > 0) {
     const toAdd = globalEvents.filter(ev => pendingAttend.has(ev.$id));
     const eventMap = new Map(filtered.map(e => [e.$id, e]));
-    
+
     toAdd.forEach(event => {
       if (!eventMap.has(event.$id)) {
         filtered.push(event);
       }
     });
   }
-  
+
   return filtered;
 }
 

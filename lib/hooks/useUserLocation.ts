@@ -2,8 +2,8 @@
  * Hook for managing user location and distance calculations
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { getUserLocation, UserLocation, calculateEventDistance, formatDistance } from '@/lib/utils/distanceUtils';
+import { calculateEventDistance, formatDistance, getUserLocation, UserLocation } from '@/lib/utils/distanceUtils';
+import { useCallback, useEffect, useState } from 'react';
 
 export const useUserLocation = () => {
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);

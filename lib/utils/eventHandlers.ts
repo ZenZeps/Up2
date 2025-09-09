@@ -1,6 +1,6 @@
+import { addEventAttendee, removeEventAttendee } from '@/lib/api/event';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { realTimeUI } from './realTimeUI';
-import { addEventAttendee, removeEventAttendee } from '@/lib/api/event';
 
 // Smart refetch function with rate limiting
 export const createSmartRefetch = (
@@ -41,7 +41,7 @@ export const createEventAttendanceHandlers = (
 
     // Apply immediate UI feedback via realTimeUI
     realTimeUI.applyAction(selectedEvent.$id, 'attend');
-    
+
     // Update local state immediately
     const updatedEvents = [...userAttendingEvents, selectedEvent];
     setUserAttendingEvents(updatedEvents);
@@ -54,7 +54,7 @@ export const createEventAttendanceHandlers = (
       await recordAction('attend', 'home_event_attended');
     } catch (error) {
       console.error('Error attending event:', error);
-      
+
       // Rollback on failure - remove from local state
       const rolledBackEvents = userAttendingEvents.filter(e => e.$id !== selectedEvent.$id);
       setUserAttendingEvents(rolledBackEvents);
@@ -66,7 +66,7 @@ export const createEventAttendanceHandlers = (
 
     // Apply immediate UI feedback via realTimeUI
     realTimeUI.applyAction(selectedEvent.$id, 'unattend');
-    
+
     // Update local state immediately
     const updatedEvents = userAttendingEvents.filter(e => e.$id !== selectedEvent.$id);
     setUserAttendingEvents(updatedEvents);
@@ -79,7 +79,7 @@ export const createEventAttendanceHandlers = (
       await recordAction('unattend', 'home_event_unattended');
     } catch (error) {
       console.error('Error not attending event:', error);
-      
+
       // Rollback on failure - add back to local state
       const rolledBackEvents = [...userAttendingEvents, selectedEvent];
       setUserAttendingEvents(rolledBackEvents);

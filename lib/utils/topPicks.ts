@@ -7,9 +7,8 @@
  * 3. Event popularity score
  */
 
-import { Event as AppEvent } from '@/lib/types/Events';
 import { getEventAttendeesFor } from '@/lib/api/event';
-import { getUsersByIds } from '@/lib/api/user';
+import { Event as AppEvent } from '@/lib/types/Events';
 import * as Location from 'expo-location';
 
 export interface TopPickEvent extends AppEvent {
@@ -37,9 +36,9 @@ const calculateDistance = (
   const R = 6371; // Earth's radius in kilometers
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
+  const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
@@ -82,17 +81,17 @@ const extractEventCoordinates = (location: string): { lat: number; lng: number }
   // Look for coordinates in various formats
   const coordRegex = /(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/;
   const match = location.match(coordRegex);
-  
+
   if (match) {
     const lat = parseFloat(match[1]);
     const lng = parseFloat(match[2]);
-    
+
     // Basic validation for realistic coordinates
     if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
       return { lat, lng };
     }
   }
-  
+
   return null;
 };
 
@@ -102,7 +101,7 @@ const extractEventCoordinates = (location: string): { lat: number; lng: number }
  */
 const calculatePopularityScore = (attendeeCount: number): number => {
   if (attendeeCount <= 0) return 0;
-  
+
   // Logarithmic scoring: log10(attendees + 1) * 10
   // Examples: 1 attendee = 3 points, 10 attendees = 10 points, 100 attendees = 20 points
   return Math.log10(attendeeCount + 1) * 10;
@@ -114,7 +113,7 @@ const calculatePopularityScore = (attendeeCount: number): number => {
  */
 const calculateDistanceScore = (distance: number): number => {
   if (distance <= 0) return 100; // Same location gets max score
-  
+
   // Inverse exponential decay: 100 * e^(-distance/10)
   // Examples: 1km = 90 points, 5km = 61 points, 10km = 37 points, 20km = 14 points
   return 100 * Math.exp(-distance / 10);
@@ -166,11 +165,11 @@ export const generateTopPicks = async (
     futureEvents.map(async (event): Promise<TopPickEvent> => {
       // Extract coordinates from event location
       const eventCoords = extractEventCoordinates(event.location || '');
-      
+
       // Calculate distance score
       let distance = 0;
       let distanceScore = 0;
-      
+
       if (userLocation && eventCoords) {
         distance = calculateDistance(
           userLocation.latitude,
@@ -186,7 +185,7 @@ export const generateTopPicks = async (
 
       // Get event attendees
       const attendeeIds = attendeesMap[event.$id] || [];
-      
+
       // Calculate friend attendance
       const friendsAttending = attendeeIds.filter((id: string) => userFriends.includes(id)).length;
       const friendScore = calculateFriendScore(friendsAttending);
@@ -258,7 +257,7 @@ export const generateFallbackTopPicks = async (
   const topPickCandidates: TopPickEvent[] = await Promise.all(
     futureEvents.map(async (event): Promise<TopPickEvent> => {
       const attendeeIds = attendeesMap[event.$id] || [];
-      
+
       // Calculate friend attendance
       const friendsAttending = attendeeIds.filter((id: string) => userFriends.includes(id)).length;
       const friendScore = calculateFriendScore(friendsAttending);

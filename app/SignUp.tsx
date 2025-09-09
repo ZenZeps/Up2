@@ -1,6 +1,5 @@
 import { LegalDocumentModal } from "@/components/legal/LegalDocumentModal";
 import { CATEGORIES } from "@/constants/categories";
-import images from "@/constants/images";
 import { pickProfilePhoto, uploadProfilePhoto } from "@/lib/api/profilePhoto";
 import {
     createUserProfile
@@ -73,17 +72,40 @@ const SignUp = () => {
             try {
                 const user = await account.get();
                 if (user && user.emailVerification) {
-                    // User is verified but hasn't completed profile setup
-                    setIsCompletingProfile(true);
-                    setCurrentStep(2); // Skip to profile photo step
-                    // Pre-fill user data
-                    const names = user.name?.split(' ') || [];
-                    updateSignUpData('firstName', names[0] || '');
-                    updateSignUpData('lastName', names.slice(1).join(' ') || '');
-                    updateSignUpData('email', user.email);
+                    // User is verified - check if they have a profile
+                    const { getUserProfile } = await import('@/lib/api/user');
+                    const existingProfile = await getUserProfile(user.$id);
 
-                    authDebug.info("User returning to complete profile after verification", { userId: user.$id });
-                } else if (user && !user.emailVerification) {
+                    if (existingProfile) {
+                        // User already has a complete profile, redirect to home
+                        authDebug.info("User is verified and has complete profile, redirecting to home", { userId: user.$id });
+
+                        try {
+                            await refetch();
+                            router.replace("/(root)/(tabs)/Home");
+                        } catch (error) {
+                            authDebug.warn("Could not refresh global state, but proceeding to home", error);
+                            router.replace("/(root)/(tabs)/Home");
+                        }
+                        return;
+                    } else {
+                        // User is verified but needs to complete their profile
+                        // This is the expected flow after email verification
+                        authDebug.info("User is verified but needs to complete profile, starting from step 2", { userId: user.$id });
+                        setIsCompletingProfile(true);
+
+                        // Pre-populate form with user data from Appwrite account
+                        const names = user.name?.split(' ') || [];
+                        updateSignUpData('firstName', names[0] || '');
+                        updateSignUpData('lastName', names.slice(1).join(' ') || '');
+                        updateSignUpData('email', user.email);
+
+                        // Skip to step 2 (profile photo) since we have their basic info
+                        setCurrentStep(2);
+                    }
+                }
+
+                if (user && !user.emailVerification) {
                     // User exists but not verified - log them out and show verification message
                     await account.deleteSession("current");
                     Alert.alert(
@@ -91,11 +113,14 @@ const SignUp = () => {
                         "Please check your email and verify your account before continuing.",
                         [{ text: "OK", onPress: () => router.replace("/SignIn") }]
                     );
+                    return;
                 }
             } catch (error) {
-                // User not logged in, continue with normal signup
-                setIsCompletingProfile(false);
+                // User not logged in, continue with normal signup flow
+                authDebug.debug("No existing user session, proceeding with signup", error);
             }
+
+            setIsCompletingProfile(false);
         };
 
         checkExistingUser();
@@ -306,12 +331,12 @@ const SignUp = () => {
             {/* Account Details Card */}
             <View style={styles.card}>
                 <View style={styles.cardHeader}>
-                    <MaterialIcons name="person-add" size={24} color="#007AFF" />
+                    <MaterialIcons name="person-add" size={24} color="#fff" />
                     <Text style={styles.cardTitle}>Account Details</Text>
                 </View>
 
                 <View style={styles.inputContainer}>
-                    <MaterialIcons name="person" size={20} color="#666" style={styles.inputIcon} />
+                    <MaterialIcons name="person" size={20} color="#fff" style={styles.inputIcon} />
                     <TextInput
                         placeholder="First Name"
                         value={signUpData.firstName}
@@ -323,7 +348,7 @@ const SignUp = () => {
                 </View>
 
                 <View style={styles.inputContainer}>
-                    <MaterialIcons name="person-outline" size={20} color="#666" style={styles.inputIcon} />
+                    <MaterialIcons name="person-outline" size={20} color="#fff" style={styles.inputIcon} />
                     <TextInput
                         placeholder="Last Name"
                         value={signUpData.lastName}
@@ -335,7 +360,7 @@ const SignUp = () => {
                 </View>
 
                 <View style={styles.inputContainer}>
-                    <MaterialIcons name="email" size={20} color="#666" style={styles.inputIcon} />
+                    <MaterialIcons name="email" size={20} color="#fff" style={styles.inputIcon} />
                     <TextInput
                         placeholder="Email"
                         value={signUpData.email}
@@ -348,7 +373,7 @@ const SignUp = () => {
                 </View>
 
                 <View style={styles.inputContainer}>
-                    <MaterialIcons name="lock" size={20} color="#666" style={styles.inputIcon} />
+                    <MaterialIcons name="lock" size={20} color="#fff" style={styles.inputIcon} />
                     <TextInput
                         placeholder="Password"
                         value={signUpData.password}
@@ -360,7 +385,7 @@ const SignUp = () => {
                 </View>
 
                 <View style={styles.inputContainer}>
-                    <MaterialIcons name="lock-outline" size={20} color="#666" style={styles.inputIcon} />
+                    <MaterialIcons name="lock-outline" size={20} color="#fff" style={styles.inputIcon} />
                     <TextInput
                         placeholder="Confirm Password"
                         value={signUpData.confirmPassword}
@@ -388,7 +413,7 @@ const SignUp = () => {
             {/* Legal Agreements Card */}
             <View style={styles.card}>
                 <View style={styles.cardHeader}>
-                    <MaterialIcons name="gavel" size={24} color="#007AFF" />
+                    <MaterialIcons name="gavel" size={24} color="#fff" />
                     <Text style={styles.cardTitle}>Legal Agreements</Text>
                 </View>
 
@@ -400,7 +425,7 @@ const SignUp = () => {
                         <MaterialIcons
                             name={signUpData.agreeToTerms ? "check-box" : "check-box-outline-blank"}
                             size={24}
-                            color={signUpData.agreeToTerms ? "#007AFF" : "#666"}
+                            color={signUpData.agreeToTerms ? "#000" : "#fff"}
                         />
                         <View style={styles.checkboxTextContainer}>
                             <Text style={styles.checkboxText}>I agree to the </Text>
@@ -419,7 +444,7 @@ const SignUp = () => {
                         <MaterialIcons
                             name={signUpData.agreeToPrivacy ? "check-box" : "check-box-outline-blank"}
                             size={24}
-                            color={signUpData.agreeToPrivacy ? "#007AFF" : "#666"}
+                            color={signUpData.agreeToPrivacy ? "#000" : "#fff"}
                         />
                         <View style={styles.checkboxTextContainer}>
                             <Text style={styles.checkboxText}>I agree to the </Text>
@@ -446,7 +471,7 @@ const SignUp = () => {
                     onPress={() => router.replace('/SignIn')}
                     style={styles.signInButton}
                 >
-                    <MaterialIcons name="login" size={18} color="#007AFF" />
+                    <MaterialIcons name="login" size={18} color="#fff" />
                     <Text style={styles.signInButtonText}>Sign In</Text>
                 </TouchableOpacity>
             </View>
@@ -455,7 +480,7 @@ const SignUp = () => {
 
     const renderStep2 = () => (
         <View className="px-10 mt-6 pb-12">
-            <Text className="text-3xl font-rubik-semibold text-black-300 text-center mb-6">
+            <Text className="text-3xl font-rubik-semibold text-white text-center mb-6">
                 Add Profile Photo
             </Text>
 
@@ -475,7 +500,7 @@ const SignUp = () => {
 
                 <TouchableOpacity
                     onPress={handlePhotoUpload}
-                    className="rounded-full py-3 px-6 bg-primary-300 mb-4"
+                    className="rounded-full py-3 px-6 bg-black mb-4"
                 >
                     <Text className="text-white font-rubik-medium">
                         {profilePhotoUri ? 'Change Photo' : 'Upload Photo'}
@@ -483,7 +508,7 @@ const SignUp = () => {
                 </TouchableOpacity>
 
                 <TouchableOpacity onPress={handleSkipPhoto}>
-                    <Text className="text-black-200 font-rubik underline">
+                    <Text className="text-white font-rubik underline">
                         Skip for now
                     </Text>
                 </TouchableOpacity>
@@ -501,7 +526,7 @@ const SignUp = () => {
 
                 <TouchableOpacity
                     onPress={() => setCurrentStep(3)}
-                    className="rounded-full py-4 px-8 bg-primary-300 flex-1 ml-2"
+                    className="rounded-full py-4 px-8 bg-black flex-1 ml-2"
                 >
                     <Text className="text-white text-lg font-rubik-medium text-center">
                         Next
@@ -513,10 +538,10 @@ const SignUp = () => {
 
     const renderStep3 = () => (
         <View className="px-10 mt-6 flex-1">
-            <Text className="text-3xl font-rubik-semibold text-black-300 text-center mb-4">
+            <Text className="text-3xl font-rubik-semibold text-white text-center mb-4">
                 Choose Your Interests
             </Text>
-            <Text className="text-center text-black-200 font-rubik mb-6">
+            <Text className="text-center text-white font-rubik mb-6">
                 Select what you're interested in (you can change this later)
             </Text>
 
@@ -536,7 +561,7 @@ const SignUp = () => {
                                     }`}
                             >
                                 <Text className="text-3xl mb-2">{item.emoji}</Text>
-                                <Text className={`font-rubik-medium text-center ${isSelected ? 'text-primary-300' : 'text-black-300'
+                                <Text className={`font-rubik-medium text-center ${isSelected ? 'text-black' : 'text-white'
                                     }`}>
                                     {item.label}
                                 </Text>
@@ -548,7 +573,7 @@ const SignUp = () => {
 
             {/* Selection counter */}
             <View className="items-center mb-6">
-                <Text className="text-black-200 font-rubik text-center">
+                <Text className="text-white font-rubik text-center">
                     {signUpData.preferences.length > 0
                         ? `${signUpData.preferences.length} interest${signUpData.preferences.length !== 1 ? 's' : ''} selected`
                         : 'No interests selected yet'
@@ -570,7 +595,7 @@ const SignUp = () => {
                 <TouchableOpacity
                     onPress={handleCompleteSignUp}
                     disabled={loading}
-                    className={`rounded-full py-4 px-8 flex-1 ml-2 ${loading ? "bg-gray-300" : "bg-primary-300"
+                    className={`rounded-full py-4 px-8 flex-1 ml-2 ${loading ? "bg-gray-300" : "bg-black"
                         }`}
                 >
                     <Text className="text-white text-lg font-rubik-medium text-center">
@@ -586,7 +611,7 @@ const SignUp = () => {
             {[1, 2, 3].map((step) => (
                 <View key={step} className="flex-row items-center">
                     <View
-                        className={`w-8 h-8 rounded-full items-center justify-center ${currentStep >= step ? 'bg-primary-300' : 'bg-gray-300'
+                        className={`w-8 h-8 rounded-full items-center justify-center ${currentStep >= step ? 'bg-black' : 'bg-gray-300'
                             }`}
                     >
                         <Text className={`font-rubik-medium ${currentStep >= step ? 'text-white' : 'text-gray-600'
@@ -595,7 +620,7 @@ const SignUp = () => {
                         </Text>
                     </View>
                     {step < 3 && (
-                        <View className={`w-8 h-1 mx-2 ${currentStep > step ? 'bg-primary-300' : 'bg-gray-300'
+                        <View className={`w-8 h-1 mx-2 ${currentStep > step ? 'bg-black' : 'bg-gray-300'
                             }`} />
                     )}
                 </View>
@@ -604,15 +629,15 @@ const SignUp = () => {
     );
 
     return (
-        <SafeAreaView style={styles.container}>
-            {/* Modern Black Gradient Header */}
-            <View style={styles.headerContainer}>
-                <LinearGradient
-                    colors={['#000000', '#1a1a1a', '#2d2d2d']}
-                    start={[0, 0]}
-                    end={[1, 1]}
-                    style={styles.headerGradient}
-                >
+        <LinearGradient
+            colors={["#9b8fb6", "#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]} // Sunset gradient from Feed/Explore
+            start={[0, 0]}
+            end={[1, 1]}
+            style={styles.gradientContainer}
+        >
+            <SafeAreaView style={styles.safeArea}>
+                {/* Transparent Header */}
+                <View style={styles.headerContainerTransparent}>
                     <View style={styles.headerContent}>
                         <TouchableOpacity
                             onPress={() => currentStep > 1 ? setCurrentStep(currentStep - 1) : router.back()}
@@ -623,66 +648,62 @@ const SignUp = () => {
                         <Text style={styles.headerTitle}>Create Account</Text>
                         <View style={styles.headerSpacer} />
                     </View>
-                </LinearGradient>
-            </View>
+                </View>
 
-            <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
-                style={styles.keyboardView}
-                keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
-            >
-                {currentStep === 3 ? (
-                    // Step 3 needs different layout for the FlatList
-                    <View style={styles.stepContainer}>
-                        <View style={styles.logoContainer}>
-                            <Image
-                                source={images.logo}
-                                style={styles.logoSmall}
-                                resizeMode="contain"
-                            />
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === "ios" ? "padding" : "height"}
+                    style={styles.keyboardView}
+                    keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+                >
+                    {currentStep === 3 ? (
+                        // Step 3 needs different layout for the FlatList
+                        <View style={styles.stepContainer}>
+                            {renderProgressIndicator()}
+                            {renderStep3()}
                         </View>
+                    ) : (
+                        // Steps 1 and 2 use ScrollView with proper spacing
+                        <ScrollView
+                            style={styles.scrollView}
+                            contentContainerStyle={styles.scrollContent}
+                            showsVerticalScrollIndicator={false}
+                            keyboardShouldPersistTaps="handled"
+                            bounces={false}
+                        >
+                            {renderProgressIndicator()}
 
-                        {renderProgressIndicator()}
-                        {renderStep3()}
-                    </View>
-                ) : (
-                    // Steps 1 and 2 use ScrollView with proper spacing
-                    <ScrollView
-                        style={styles.scrollView}
-                        contentContainerStyle={styles.scrollContent}
-                        showsVerticalScrollIndicator={false}
-                        keyboardShouldPersistTaps="handled"
-                        bounces={false}
-                    >
-                        <View style={styles.logoContainer}>
-                            <Image
-                                source={images.logo}
-                                style={styles.logo}
-                                resizeMode="contain"
-                            />
-                        </View>
+                            {currentStep === 1 && renderStep1()}
+                            {currentStep === 2 && renderStep2()}
+                        </ScrollView>
+                    )}
+                </KeyboardAvoidingView>
 
-                        {renderProgressIndicator()}
-
-                        {currentStep === 1 && renderStep1()}
-                        {currentStep === 2 && renderStep2()}
-                    </ScrollView>
-                )}
-            </KeyboardAvoidingView>
-
-            <LegalDocumentModal
-                visible={legalModalVisible}
-                onClose={() => setLegalModalVisible(false)}
-                document={legalDocument}
-            />
-        </SafeAreaView>
+                <LegalDocumentModal
+                    visible={legalModalVisible}
+                    onClose={() => setLegalModalVisible(false)}
+                    document={legalDocument}
+                />
+            </SafeAreaView>
+        </LinearGradient>
     );
 };
 
 const styles = StyleSheet.create({
+    gradientContainer: {
+        flex: 1,
+    },
+    safeArea: {
+        flex: 1,
+        backgroundColor: 'transparent',
+    },
     container: {
         flex: 1,
         backgroundColor: '#f8f9fa',
+    },
+    headerContainerTransparent: {
+        backgroundColor: 'transparent',
+        paddingHorizontal: 16,
+        paddingVertical: 16,
     },
     headerContainer: {
         shadowColor: '#000',
@@ -749,18 +770,12 @@ const styles = StyleSheet.create({
         paddingBottom: 32,
     },
     card: {
-        backgroundColor: '#ffffff',
+        backgroundColor: 'transparent',
         borderRadius: 16,
         padding: 24,
         marginBottom: 24,
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.1,
-        shadowRadius: 3.84,
-        elevation: 5,
+        shadowColor: 'transparent',
+        elevation: 0,
     },
     cardHeader: {
         flexDirection: 'row',
@@ -770,19 +785,19 @@ const styles = StyleSheet.create({
     cardTitle: {
         fontSize: 20,
         fontWeight: '600',
-        color: '#333',
+        color: '#fff',
         marginLeft: 12,
     },
     inputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#e1e5e9',
+        borderColor: 'rgba(255,255,255,0.3)',
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 4,
         marginBottom: 16,
-        backgroundColor: '#ffffff',
+        backgroundColor: 'rgba(255,255,255,0.1)',
     },
     inputIcon: {
         marginRight: 12,
@@ -790,14 +805,14 @@ const styles = StyleSheet.create({
     textInput: {
         flex: 1,
         fontSize: 16,
-        color: '#333',
+        color: '#fff',
         paddingVertical: 12,
     },
     nextButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#007AFF',
+        backgroundColor: '#000',
         borderRadius: 12,
         paddingVertical: 16,
         marginTop: 8,
@@ -816,7 +831,7 @@ const styles = StyleSheet.create({
     },
     signInText: {
         fontSize: 16,
-        color: '#666',
+        color: '#fff',
         marginRight: 8,
     },
     signInButton: {
@@ -828,7 +843,7 @@ const styles = StyleSheet.create({
     signInButtonText: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#007AFF',
+        color: '#fff',
         marginLeft: 4,
     },
     checkboxContainer: {
@@ -846,11 +861,11 @@ const styles = StyleSheet.create({
     },
     checkboxText: {
         fontSize: 16,
-        color: '#333',
+        color: '#fff',
     },
     linkText: {
         fontSize: 16,
-        color: '#007AFF',
+        color: '#fff',
         fontWeight: '600',
         textDecorationLine: 'underline',
     },
