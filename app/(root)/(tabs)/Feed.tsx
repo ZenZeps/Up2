@@ -13,13 +13,16 @@ import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimi
 import { batchProcess, dbConnectionPool } from '@/lib/utils/dbOptimization';
 import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { useCreatorInfo } from '@/lib/utils/creatorInfoManager';
+import { useUserLocation } from '@/lib/hooks/useUserLocation';
+import TopPicks from '@/components/TopPicks';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { LinearGradient } from 'expo-linear-gradient';
 // header will be plain white
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Alert, FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -47,6 +50,7 @@ export default function Feed() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const recordAction = useActionTracker();
+  const { getEventDistance } = useUserLocation();
 
   const [friendProfiles, setFriendProfiles] = useState<any[]>([]);
   const [friendPhotoUrls, setFriendPhotoUrls] = useState<Record<string, string | null>>({});
@@ -55,6 +59,20 @@ export default function Feed() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [baseEventsWithCreatorNames, setBaseEventsWithCreatorNames] = useState<ExtendedEvent[]>([]);
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<ExtendedEvent[]>([]);
+  const [allEventsForTopPicks, setAllEventsForTopPicks] = useState<AppEvent[]>([]);
+
+  // Extract creator IDs for unified creator info management
+  const creatorIds = useMemo(() => {
+    if (!baseEventsWithCreatorNames || baseEventsWithCreatorNames.length === 0) return [];
+    const ids = baseEventsWithCreatorNames
+      .map((event) => event.creatorId)
+      .filter(Boolean);
+    return [...new Set(ids)] as string[];
+  }, [baseEventsWithCreatorNames]);
+
+  // Use unified creator info management
+  const { getCreatorName, getCreatorPhotoUrl, creatorNames, creatorPhotos } = useCreatorInfo(creatorIds, 20);
+
   // Re-render when real-time UI pending actions change
   const rtTick = useRealTimeUI();
 
@@ -247,6 +265,10 @@ export default function Feed() {
               console.log('Feed: Background revalidation of events started');
               const { fetchEvents } = await import('@/lib/api/event');
               const freshAllEvents = await fetchEvents();
+              
+              // Store all events for top picks (not just friend/group events)
+              setAllEventsForTopPicks(freshAllEvents);
+              
               const relevantFresh = freshAllEvents.filter((event: any) => userFriends.includes(event.creatorId) || (event.groupId && userGroupIds.includes(event.groupId)));
 
               const uniqueCreatorIds = [...new Set(relevantFresh.map((ev: any) => ev.creatorId))] as string[];
@@ -369,6 +391,10 @@ export default function Feed() {
       // No cache: fetch synchronously and map
       const { fetchEvents } = await import('@/lib/api/event');
       const allEvents = await fetchEvents();
+      
+      // Store all events for top picks (not just friend/group events)
+      setAllEventsForTopPicks(allEvents);
+      
       const relevantEvents = allEvents.filter((ev: any) => userFriends.includes(ev.creatorId) || (ev.groupId && userGroupIds.includes(ev.groupId)));
 
       const uniqueCreatorIdsSync = [...new Set(relevantEvents.map((ev: any) => ev.creatorId))] as string[];
@@ -752,6 +778,8 @@ export default function Feed() {
   );
 
   const renderEventItem = ({ item }: { item: AppEvent & { creatorName?: string } }) => {
+    const { formattedDistance } = getEventDistance(item.location || '');
+    
     return (
       <TouchableOpacity
         onPress={() => router.push(`/event/${item.$id}?from=feed` as any)}
@@ -771,11 +799,17 @@ export default function Feed() {
             <Text style={[styles.feedMetaText, { color: '#bdbdbd', marginHorizontal: 8 }]}>•</Text>
             <MaterialIcons name="location-on" size={12} color={'#bdbdbd'} />
             <Text style={[styles.feedMetaText, { color: '#bdbdbd', marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
+            {formattedDistance && (
+              <>
+                <Text style={[styles.feedMetaText, { color: '#bdbdbd', marginHorizontal: 8 }]}>•</Text>
+                <Text style={[styles.feedMetaText, { color: '#4A90E2', marginLeft: 0, fontWeight: '500' }]}>{formattedDistance}</Text>
+              </>
+            )}
           </View>
 
           <View style={styles.feedSubRow}>
-            <UserAvatar photoUrl={creatorPhotoUrls[item.creatorId] || null} name={item.creatorName} size={28} />
-            <Text style={[styles.smallCreatorName, { color: '#FFFFFF', marginLeft: 8 }]} numberOfLines={1}>{item.creatorName || 'Unknown'}</Text>
+            <UserAvatar photoUrl={getCreatorPhotoUrl(item.creatorId)} name={getCreatorName(item.creatorId)} size={28} />
+            <Text style={[styles.smallCreatorName, { color: '#FFFFFF', marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(item.creatorId)}</Text>
           </View>
         </View>
 
@@ -891,24 +925,12 @@ export default function Feed() {
 
         {/* Event Feed as a single vertical FlatList with pull-to-refresh */}
         <View style={[styles.feedContent, { paddingBottom: 70 + insets.bottom }]}>
-          {/* Compact friends summary (replaces large friend bubble bar) */}
-          {friendProfiles.length > 0 && (
-            <View
-              style={[styles.feedFriendSummary, { backgroundColor: 'transparent' }]}
-            >
-              <View style={styles.friendOverlapRow}>
-                {friendProfiles.slice(0, 4).map((f, idx) => (
-                  <View key={f.$id} style={[styles.friendOverlap, { marginLeft: idx === 0 ? 0 : -12 }]}>
-                    <UserAvatar photoUrl={friendPhotoUrls[f.$id] || null} name={userDisplayUtils.getFullName(f)} size={40} />
-                  </View>
-                ))}
-              </View>
-              <View style={{ marginLeft: 12 }}>
-                <Text style={{ color: colors.text, fontWeight: '700' }}>{friendProfiles.length} friends</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>See events from your friends</Text>
-              </View>
-            </View>
-          )}
+          {/* Top Picks Section - personalized event recommendations */}
+          <TopPicks 
+            allEvents={allEventsForTopPicks} 
+            userFriends={friends} 
+            maxPicks={8} 
+          />
 
           {/* Main events FlatList (condensed chronological list) */}
           <FlatList
@@ -1016,7 +1038,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   feedContent: {
-    paddingVertical: 16,
+    paddingTop: 0, // Remove top padding to bring TopPicks closer to header
+    paddingBottom: 8,
   },
   feedCard: {
     borderRadius: 16,

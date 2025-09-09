@@ -16,6 +16,7 @@ import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimi
 import { emit as emitEvent } from '@/lib/utils/eventBus';
 import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { useUserLocation } from '@/lib/hooks/useUserLocation';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -38,6 +39,7 @@ const Explore = () => {
   const { showAlert } = useAlert();
   const { user: globalUser } = useGlobalContext();
   const recordAction = useActionTracker();
+  const { getEventDistance } = useUserLocation();
 
   // State variables
   const [query, setQuery] = useState(''); // Search query
@@ -1102,6 +1104,8 @@ const Explore = () => {
       primary: '#FFFFFF',
     };
 
+    const { formattedDistance } = getEventDistance(item.location || '');
+
     return (
       //The Minicard Layout
       <TouchableOpacity
@@ -1114,10 +1118,13 @@ const Explore = () => {
         <View style={styles.eventMiniContent}>
           {/* Title */}
           <Text style={[styles.eventMiniTitle, { color: darkCard.text }]} numberOfLines={2}>{item.title}</Text>
-          {/* Location */}
+          {/* Location with Distance */}
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, marginLeft: -2 }}>
             <MaterialIcons name="location-on" size={12} color={darkCard.primary} />
-            <Text style={{ fontSize: 11, color: darkCard.primary, marginLeft: 2, flexShrink: 1 }} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
+            <Text style={{ fontSize: 11, color: darkCard.primary, marginLeft: 2, flexShrink: 1 }} numberOfLines={1} ellipsizeMode='tail'>
+              {item.location || ''}
+              {formattedDistance && ` • ${formattedDistance}`}
+            </Text>
           </View>
           {/* Date (In number of days from today)*/}
           <Text style={[styles.eventMiniMeta, { color: darkCard.textSecondary }]}>{dayjs(item.startTime).fromNow()}</Text>

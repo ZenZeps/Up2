@@ -13,10 +13,21 @@ import { useRealTimeUI } from '@/lib/hooks/useRealTimeUI';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
+import { processCalendarEvents, validateEventForRender } from '@/lib/utils/calendarHelpers';
 import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
+import { createEventAttendanceHandlers, createEventPressHandler, createSmartRefetch } from '@/lib/utils/eventHandlers';
+import { 
+  formatDateHeader, 
+  groupEventsByDay, 
+  transformGroupedEventsForList,
+  filterUpcomingEvents, 
+  mergeEventsWithRealTimeFiltering, 
+  filterEventsByCreator,
+  getUncachedCreatorIds 
+} from '@/lib/utils/homeHelpers';
 import { realTimeUI } from '@/lib/utils/realTimeUI';
-import { isDateInTravelPeriod } from '@/lib/utils/travelCalendarUtils';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { useCreatorInfo } from '@/lib/utils/creatorInfoManager';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -34,55 +45,6 @@ import { EventsContext } from '../context/EventContext';
 const viewModes: Mode[] = ['day', 'week', 'month'];
 
 type TabType = 'calendar' | 'agenda';
-
-// Cache for creator names
-const creatorNameCache = new Map<string, string>();
-
-// Helper functions for date formatting
-const formatDateHeader = (date: Date): string => {
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-
-  // Check if it's today
-  if (date.toDateString() === today.toDateString()) {
-    return 'Today';
-  }
-
-  // Check if it's tomorrow
-  if (date.toDateString() === tomorrow.toDateString()) {
-    return 'Tomorrow';
-  }
-
-  // Otherwise, format like "Thu, Sept 4"
-  return date.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric'
-  });
-};
-
-// Group events by day
-const groupEventsByDay = (events: AppEvent[]) => {
-  const grouped: { [key: string]: { date: Date; events: AppEvent[] } } = {};
-
-  events.forEach(event => {
-    const eventDate = new Date(event.startTime);
-    const dateKey = eventDate.toDateString();
-
-    if (!grouped[dateKey]) {
-      grouped[dateKey] = {
-        date: eventDate,
-        events: []
-      };
-    }
-
-    grouped[dateKey].events.push(event);
-  });
-
-  // Sort by date and return as array
-  return Object.values(grouped).sort((a, b) => a.date.getTime() - b.date.getTime());
-};
 
 export default function Home() {
   const { colors } = useTheme();
@@ -165,6 +127,19 @@ export default function Home() {
   const [messageModalVisible, setMessageModalVisible] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userAttendingEvents, setUserAttendingEvents] = useState<AppEvent[]>([]);
+  
+  // Get unique creator IDs from events
+  const creatorIds = useMemo(() => {
+    if (!events || events.length === 0) return [];
+    const ids = events
+      .map((event: AppEvent) => event.creatorId)
+      .filter(Boolean);
+    return [...new Set(ids)] as string[];
+  }, [events]);
+
+  // Use unified creator info management
+  const { getCreatorName, getCreatorPhotoUrl, creatorNames, creatorPhotos, isLoading: creatorInfoLoading } = useCreatorInfo(creatorIds, 20);
+  
   // Re-render on real-time UI actions
   const rtTick = useRealTimeUI();
   // When real-time UI changes happen, reconcile the visible list
@@ -172,27 +147,27 @@ export default function Home() {
     if (!Array.isArray(userAttendingEvents)) return;
     const pendingUnattend = new Set(realTimeUI.getEventIdsByAction('unattend'));
     const pendingAttend = new Set(realTimeUI.getEventIdsByAction('attend'));
-    let next = userAttendingEvents.filter(e => !pendingUnattend.has(e.$id));
+    
     try {
       const { events: globalEvents } = require('../context/EventContext');
-      if (Array.isArray(globalEvents)) {
-        const toAdd = (globalEvents as any[]).filter(ev => pendingAttend.has(ev.$id));
-        const map = new Map(next.map(e => [e.$id, e] as const));
-        toAdd.forEach(e => { if (!map.has(e.$id)) map.set(e.$id, e); });
-        next = Array.from(map.values());
-      }
-    } catch { }
-    setEnrichedEvents(next);
+      const next = mergeEventsWithRealTimeFiltering(
+        userAttendingEvents, 
+        pendingUnattend, 
+        pendingAttend, 
+        globalEvents || []
+      );
+      
+      setEnrichedEvents(next);
 
-    // Also update agendaEvents to show only upcoming events from the reactive list
-    const upcomingEvents = (next as any[]).filter((event: any) => {
-      const eventEndTime = new Date(event.endTime || event.startTime);
-      return eventEndTime > new Date();
-    });
-    upcomingEvents.sort((a: any, b: any) =>
-      new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-    );
-    setAgendaEvents(upcomingEvents);
+      // Also update agendaEvents to show only upcoming events from the reactive list
+      const upcomingEvents = filterUpcomingEvents(next);
+      setAgendaEvents(upcomingEvents);
+    } catch { 
+      // Fallback to simple filtering if context import fails
+      const next = userAttendingEvents.filter(e => !pendingUnattend.has(e.$id));
+      setEnrichedEvents(next);
+      setAgendaEvents(filterUpcomingEvents(next));
+    }
   }, [rtTick, userAttendingEvents]);
 
   // Track when data was last fetched to prevent unnecessary refetches
@@ -237,78 +212,6 @@ export default function Home() {
   }, [date]);
 
   // Get unique creator IDs from events
-  const creatorIds = useMemo(() => {
-    // Skip if events is empty to prevent unnecessary updates
-    if (!events || events.length === 0) return [];
-
-    const ids = events
-      .map((event: AppEvent) => event.creatorId)
-      .filter(Boolean)
-      .filter((id: string) => !creatorNameCache.has(id));
-
-    return [...new Set(ids)] as string[];
-  }, [events]);
-
-  // Fetch creator profiles only when we have new creator IDs
-  const { data: creatorProfiles } = useAppwrite({
-    fn: async () => {
-      if (!creatorIds.length) return [];
-      const profiles = await getUsersByIds(creatorIds);
-
-      // Update cache with newly fetched creator names
-      profiles.forEach(profile => {
-        if (profile.$id && userDisplayUtils.hasValidName(profile)) {
-          creatorNameCache.set(profile.$id, userDisplayUtils.getFullName(profile));
-        }
-      });
-
-      return profiles;
-    },
-    dependencies: [creatorIds],
-    skip: !creatorIds.length,
-  });
-
-  // Creator profile photos (small set) to render avatars in feed-style cards
-  const [creatorPhotoUrls, setCreatorPhotoUrls] = useState<Record<string, string | null>>({});
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        if (!creatorIds || creatorIds.length === 0) {
-          if (mounted) setCreatorPhotoUrls({});
-          return;
-        }
-
-        const PHOTO_FETCH_LIMIT = 20;
-        const idsForPhotos = creatorIds.slice(0, PHOTO_FETCH_LIMIT);
-        const map: Record<string, string | null> = {};
-
-        await Promise.all(idsForPhotos.map(async (id) => {
-          try {
-            map[id] = await getUserProfilePhotoUrl(id);
-          } catch {
-            map[id] = null;
-          }
-        }));
-
-        // Ensure remaining ids have explicit null to avoid undefined
-        creatorIds.forEach(id => { if (!Object.prototype.hasOwnProperty.call(map, id)) map[id] = null; });
-
-        if (mounted) setCreatorPhotoUrls(map);
-      } catch (err) {
-        if (mounted) setCreatorPhotoUrls({});
-      }
-    })();
-
-    return () => { mounted = false; };
-  }, [creatorIds]);
-
-  // Create a stable function to get creator name with caching
-  const getCreatorName = React.useCallback((creatorId: string): string => {
-    return creatorNameCache.get(creatorId) || 'Unknown Creator';
-  }, [creatorProfiles]);
-
   // Filter events for the current user using optimized data fetching
   const fetchUserAttendingEvents = useCallback(async () => {
     if (!currentUser?.$id) {
@@ -329,7 +232,7 @@ export default function Home() {
         userAttendingFromJunction.current = true;
 
         // Also include events user created
-        const createdEvents = events.filter((e: AppEvent) => e.creatorId === currentUser.$id);
+        const createdEvents = filterEventsByCreator(events, currentUser.$id);
 
         // Merge and deduplicate by $id
         const allUserEvents = [...attendingEvents];
@@ -356,7 +259,7 @@ export default function Home() {
       } catch (error) {
         authDebug.error('Error fetching user attending events for calendar:', error);
         // Fallback to events user created (better than nothing)
-        const fallbackEvents = events.filter((e: AppEvent) => e.creatorId === currentUser.$id);
+        const fallbackEvents = filterEventsByCreator(events, currentUser.$id);
         setUserAttendingEvents(fallbackEvents);
       }
     } else {
@@ -396,7 +299,7 @@ export default function Home() {
       } catch (error) {
         authDebug.debug('Home: Failed to load cached events, falling back to created events', error);
         // Fallback to events user created (better than nothing)
-        setUserAttendingEvents(events.filter((e: AppEvent) => e.creatorId === currentUser.$id));
+        setUserAttendingEvents(filterEventsByCreator(events, currentUser.$id));
       }
     }
 
@@ -507,6 +410,7 @@ export default function Home() {
           authDebug.debug('Home: enriched userAttendingEvents', { count: Array.isArray(enrichedNew) ? enrichedNew.length : 0, ids: Array.isArray(enrichedNew) ? enrichedNew.map((e: any) => e.$id).slice(0, 10) : [] });
 
           // Merge with any existing enriched events (read from the up-to-date home screen cache)
+          let merged: any[] = [];
           try {
             const existing = (getScreenEvents ? getScreenEvents('home') : (Array.isArray(enrichedEvents) ? enrichedEvents : [])) || [];
             const map = new Map<string, any>();
@@ -516,25 +420,20 @@ export default function Home() {
             // Add existing events that are not already present
             existing.forEach(ev => { if (ev && ev.$id && !map.has(ev.$id)) map.set(ev.$id, ev); });
 
-            let merged = Array.from(map.values());
+            merged = Array.from(map.values());
 
             // Apply real-time UI filtering to respect pending actions
             const pendingUnattend = new Set(realTimeUI.getEventIdsByAction('unattend'));
             const pendingAttend = new Set(realTimeUI.getEventIdsByAction('attend'));
 
-            // Filter out events with pending unattend actions
-            merged = merged.filter(event => !pendingUnattend.has(event.$id));
-
-            // Add events with pending attend actions from global events context
+            // Use utility function to merge events with real-time filtering
             try {
               const { events: globalEvents } = require('../context/EventContext');
-              if (Array.isArray(globalEvents)) {
-                const toAdd = (globalEvents as any[]).filter(ev => pendingAttend.has(ev.$id));
-                const mergedMap = new Map(merged.map(e => [e.$id, e] as const));
-                toAdd.forEach(e => { if (!mergedMap.has(e.$id)) mergedMap.set(e.$id, e); });
-                merged = Array.from(mergedMap.values());
-              }
-            } catch { }
+              merged = mergeEventsWithRealTimeFiltering(merged, pendingUnattend, pendingAttend, globalEvents || []);
+            } catch {
+              // Fallback to simple filtering if context import fails
+              merged = merged.filter(event => !pendingUnattend.has(event.$id));
+            }
 
             authDebug.debug('Home: merged enriched events', { mergedCount: merged.length, mergedIds: merged.map((e: any) => e.$id).slice(0, 10) });
 
@@ -542,17 +441,9 @@ export default function Home() {
             setEnrichedEvents(merged);
 
             // Set agenda events (upcoming only) from the merged events
-            const upcomingEvents = merged.filter((event: any) => {
-              const eventEndTime = new Date(event.endTime || event.startTime);
-              return eventEndTime > new Date();
-            });
-
-            // Sort upcoming events by start time
-            upcomingEvents.sort((a: any, b: any) =>
-              new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-            );
-
+            const upcomingEvents = filterUpcomingEvents(merged);
             setAgendaEvents(upcomingEvents);
+            
             authDebug.debug('Home: set agenda and enriched events', {
               agendaCount: upcomingEvents.length,
               totalCount: merged.length,
@@ -561,11 +452,8 @@ export default function Home() {
 
             try {
               // Only persist merged enriched events to the home cache if they are authoritative
-              // (i.e., we fetched attending events from the junction DB). This avoids
-              // overwriting a valid cache with an optimistic or heuristic-derived list.
               if (userAttendingFromJunction.current) {
                 setScreenEvents?.('home', merged);
-                // Mark that home has been loaded from DB once we persist
                 markScreenLoadedFromDb?.('home', true);
                 authDebug.debug('Home: persisted merged enriched events to home cache', { count: merged.length });
               } else {
@@ -579,13 +467,7 @@ export default function Home() {
             setEnrichedEvents(enrichedNew);
 
             // Also set agenda events from enrichedNew
-            const upcomingEvents = (enrichedNew as any[]).filter((event: any) => {
-              const eventEndTime = new Date(event.endTime || event.startTime);
-              return eventEndTime > new Date();
-            });
-            upcomingEvents.sort((a: any, b: any) =>
-              new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-            );
+            const upcomingEvents = filterUpcomingEvents(enrichedNew);
             setAgendaEvents(upcomingEvents);
 
             try {
@@ -594,18 +476,15 @@ export default function Home() {
                 markScreenLoadedFromDb?.('home', true);
               }
             } catch (e) {
-              /* ignore */
+              authDebug.debug('Home: failed to persist fallback cache', e);
             }
           }
         } catch (error) {
           authDebug.error('Failed to enrich events with group names:', error);
           setEnrichedEvents(userAttendingEvents); // Fallback to original events
 
-          // Also set agenda from fallback
-          const upcomingEvents = userAttendingEvents.filter((event: any) => {
-            const eventEndTime = new Date(event.endTime || event.startTime);
-            return eventEndTime > new Date();
-          });
+          // Also set agenda from fallback using utility function
+          const upcomingEvents = filterUpcomingEvents(userAttendingEvents);
           setAgendaEvents(upcomingEvents);
         }
       } else {
@@ -617,114 +496,26 @@ export default function Home() {
     enrichEvents();
   }, [userAttendingEvents, currentUser]);
 
-  // Format events for the calendar with date validation
+  // Format events for the calendar with date validation using utility function
   const calendarEvents = useMemo(() => {
     if (!enrichedEvents || !Array.isArray(enrichedEvents)) {
       return [];
     }
 
-    authDebug.debug('Home: mapping enrichedEvents for calendar', { count: enrichedEvents.length, ids: enrichedEvents.map((e: any) => e.$id).slice(0, 10) });
+    authDebug.debug('Home: mapping enrichedEvents for calendar', { 
+      count: enrichedEvents.length, 
+      ids: enrichedEvents.map((e: any) => e.$id).slice(0, 10) 
+    });
 
-    // Only log once when debugging is necessary - not on every render
-    const shouldLog = false; // Set to true only when debugging is needed
-
-    if (shouldLog) {
-      authDebug.debug(`Processing ${enrichedEvents.length} user events for calendar`);
-    }
-
-    return enrichedEvents
-      .filter((e: AppEvent) => {
-        // Safety check for null or undefined events
-        if (!e || typeof e !== 'object') {
-          authDebug.warn('Filtering out null or non-object event');
-          return false;
-        }
-
-        // Validate that start and end times are valid dates
-        try {
-          const startValid = e.startTime && !isNaN(new Date(e.startTime).getTime());
-          const endValid = e.endTime && !isNaN(new Date(e.endTime).getTime());
-
-          if (!startValid || !endValid) {
-            authDebug.warn(`Filtering out event with invalid dates: ${e.$id}, start: ${e.startTime}, end: ${e.endTime}`);
-            return false;
-          }
-
-          return true;
-        } catch (error) {
-          authDebug.error(`Error processing event ${e.$id || 'unknown'}:`, error);
-          return false;
-        }
-      })
-      .map((e: AppEvent) => {
-        try {
-          // Parse dates safely with error handling
-          // Ensure dates are in local timezone to prevent offset issues
-          const startDate = new Date(e.startTime);
-          const endDate = new Date(e.endTime);
-
-          // Validate that end time is after start time
-          if (endDate <= startDate) {
-            authDebug.warn(`Event end time must be after start time: ${e.$id}`);
-            // Fix the end time to be at least 30 minutes after start time
-            endDate.setTime(startDate.getTime() + (30 * 60 * 1000));
-          }
-
-          // Ensure the dates are properly formatted for the calendar component
-          const formattedEvent = {
-            id: e.$id,
-            title: e.title || 'Untitled Event',
-            start: startDate,
-            end: endDate,
-            location: e.location || 'No location',
-            color: getEventColor(e.tags || []), // Add color based on first tag
-            rawEvent: {
-              ...e,
-              $id: e.$id,
-              creatorName: getCreatorName(e.creatorId)
-            },
-          };
-
-          // Only log when debugging is necessary
-          if (shouldLog) {
-            authDebug.debug(`Formatted event: ${e.title}, start: ${startDate.toISOString()}, end: ${endDate.toISOString()}`);
-          }
-          return formattedEvent;
-        } catch (error) {
-          authDebug.error(`Error mapping event ${e.$id || 'unknown'} for calendar:`, error);
-          return null;
-        }
-      })
-      .filter(Boolean); // Remove any null events from mapping errors
-
-  }, [enrichedEvents, getCreatorName]);
+    return processCalendarEvents(enrichedEvents, getCreatorName, userTravelData || []);
+  }, [enrichedEvents, getCreatorName, userTravelData]);
 
   // Memoize event handlers (declare before renderEvent to avoid dependency issues)
-  const handlePressEvent = useCallback((event: any) => {
-    try {
-      if (!event) {
-        console.warn('handlePressEvent: event is null or undefined');
-        return;
-      }
-
-      if (!event.rawEvent) {
-        console.warn('handlePressEvent: event.rawEvent is null or undefined');
-        return;
-      }
-
-      // Validate that the raw event has required properties
-      if (!event.rawEvent.$id) {
-        console.warn('handlePressEvent: event.rawEvent.$id is missing');
-        return;
-      }
-
-      setSelectedEvent(event.rawEvent as AppEvent);
-      setDetailsModalVisible(true);
-    } catch (error) {
-      console.error('Error in handlePressEvent:', error);
-      // Don't crash the app, just log the error
-    }
-  }, []);
+  // Event press handler using utility function
+  const handlePressEvent = useMemo(() => 
+    createEventPressHandler(setSelectedEvent, setDetailsModalVisible),
+    []
+  );
 
   // Custom render function for events with comprehensive error handling
   const renderEvent = useCallback((event: any, touchableOpacityProps: any) => {
@@ -908,47 +699,6 @@ export default function Home() {
     setFormVisible(true);
   }, []);
 
-  // Custom date renderer for month view to highlight travel dates
-  const renderCustomDateForMonth = useCallback((date: Date) => {
-    const isTravelDate = travelData && isDateInTravelPeriod(date, travelData);
-
-    return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: 'center',
-          justifyContent: 'flex-start',
-          minHeight: 32,
-          paddingTop: 2,
-        }}
-      >
-        <View
-          style={{
-            width: 24,
-            height: 24,
-            alignItems: 'center',
-            justifyContent: 'center',
-            // Subtle travel date indicator - small border only
-            borderWidth: isTravelDate ? 1 : 0,
-            borderColor: isTravelDate ? '#000000' : 'transparent',
-            borderRadius: 12,
-            backgroundColor: isTravelDate ? '#000000' + '10' : 'transparent',
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: isTravelDate ? '600' : 'normal',
-              color: isTravelDate ? '#000000' : colors.text,
-            }}
-          >
-            {date.getDate()}
-          </Text>
-        </View>
-      </View>
-    );
-  }, []);
-
   // Memoize button handlers
   const handleTodayPress = useCallback(() => {
     const today = new Date();
@@ -977,59 +727,28 @@ export default function Home() {
     setDetailsModalVisible(false);
   }, []);
 
-  const handleEventAttend = useCallback(async () => {
-    if (!selectedEvent || !currentUser?.$id) return;
+  // Event attendance handlers using utility functions
+  const { handleEventAttend, handleEventNotAttend } = useMemo(() => 
+    createEventAttendanceHandlers(
+      currentUser,
+      selectedEvent,
+      userAttendingEvents,
+      setUserAttendingEvents,
+      (action: string, reason: string) => recordAction(action as any, reason)
+    ),
+    [currentUser, selectedEvent, userAttendingEvents, recordAction]
+  );
 
-    // Apply immediate UI feedback via realTimeUI
-    realTimeUI.applyAction(selectedEvent.$id, 'attend');
-
-    // Update local state immediately
-    const updatedEvents = [...userAttendingEvents, selectedEvent];
-    setUserAttendingEvents(updatedEvents);
-
+  // Update handlers to also close modal
+  const wrappedHandleEventAttend = useCallback(async () => {
+    await handleEventAttend();
     setDetailsModalVisible(false);
+  }, [handleEventAttend]);
 
-    try {
-      // Perform the actual database update
-      await addEventAttendee(selectedEvent.$id, currentUser.$id);
-
-      // Record the action for cache invalidation
-      await recordAction('attend', 'home_event_attended');
-    } catch (error) {
-      console.error('Error attending event:', error);
-
-      // Rollback on failure - remove from local state
-      const rolledBackEvents = userAttendingEvents.filter(e => e.$id !== selectedEvent.$id);
-      setUserAttendingEvents(rolledBackEvents);
-    }
-  }, [selectedEvent, currentUser?.$id, userAttendingEvents, recordAction]);
-
-  const handleEventNotAttend = useCallback(async () => {
-    if (!selectedEvent || !currentUser?.$id) return;
-
-    // Apply immediate UI feedback via realTimeUI
-    realTimeUI.applyAction(selectedEvent.$id, 'unattend');
-
-    // Update local state immediately
-    const updatedEvents = userAttendingEvents.filter(e => e.$id !== selectedEvent.$id);
-    setUserAttendingEvents(updatedEvents);
-
+  const wrappedHandleEventNotAttend = useCallback(async () => {
+    await handleEventNotAttend();
     setDetailsModalVisible(false);
-
-    try {
-      // Perform the actual database update
-      await removeEventAttendee(selectedEvent.$id, currentUser.$id);
-
-      // Record the action for cache invalidation
-      await recordAction('unattend', 'home_event_unattended');
-    } catch (error) {
-      console.error('Error not attending event:', error);
-
-      // Rollback on failure - add back to local state
-      const rolledBackEvents = [...userAttendingEvents, selectedEvent];
-      setUserAttendingEvents(rolledBackEvents);
-    }
-  }, [selectedEvent, currentUser?.$id, userAttendingEvents, recordAction]);
+  }, [handleEventNotAttend]);
 
   const handleEventChat = useCallback((event: AppEvent) => {
     setSelectedEvent(event);
@@ -1170,7 +889,7 @@ export default function Home() {
           /* Modern Agenda View with Day Groupings */
           <FlatList
             style={[styles.agendaList, { backgroundColor: colors.background }]}
-            data={groupEventsByDay(agendaEvents)}
+            data={transformGroupedEventsForList(groupEventsByDay(agendaEvents))}
             keyExtractor={(item) => item.date.toDateString()}
             renderItem={({ item: dayGroup }) => (
               <View style={styles.dayGroup}>
@@ -1211,7 +930,7 @@ export default function Home() {
                       </View>
 
                       <View style={styles.feedSubRow}>
-                        <UserAvatar photoUrl={creatorPhotoUrls[item.creatorId] || null} name={item.creatorId ? getCreatorName(item.creatorId) : 'Unknown'} size={28} />
+                        <UserAvatar photoUrl={getCreatorPhotoUrl(item.creatorId)} name={getCreatorName(item.creatorId)} size={28} />
                         <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(item.creatorId)}</Text>
                       </View>
                     </View>
@@ -1302,7 +1021,6 @@ export default function Home() {
                   onPressCell={handleCellPress}
                   onPressEvent={handlePressEvent}
                   renderEvent={renderEvent}
-                  renderCustomDateForMonth={renderCustomDateForMonth}
                   swipeEnabled={true}
                   overlapOffset={-12} // More negative to force events closer together
                   ampm={false}
