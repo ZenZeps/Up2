@@ -979,7 +979,13 @@ export default function Feed() {
         {formVisible && (
           <EventForm
             visible={formVisible}
-            onClose={() => setFormVisible(false)}
+            onClose={async (eventWasModified?: boolean) => {
+              setFormVisible(false);
+              // If an event was created or updated, record the action
+              if (eventWasModified) {
+                await recordAction('create', 'feed_event_created');
+              }
+            }}
             currentUserId={currentUserId ?? ''}
             friends={friends}
             selectedDateTime={new Date().toISOString()}

@@ -6,6 +6,7 @@ import { useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { authDebug } from '@/lib/debug/authDebug';
 import { useGlobalContext } from '@/lib/global-provider';
+import { useEventAttendeeCount } from '@/lib/hooks/useEventAttendeeCount';
 import { useActionTracker } from '@/lib/hooks/useOptimizedData';
 import { useRealTimeUI } from '@/lib/hooks/useRealTimeUI';
 import { Event as AppEvent } from '@/lib/types/Events';
@@ -135,6 +136,9 @@ export default function Home() {
 
   // Use unified creator info management
   const { getCreatorName, getCreatorPhotoUrl, creatorNames, creatorPhotos, isLoading: creatorInfoLoading } = useCreatorInfo(creatorIds, 20);
+
+  // Get accurate attendee counts with junction table fallback
+  const { getAttendeeCount } = useEventAttendeeCount(agendaEvents, true);
 
   // Re-render on real-time UI actions
   const rtTick = useRealTimeUI();
@@ -933,7 +937,7 @@ export default function Home() {
 
                     <View style={styles.feedRightCol}>
                       <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{(item as any).attendeeCount || 0} attending</Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{getAttendeeCount(item)} attending</Text>
                       </View>
                     </View>
                   </TouchableOpacity>

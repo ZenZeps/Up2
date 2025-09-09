@@ -649,8 +649,10 @@ export async function addEventInvitation(eventId: string, userId: string): Promi
       {
         eventId,
         userId,
-        invitedAt: new Date().toISOString(),
         status: 'invited'
+        // Note: do not set `invitedAt` — Appwrite uses system attribute `$createdAt` and
+        // the collection schema does not include a custom `invitedAt` field. Adding it
+        // causes a document_invalid_structure error.
       }
     );
 

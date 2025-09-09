@@ -1,8 +1,9 @@
 import { CATEGORIES } from '@/constants/categories';
 import { addEventAttendee, addEventInvitation, removeEventAttendee } from '@/lib/api/event';
+import { getUserFriends } from '@/lib/api/friendship';
 import { addEventToGroup } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
-import { getFriends, getUserProfile } from '@/lib/api/user';
+import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { sendEventInviteNotification } from '@/lib/notifications/notificationUtils';
@@ -50,7 +51,7 @@ const FallbackDateTimePicker = ({ isVisible, onConfirm, onCancel, date, mode }: 
 
 interface Props {
   visible: boolean;
-  onClose: () => void;
+  onClose: (eventWasModified?: boolean) => void;
   event?: Event;
   selectedDateTime: string;
   currentUserId: string;
@@ -286,10 +287,15 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const loadFriendProfiles = async () => {
     try {
       setLoadingFriends(true);
-      const friendsList = await getFriends(currentUserId);
+
+      // Use the new friendship system to get friend IDs
+      const friendIds = await getUserFriends(currentUserId);
+
+      // Convert friend IDs to friend profiles
+      const friendsList = friendIds.length > 0 ? await getUsersByIds(friendIds) : [];
 
       // Filter out friends who are already invited
-      const availableFriends = friendsList.filter(friend =>
+      const availableFriends = friendsList.filter((friend: any) =>
         !inviteeIds.includes(friend.$id) && friend.$id !== currentUserId
       );
 
@@ -460,7 +466,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
         }
 
         // Close the modal only after successful save
-        onClose();
+        onClose(true); // Pass true to indicate event was successfully modified
       } catch (eventError) {
         console.error("Event operation failed:", eventError);
         // Don't close the modal if the event operation fails
@@ -529,11 +535,11 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" onRequestClose={() => onClose(false)}>
       <SafeAreaView className="flex-1 bg-white">
         {/* Header */}
         <View className="flex-row items-center justify-between p-4 bg-black">
-          <TouchableOpacity onPress={onClose} className="p-2">
+          <TouchableOpacity onPress={() => onClose(false)} className="p-2">
             <Text className="text-white text-lg">Cancel</Text>
           </TouchableOpacity>
           <Text className="text-xl font-bold text-white">{event ? 'Edit Event' : 'New Event'}</Text>
@@ -906,7 +912,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                     event.$id
                   );
                   await refetchEvents();
-                  onClose();
+                  onClose(true); // Pass true because deletion affects event data
                 } catch (err) {
                   console.error("Error deleting event:", err);
                   alert("Failed to delete event.");
@@ -931,7 +937,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                       setInviteeIds(inviteeIds.filter((id) => id !== currentUserId));
                       setIsAttending(false);
                       await refetchEvents();
-                      onClose();
+                      onClose(true); // Pass true because leaving affects event attendance
                     } catch (err) {
                       console.error("Error leaving event:", err);
                       alert("Failed to leave event.");
@@ -951,7 +957,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                       setInviteeIds([...inviteeIds, currentUserId]);
                       setIsAttending(true);
                       await refetchEvents();
-                      onClose();
+                      onClose(true); // Pass true because joining affects event attendance
                     } catch (err) {
                       console.error("Error joining event:", err);
                       alert("Failed to join event.");

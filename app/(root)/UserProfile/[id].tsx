@@ -1,7 +1,7 @@
 import { cancelFriendRequest, getPendingFriendRequests, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
 import { getUserGroups } from '@/lib/api/group';
 import { getProfilePhotoUrl } from '@/lib/api/profilePhoto';
-import { getFriends, getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
@@ -61,12 +61,9 @@ const UserProfile = () => {
             // Load groups first
             const userGroups = await getUserGroups(userId);
 
-            // Load friends: prefer legacy getFriends(), otherwise fall back to junction table
-            let userFriends = await getFriends(userId);
-            if (!userFriends || userFriends.length === 0) {
-                const friendIds = await getUserFriends(userId);
-                userFriends = friendIds && friendIds.length > 0 ? await getUsersByIds(friendIds) : [];
-            }
+            // Load friends using new friendship system
+            const friendIds = await getUserFriends(userId);
+            const userFriends = friendIds && friendIds.length > 0 ? await getUsersByIds(friendIds) : [];
 
             setFriends(userFriends || []);
             setGroups(userGroups || []);

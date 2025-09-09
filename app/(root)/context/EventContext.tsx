@@ -250,6 +250,10 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
         invalidateCache(`user-events-${userId}`);
       }
 
+      // Also record action to invalidate screen-specific caches
+      const { recordUserAction } = await import('@/lib/utils/dataFetchingOptimizer');
+      await recordUserAction('create', 'event_created_context');
+
       return newEvent;
     } catch (err) {
       authDebug.error('Failed to add event:', err);
@@ -281,6 +285,10 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
       if (user?.$id) {
         invalidateCache(`events-user-${user.$id}`);
       }
+
+      // Also record action to invalidate screen-specific caches
+      const { recordUserAction } = await import('@/lib/utils/dataFetchingOptimizer');
+      await recordUserAction('update', 'event_updated_context');
     } catch (err) {
       authDebug.error('Failed to update event:', err);
       // On error, refetch to ensure UI is consistent
@@ -307,6 +315,10 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
       if (user?.$id) {
         invalidateCache(`events-user-${user.$id}`);
       }
+
+      // Also record action to invalidate screen-specific caches
+      const { recordUserAction } = await import('@/lib/utils/dataFetchingOptimizer');
+      await recordUserAction('delete', 'event_deleted_context');
     } catch (err) {
       authDebug.error('Failed to delete event:', err);
       // On error, refetch to ensure UI is consistent

@@ -1,10 +1,12 @@
 import { getEventEmoji } from '@/constants/categories';
 import icons from '@/constants/icons';
 import { addEventAttendee, addEventInvitation, getEventAttendees, getEventInvitees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
+import { getUserFriends } from '@/lib/api/friendship';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
-import { getFriends, getUsersByIds } from '@/lib/api/user';
+import { getUsersByIds } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { sendEventInviteNotification } from '@/lib/notifications/notificationUtils';
+import { useCreatorInfo } from '@/lib/utils/creatorInfoManager';
 import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -42,11 +44,14 @@ const EventDetailsModal = ({
   const router = useRouter();
   const { colors } = useTheme();
   const { refetchEvents } = useEvents();
+
+  // Get creator info using the CreatorInfoManager
+  const { getCreatorName, getCreatorPhotoUrl } = useCreatorInfo([event?.creatorId].filter(Boolean), 1);
+
   const [attendeeProfiles, setAttendeeProfiles] = useState<any[]>([]);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [creatorPhotoUrl, setCreatorPhotoUrl] = useState<string | null>(null);
   const [attendeePhotoUrls, setAttendeePhotoUrls] = useState<Record<string, string | null>>({});
   const [friends, setFriends] = useState<any[]>([]);
   const [friendPhotoUrls, setFriendPhotoUrls] = useState<Record<string, string | null>>({});
@@ -204,27 +209,16 @@ const EventDetailsModal = ({
     fetchAttendeeProfiles();
   }, [event?.$id]);
 
-  // Fetch creator's profile photo
-  useEffect(() => {
-    const fetchCreatorPhoto = async () => {
-      if (event?.creatorId) {
-        try {
-          const photoUrl = await getUserProfilePhotoUrl(event.creatorId);
-          setCreatorPhotoUrl(photoUrl);
-        } catch (error) {
-          console.error('Error fetching creator photo:', error);
-        }
-      }
-    };
-
-    fetchCreatorPhoto();
-  }, [event?.creatorId]);
-
   if (!event) return null;
 
   const handleInviteFriend = async () => {
     try {
-      const friendsList = await getFriends(currentUserId);
+      // Use the new friendship system to get friend IDs
+      const friendIds = await getUserFriends(currentUserId);
+
+      // Convert friend IDs to friend profiles
+      const friendsList = friendIds.length > 0 ? await getUsersByIds(friendIds) : [];
+
       // Filter out friends who are already attendees or invitees using junction-derived IDs when available
       const attendeeIdSet = new Set(attendeeProfiles.map((p: any) => p.$id));
       let inviteeIds: string[] = [];
@@ -236,7 +230,7 @@ const EventDetailsModal = ({
         if (Array.isArray((event as any).inviteeIds)) inviteeIds = (event as any).inviteeIds as string[];
       }
       const inviteeIdSet = new Set(inviteeIds);
-      const availableFriends = friendsList.filter(friend =>
+      const availableFriends = friendsList.filter((friend: any) =>
         !attendeeIdSet.has(friend.$id) && !inviteeIdSet.has(friend.$id)
       );
 
@@ -278,7 +272,7 @@ const EventDetailsModal = ({
       await sendEventInviteNotification(
         [friendId],
         event.title,
-        (event as any).creatorName || 'Someone',
+        getCreatorName(event.creatorId) || 'Someone',
         event.$id
       );
 
@@ -374,12 +368,12 @@ const EventDetailsModal = ({
             {/* Creator Info */}
             <View style={styles.creatorInfo}>
               <UserAvatar
-                photoUrl={creatorPhotoUrl}
-                name={(event as any).creatorName || 'Unknown Creator'}
+                photoUrl={getCreatorPhotoUrl(event.creatorId)}
+                name={getCreatorName(event.creatorId) || 'Unknown Creator'}
                 size={20}
               />
               <Text style={styles.creatorName}>
-                {(event as any).creatorName || 'Unknown Creator'}
+                {getCreatorName(event.creatorId) || 'Unknown Creator'}
               </Text>
             </View>
 
