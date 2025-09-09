@@ -3,15 +3,16 @@ import { addEventAttendee, addEventInvitation, removeEventAttendee } from '@/lib
 import { getUserFriends } from '@/lib/api/friendship';
 import { addEventToGroup } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
-import { getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { getUsersByIds } from '@/lib/api/user';
 import { config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
-import { sendEventInviteNotification } from '@/lib/notifications/notificationUtils';
 import { Event } from '@/lib/types/Events';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
+import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
+import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
-import { Alert, FlatList, Modal, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useEvents } from '../context/EventContext';
 import PlaceAutocomplete from './PlaceAutocomplete';
 import UserAvatar from './UserAvatar';
@@ -31,16 +32,23 @@ const FallbackDateTimePicker = ({ isVisible, onConfirm, onCancel, date, mode }: 
 
   return (
     <Modal visible={isVisible} transparent animationType="fade">
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-        <View style={{ backgroundColor: 'white', padding: 20, borderRadius: 10, width: '80%' }}>
-          <Text style={{ fontSize: 16, marginBottom: 10 }}>Date/Time Picker</Text>
-          <Text style={{ marginBottom: 20 }}>Current: {dayjs(date).format('MMM D, YYYY h:mm A')}</Text>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
-            <TouchableOpacity onPress={onCancel} style={{ padding: 10, backgroundColor: '#ccc', borderRadius: 5 }}>
-              <Text>Cancel</Text>
+      <View style={styles.fallbackPickerOverlay}>
+        <View style={styles.fallbackPickerContainer}>
+          <View style={styles.fallbackPickerHeader}>
+            <Text style={styles.fallbackPickerTitle}>Date/Time Picker</Text>
+            <Text style={styles.fallbackPickerSubtitle}>
+              Current: {dayjs(date).format('MMM D, YYYY h:mm A')}
+            </Text>
+          </View>
+          <View style={styles.fallbackPickerButtons}>
+            <TouchableOpacity onPress={onCancel} style={styles.fallbackCancelButton}>
+              <Text style={styles.fallbackCancelText}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => onConfirm(date)} style={{ padding: 10, backgroundColor: '#007AFF', borderRadius: 5 }}>
-              <Text style={{ color: 'white' }}>OK</Text>
+            <TouchableOpacity
+              onPress={() => onConfirm(date)}
+              style={styles.fallbackConfirmButton}
+            >
+              <Text style={styles.fallbackConfirmText}>OK</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -80,7 +88,14 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [loadingFriends, setLoadingFriends] = useState(false);
   const [isAttending, setIsAttending] = useState<boolean>(false);
 
-  // Safely parse date with validation and proper time information
+  // Date state with proper initialization
+  const [startDate, setStartDate] = useState<Date>(new Date());
+  const [endDate, setEndDate] = useState<Date>(new Date());
+
+  const { colors } = useTheme();
+  const { addEvent, updateEvent, refetchEvents } = useEvents();
+
+  // Helper functions
   const safeParseDate = (dateString: string): Date => {
     try {
       if (!dateString) {
@@ -89,105 +104,55 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       }
 
       const date = new Date(dateString);
-      // Check if date is valid
       if (isNaN(date.getTime())) {
         console.warn('Invalid date string:', dateString, 'using current date');
         return new Date();
       }
       return date;
     } catch (error) {
-      // Return current date if parsing fails
       console.warn('Failed to parse date:', dateString, error);
       return new Date();
     }
   };
 
-  // Calculate end time based on start time and duration
-  const calculateEndTime = (start: Date, durationMinutes: number): Date => {
-    return new Date(start.getTime() + durationMinutes * 60000);
+  const calculateEndTime = (startTime: Date, durationMinutes: number): Date => {
+    return new Date(startTime.getTime() + durationMinutes * 60000);
   };
 
-  // Date state initialization
-  const [startDate, setStartDate] = useState<Date>(() => {
-    try {
-      if (event && event.startTime) {
-        return safeParseDate(event.startTime);
-      }
-      return safeParseDate(selectedDateTime);
-    } catch (error) {
-      console.warn('Error initializing start date:', error);
-      return new Date();
-    }
-  });
+  const runDiagnosticTest = () => {
+    console.log('=== Event Form Diagnostic Test ===');
+    console.log('Title:', title);
+    console.log('Location:', location, { lat: locationLat, lng: locationLng });
+    console.log('Description:', description);
+    console.log('Tags:', tags);
+    console.log('Start Date:', startDate);
+    console.log('End Date:', endDate);
+    console.log('Is Private:', isPrivate);
+    console.log('Invitees:', inviteeIds.length);
+    console.log('Current User ID:', currentUserId);
+    console.log('Event being edited:', event?.$id);
+    Alert.alert('Diagnostic Complete', 'Check console for details');
+  };
 
-  const [endDate, setEndDate] = useState<Date>(() => {
-    try {
-      if (event && event.endTime) {
-        return safeParseDate(event.endTime);
-      }
-      // Default to 1 hour after start time
-      const startTime = safeParseDate(selectedDateTime);
-      return calculateEndTime(startTime, 60); // Default 1 hour duration
-    } catch (error) {
-      console.warn('Error initializing end date:', error);
-      return new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
-    }
-  });
+  // Determine if this is a creator or if editing is allowed
+  const isCreator = event ? event.creatorId === currentUserId : true;
+  const editable = !event || isCreator;
 
-  // EventContext access
-  const eventContext = useEvents();
-  const { refetchEvents, addEvent, updateEvent } = eventContext;
-
-  const { colors } = useTheme();
-
-  // Validation checks (only run when component first renders)
-  useEffect(() => {
-    console.log('EventForm: Component mounted with props', {
-      visible,
-      hasEvent: !!event,
-      selectedDateTime,
-      currentUserId,
-      friendsCount: friends?.length || 0
-    });
-
-    if (!visible) {
-      console.log('EventForm: Not visible');
-      return;
-    }
-
-    if (!currentUserId) {
-      console.error('EventForm: currentUserId is required');
-      return;
-    }
-
-    console.log('EventForm: Validation passed');
-  }, [visible, currentUserId, !!event, selectedDateTime]); // Remove friends?.length dependency
-
+  // Initialize form data when component mounts or event changes
   useEffect(() => {
     if (event) {
       setTitle(event.title || '');
       setLocation(event.location || '');
       setDescription(event.description || '');
-      setTags(event.tags || []);
-      // Keep legacy inviteeIds only as a local UI list; authoritative source is junction table
-      setInviteeIds(event.inviteeIds || []);
-      setIsPrivate(event.isPrivate === true); // Fix: properly handle boolean value
+      setTags(Array.isArray(event.tags) ? event.tags : []);
+      setIsPrivate(event.isPrivate || false);
 
-      // Safely set dates with validation
-      try {
-        const startTime = new Date(event.startTime);
-        const endTime = new Date(event.endTime);
+      const safeStartDate = safeParseDate(event.startTime);
+      const safeEndDate = safeParseDate(event.endTime);
+      setStartDate(safeStartDate);
+      setEndDate(safeEndDate);
 
-        if (!isNaN(startTime.getTime())) {
-          setStartDate(startTime);
-        }
-
-        if (!isNaN(endTime.getTime())) {
-          setEndDate(endTime);
-        }
-      } catch (error) {
-        console.error('Error parsing event dates:', error);
-      }
+      setInviteeIds((event as any).inviteeIds || []);
     } else {
       setTitle('');
       setLocation('');
@@ -195,11 +160,8 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setTags([]);
       setInviteeIds([]);
       setIsPrivate(false);
-
-      // Reset attendance state for new events
       setIsAttending(false);
 
-      // Safely set default dates
       try {
         const newStartDate = new Date(selectedDateTime);
         if (!isNaN(newStartDate.getTime())) {
@@ -214,94 +176,18 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
     }
   }, [event, selectedDateTime]);
 
-  // Check attendance using junction helper when event/currentUserId available
-  useEffect(() => {
-    let mounted = true;
-    const checkAttendance = async () => {
-      try {
-        if (!event || !currentUserId) return;
-        const { isUserAttendingEvent } = await import('@/lib/api/event');
-        const attending = await isUserAttendingEvent(currentUserId, event.$id);
-        if (mounted) setIsAttending(Boolean(attending));
-      } catch (err) {
-        console.error('Error checking attendance in EventForm:', err);
-      }
-    };
-    checkAttendance();
-    return () => { mounted = false; };
-  }, [event, currentUserId]);
-
-  // Early return for visibility check
-  if (!visible) {
-    return null;
-  }
-
-  // Early return for missing currentUserId
-  if (!currentUserId) {
-    console.error('EventForm: currentUserId is required');
-    return null;
-  }
-
-  const isCreator = event?.creatorId === currentUserId;
-  const editable = !event || isCreator;
-
-  // Test function to diagnose the issue (development only)
-  const runDiagnosticTest = async () => {
-    try {
-      console.log('=== Running Event Creation Diagnostic Test ===');
-
-      // Simple database configuration check
-      console.log('Config test: Checking environment variables...');
-      const hasRequiredConfig = !!(
-        config.databaseID &&
-        config.eventsCollectionID &&
-        config.usersCollectionID
-      );
-
-      if (!hasRequiredConfig) {
-        alert('Configuration Error: Missing required environment variables');
-        return;
-      }
-
-      console.log('Config test: OK');
-
-      // Test third-party library availability
-      console.log('Library test: Checking third-party libraries...');
-      console.log('DateTimePickerModal:', !!DateTimePickerModal ? 'Available' : 'Missing');
-
-      // Test context availability
-      console.log('Context test: Checking EventContext...');
-      const hasContext = typeof refetchEvents === 'function' && typeof addEvent === 'function' && typeof updateEvent === 'function';
-      console.log('EventContext functions:', hasContext ? 'Available' : 'Missing');
-
-      console.log('=== Diagnostic Test Complete ===');
-      console.log(`Diagnostic test completed successfully!\n\nLibraries: ${DateTimePickerModal ? '✓' : '✗'} DatePicker\nContext: ${hasContext ? '✓' : '✗'} Available\nFriends: ${friends.length} total`);
-
-    } catch (error) {
-      console.error('Diagnostic test crashed:', error);
-      console.log(`Diagnostic test crashed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  };
-
-  // Load friend profiles when friend picker is opened
   const loadFriendProfiles = async () => {
+    setLoadingFriends(true);
     try {
-      setLoadingFriends(true);
-
-      // Use the new friendship system to get friend IDs
       const friendIds = await getUserFriends(currentUserId);
-
-      // Convert friend IDs to friend profiles
       const friendsList = friendIds.length > 0 ? await getUsersByIds(friendIds) : [];
 
-      // Filter out friends who are already invited
       const availableFriends = friendsList.filter((friend: any) =>
-        !inviteeIds.includes(friend.$id) && friend.$id !== currentUserId
+        !inviteeIds.includes(friend.$id)
       );
 
       setFriendProfiles(availableFriends);
 
-      // Fetch photos for friends
       const photoUrls: Record<string, string | null> = {};
       for (const friend of availableFriends) {
         try {
@@ -326,8 +212,6 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
     setShowFriendPicker(true);
   };
 
-
-  // Handle tag selection
   const handleTagToggle = (tagValue: string) => {
     try {
       setTags(prev =>
@@ -341,174 +225,92 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   };
 
   const handleSave = async () => {
-    // Prevent multiple simultaneous saves
     if (isProcessing) {
       console.log('Already processing, skipping save');
       return;
     }
 
-    console.log('=== Starting Event Save Process ===');
     setIsProcessing(true);
 
     try {
-      console.log('Step 1: Checking event context...');
-      // Check if event context functions are available
       if (!refetchEvents || !addEvent || !updateEvent) {
-        console.error('Event context functions are not available');
         throw new Error('Event context functions are not available');
       }
-      console.log('Step 1: Event context OK');
 
-      console.log('Step 2: Validating required fields...');
-      // Validate required fields
       if (!title.trim()) {
-        console.log('Step 2: Title validation failed');
-        alert("Event title is required");
+        Alert.alert("Error", "Event title is required");
         return;
       }
 
       if (!startDate || !endDate) {
-        console.log('Step 2: Date validation failed');
-        alert("Start and end dates are required");
+        Alert.alert("Error", "Start and end dates are required");
         return;
       }
 
       if (startDate >= endDate) {
-        alert("End date must be after start date");
+        Alert.alert("Error", "End date must be after start date");
         return;
       }
 
-      // Validate dates are valid
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        alert("Invalid date selected");
-        return;
-      }
-
-      // Validate currentUserId
       if (!currentUserId) {
-        alert("User authentication required");
+        Alert.alert("Error", "User authentication required");
         return;
       }
 
-      // Create the event object with safe date conversion
       const eventData = {
         title: title.trim(),
         location: location.trim(),
-        // Include coordinates when available for precise mapping
         ...(locationLat !== null && locationLng !== null ? { locationLat, locationLng } : {}),
         startTime: startDate.toISOString(),
         endTime: endDate.toISOString(),
         creatorId: currentUserId,
         description: description.trim(),
-        tags: tags.filter(tag => tag && tag.trim()), // Filter out empty tags
+        tags: tags,
         isPrivate: isPrivate,
-        groupId: groupId || undefined, // Include group ID if provided
       };
 
-      // Do not include inviteeIds in the initial create payload; we'll create invitations after event is created
-
-      console.log("Saving event with data:", eventData);
-
-      // Use a try-catch specifically for the event operations
-      try {
-        let savedEvent: Event;
-
-        if (event && event.$id) {
-          // Update existing event using EventContext
-          console.log("Updating existing event:", event.$id);
-          await updateEvent({
-            ...eventData,
-            $id: event.$id,
-          } as Event);
-          console.log("Event updated successfully");
-          savedEvent = { ...eventData, $id: event.$id } as Event;
-        } else {
-          // Create new event using EventContext
-          console.log("Creating new event");
-          savedEvent = await addEvent(eventData as any); // Cast to any since addEvent creates the $id internally
-          console.log("Event created successfully with ID:", savedEvent.$id);
-
-          // Create invitations in junction table for selected invitees
-          if (inviteeIds && inviteeIds.length > 0 && savedEvent.$id) {
-            try {
-              // Create invitation records
-              for (const uid of inviteeIds) {
-                try {
-                  await addEventInvitation(savedEvent.$id, uid);
-                } catch (e) {
-                  console.warn('Failed to create invitation for', uid, e);
-                }
-              }
-
-              // Send push notifications to invitees (best-effort)
-              try {
-                const creatorProfile = await getUserProfile(currentUserId);
-                const creatorName = creatorProfile ? `${creatorProfile.firstName || ''} ${creatorProfile.lastName || ''}`.trim() : '';
-                await sendEventInviteNotification(inviteeIds, savedEvent.title || eventData.title, creatorName, savedEvent.$id);
-              } catch (notifyErr) {
-                console.warn('Failed to send invite notifications:', notifyErr);
-              }
-            } catch (invErr) {
-              console.warn('Error creating invitations for new event:', invErr);
-            }
-          }
-        }
-
-        // If this event is being created for a group, associate it with the group
-        if (groupId && savedEvent.$id) {
-          console.log("Associating event with group:", groupId);
-          const success = await addEventToGroup(groupId, savedEvent.$id);
-          if (!success) {
-            console.warn("Failed to associate event with group, but event was created");
-          } else {
-            console.log("Event successfully associated with group");
-          }
-        }
-
-        // Close the modal only after successful save
-        onClose(true); // Pass true to indicate event was successfully modified
-      } catch (eventError) {
-        console.error("Event operation failed:", eventError);
-        // Don't close the modal if the event operation fails
-        throw eventError;
+      let savedEvent;
+      if (event) {
+        savedEvent = await updateEvent({ ...event, ...eventData });
+      } else {
+        savedEvent = await addEvent(eventData);
       }
 
-    } catch (err) {
-      console.error("Error saving event:", err);
-
-      // More specific error handling
-      let errorMessage = "Failed to save event";
-
-      if (err instanceof Error) {
-        if (err.message.includes('network')) {
-          errorMessage = "Network error - please check your connection";
-        } else if (err.message.includes('permission')) {
-          errorMessage = "Permission denied - you may not have access to perform this action";
-        } else if (err.message.includes('validation')) {
-          errorMessage = "Invalid event data - please check your input";
-        } else if (err.message.includes('database')) {
-          errorMessage = "Database error - please try again later";
-        } else {
-          errorMessage = err.message;
+      if (savedEvent && inviteeIds.length > 0) {
+        for (const inviteeId of inviteeIds) {
+          try {
+            await addEventInvitation(savedEvent.$id, inviteeId);
+          } catch (error) {
+            console.error('Error sending invitation to:', inviteeId, error);
+          }
         }
       }
 
-      // Use a more gentle alert that won't crash the app
-      setTimeout(() => {
-        alert(`Error: ${errorMessage}`);
-      }, 100);
+      if (groupId && savedEvent) {
+        try {
+          await addEventToGroup(savedEvent.$id, groupId);
+        } catch (error) {
+          console.error('Error adding event to group:', error);
+        }
+      }
+
+      await refetchEvents();
+      onClose(true);
+    } catch (error) {
+      console.error('Error saving event:', error);
+      Alert.alert('Error', 'Failed to save event');
     } finally {
       setIsProcessing(false);
     }
-  };  // Handle date picker confirmations with proper time handling
+  };
+
   const handleStartDateConfirm = (date: Date) => {
     try {
       setShowStartPicker(false);
       setStartDate(date);
 
-      // Update end date to maintain at least 1 hour duration if it was before the new start date
       if (endDate <= date) {
-        setEndDate(calculateEndTime(date, 60)); // Default 1 hour
+        setEndDate(calculateEndTime(date, 60));
       }
     } catch (error) {
       console.error('Error handling start date confirm:', error);
@@ -520,13 +322,11 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
     try {
       setShowEndPicker(false);
 
-      // Make sure end date is after start date
       if (date > startDate) {
         setEndDate(date);
       } else {
-        // If selected end date is before start date, set it to start date + 1 hour
         setEndDate(calculateEndTime(startDate, 60));
-        alert('End time must be after start time');
+        Alert.alert('Error', 'End time must be after start time');
       }
     } catch (error) {
       console.error('Error handling end date confirm:', error);
@@ -536,446 +336,849 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={() => onClose(false)}>
-      <SafeAreaView className="flex-1 bg-white">
-        {/* Header */}
-        <View className="flex-row items-center justify-between p-4 bg-black">
-          <TouchableOpacity onPress={() => onClose(false)} className="p-2">
-            <Text className="text-white text-lg">Cancel</Text>
-          </TouchableOpacity>
-          <Text className="text-xl font-bold text-white">{event ? 'Edit Event' : 'New Event'}</Text>
-          {editable && (
-            <TouchableOpacity onPress={handleSave} className="p-2" disabled={isProcessing}>
-              <Text className={`text-lg font-semibold ${isProcessing ? 'text-gray-400' : 'text-white'}`}>
-                {isProcessing ? 'Saving...' : 'Done'}
-              </Text>
+      <LinearGradient
+        colors={['#FF6B6B', '#4ECDC4', '#45B7D1']}
+        style={styles.gradientContainer}
+      >
+        <SafeAreaView style={styles.safeArea}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => onClose(false)} style={styles.headerButton}>
+              <MaterialIcons name="close" size={24} color="#fff" />
             </TouchableOpacity>
-          )}
-        </View>
-
-        <ScrollView className="flex-1 p-4">
-          {/* Production error indicator */}
-          {!DateTimePickerModal && (
-            <View className="bg-yellow-100 border border-yellow-400 rounded-lg p-3 mb-4">
-              <Text className="text-yellow-800 text-sm">
-                ⚠️ Using fallback components for better compatibility
-              </Text>
-            </View>
-          )}
-          <TextInput
-            placeholder="Event name"
-            value={title}
-            onChangeText={setTitle}
-            className="border-b border-gray-300 p-3 mb-4 text-lg"
-            placeholderTextColor="#A0A0A0"
-            editable={editable}
-          />
-
-          <PlaceAutocomplete
-            value={location}
-            onChangeText={(v: string) => {
-              setLocation(v);
-              setLocationLat(null);
-              setLocationLng(null);
-            }}
-            onSelect={(address: string, lat?: number, lng?: number) => {
-              setLocation(address);
-              if (typeof lat === 'number' && typeof lng === 'number') {
-                setLocationLat(lat);
-                setLocationLng(lng);
-              }
-            }}
-            placeholder="Location"
-          />
-
-          {/* Diagnostic Test Button for Development */}
-          {__DEV__ && (
-            <TouchableOpacity
-              onPress={runDiagnosticTest}
-              className="bg-yellow-500 p-3 rounded-lg mb-4"
-            >
-              <Text className="text-white text-center font-semibold">
-                Run Diagnostic Test
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          <TextInput
-            placeholder="Description"
-            value={description}
-            onChangeText={setDescription}
-            className="border-b border-gray-300 p-3 mb-4 text-lg"
-            placeholderTextColor="#A0A0A0"
-            multiline
-            editable={editable}
-          />
-
-          {/* Tags Section */}
-          <View className="mb-4">
-            <Text className="text-gray-600 text-base mb-2">Event Tags</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 4 }}
-            >
-              {CATEGORIES.map((category) => (
-                <TouchableOpacity
-                  key={category.value}
-                  onPress={() => editable && handleTagToggle(category.value)}
-                  className={`px-3 py-2 rounded-full border mr-3 flex-row items-center`}
-                  style={{
-                    backgroundColor: tags.includes(category.value) ? '#000000' : '#F5F5F5',
-                    borderColor: tags.includes(category.value) ? '#000000' : '#E0E0E0',
-                  }}
-                  disabled={!editable}
-                >
-                  <Text className="mr-1">{category.emoji}</Text>
-                  <Text
-                    style={{
-                      color: tags.includes(category.value) ? 'white' : '#333',
-                      fontSize: 14,
-                    }}
-                  >
-                    {category.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <Text style={styles.headerTitle}>
+              {event ? 'Edit Event' : 'New Event'}
+            </Text>
+            {editable && (
+              <TouchableOpacity
+                onPress={handleSave}
+                style={styles.headerButton}
+                disabled={isProcessing}
+              >
+                <Text style={[
+                  styles.headerButtonText,
+                  isProcessing && styles.headerButtonTextDisabled
+                ]}>
+                  {isProcessing ? 'Saving...' : 'Save'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {!editable && <View style={{ width: 48 }} />}
           </View>
 
-          {/* Privacy Section */}
-          <View className="mb-4">
-            <Text className="text-gray-600 text-base mb-2">Privacy</Text>
-            <TouchableOpacity
-              onPress={() => editable && setIsPrivate(!isPrivate)}
-              className="flex-row items-center"
-              disabled={!editable}
-            >
-              <View className={`w-6 h-6 rounded border-2 mr-3 items-center justify-center ${isPrivate ? 'bg-blue-500 border-blue-500' : 'border-gray-300'
-                }`}>
-                {isPrivate && (
-                  <Text className="text-white text-sm font-bold">✓</Text>
-                )}
-              </View>
-              <View>
-                <Text className="text-lg">Private Event</Text>
-                <Text className="text-gray-500 text-sm">
-                  Only invited users can see this event
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
+            {/* Production error indicator */}
+            {!DateTimePickerModal && (
+              <View style={styles.warningContainer}>
+                <MaterialIcons name="warning" size={20} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.warningText}>
+                  Using fallback components for better compatibility
                 </Text>
               </View>
-            </TouchableOpacity>
-          </View>
-
-          <View className="mb-4">
-            <Text className="text-gray-600 text-base mb-2">Start Time</Text>
-            <TouchableOpacity
-              onPress={() => {
-                try {
-                  if (editable) {
-                    setShowStartPicker(true);
-                  }
-                } catch (error) {
-                  console.error('Error opening start picker:', error);
-                }
-              }}
-              className="border border-gray-300 p-3 rounded-lg"
-              disabled={!editable}
-            >
-              <Text className="text-lg">{dayjs(startDate).format('MMM D, YYYY h:mm A')}</Text>
-            </TouchableOpacity>
-            {DateTimePickerModal ? (
-              <DateTimePickerModal
-                isVisible={showStartPicker}
-                mode="datetime"
-                date={startDate}
-                onConfirm={handleStartDateConfirm}
-                onCancel={() => {
-                  try {
-                    setShowStartPicker(false);
-                  } catch (error) {
-                    console.error('Error canceling start picker:', error);
-                  }
-                }}
-              />
-            ) : (
-              <FallbackDateTimePicker
-                isVisible={showStartPicker}
-                mode="datetime"
-                date={startDate}
-                onConfirm={handleStartDateConfirm}
-                onCancel={() => {
-                  try {
-                    setShowStartPicker(false);
-                  } catch (error) {
-                    console.error('Error canceling start picker:', error);
-                  }
-                }}
-              />
             )}
-          </View>
 
-          <View className="mb-4">
-            <Text className="text-gray-600 text-base mb-2">End Time</Text>
-            <TouchableOpacity
-              onPress={() => {
-                try {
-                  if (editable) {
-                    setShowEndPicker(true);
-                  }
-                } catch (error) {
-                  console.error('Error opening end picker:', error);
-                }
-              }}
-              className="border border-gray-300 p-3 rounded-lg"
-              disabled={!editable}
-            >
-              <Text className="text-lg">{dayjs(endDate).format('MMM D, YYYY h:mm A')}</Text>
-            </TouchableOpacity>
-            {DateTimePickerModal ? (
-              <DateTimePickerModal
-                isVisible={showEndPicker}
-                mode="datetime"
-                date={endDate}
-                minimumDate={startDate}
-                onConfirm={handleEndDateConfirm}
-                onCancel={() => {
-                  try {
-                    setShowEndPicker(false);
-                  } catch (error) {
-                    console.error('Error canceling end picker:', error);
-                  }
-                }}
-              />
-            ) : (
-              <FallbackDateTimePicker
-                isVisible={showEndPicker}
-                mode="datetime"
-                date={endDate}
-                onConfirm={handleEndDateConfirm}
-                onCancel={() => {
-                  try {
-                    setShowEndPicker(false);
-                  } catch (error) {
-                    console.error('Error canceling end picker:', error);
-                  }
-                }}
-              />
-            )}
-          </View>
+            {/* Event Name */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Event Name</Text>
+              <View style={styles.inputWrapper}>
+                <MaterialIcons name="event" size={20} color="rgba(255,255,255,0.7)" style={styles.inputIcon} />
+                <TextInput
+                  placeholder="What's happening?"
+                  value={title}
+                  onChangeText={setTitle}
+                  style={styles.textInput}
+                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  editable={editable}
+                />
+              </View>
+            </View>
 
-          {/* Invite Friends Section - Enhanced */}
-          <View className="mb-4">
-            <Text className="text-gray-600 text-base mb-2">Invite Friends</Text>
-            {editable ? (
+            {/* Location */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Location</Text>
+              <View style={styles.inputWrapper}>
+                <MaterialIcons name="location-on" size={20} color="rgba(255,255,255,0.7)" style={styles.inputIcon} />
+                <View style={{ flex: 1 }}>
+                  <PlaceAutocomplete
+                    value={location}
+                    onChangeText={(v: string) => {
+                      setLocation(v);
+                      setLocationLat(null);
+                      setLocationLng(null);
+                    }}
+                    onSelect={(address: string, lat?: number, lng?: number) => {
+                      setLocation(address);
+                      if (typeof lat === 'number' && typeof lng === 'number') {
+                        setLocationLat(lat);
+                        setLocationLng(lng);
+                      }
+                    }}
+                    placeholder="Where is it happening?"
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Description */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Description</Text>
+              <View style={styles.inputWrapper}>
+                <MaterialIcons name="description" size={20} color="rgba(255,255,255,0.7)" style={[styles.inputIcon, { alignSelf: 'flex-start', marginTop: 12 }]} />
+                <TextInput
+                  placeholder="Tell people more about your event..."
+                  value={description}
+                  onChangeText={setDescription}
+                  style={[styles.textInput, styles.textInputMultiline]}
+                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  multiline
+                  editable={editable}
+                />
+              </View>
+            </View>
+
+            {/* Start Time */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Start Time</Text>
               <TouchableOpacity
-                onPress={handleOpenFriendPicker}
-                className="border border-gray-300 p-3 rounded-lg"
+                onPress={() => {
+                  try {
+                    if (editable) {
+                      setShowStartPicker(true);
+                    }
+                  } catch (error) {
+                    console.error('Error opening start picker:', error);
+                  }
+                }}
+                style={styles.datePickerButton}
+                disabled={!editable}
               >
-                <Text className="text-lg">Select friends to invite...</Text>
+                <MaterialIcons name="schedule" size={20} color="rgba(255,255,255,0.7)" />
+                <Text style={styles.datePickerText}>
+                  {dayjs(startDate).format('MMM D, YYYY h:mm A')}
+                </Text>
               </TouchableOpacity>
-            ) : (
-              <Text className="text-gray-400 p-3">Only the creator can invite friends.</Text>
-            )}
-          </View>
+            </View>
 
-          {/* Show invited users */}
-          {inviteeIds.length > 0 && (
-            <View className="mb-4">
-              <Text className="text-gray-600 text-base mb-2">Invited:</Text>
-              {inviteeIds.map((id) => {
-                // Simple display using ID for now - will be resolved by database lookup
-                const displayName = `Friend (${id.slice(-4)})`;
-                return (
-                  <View key={id} className="flex-row justify-between items-center bg-gray-100 p-3 rounded-lg mb-2">
-                    <Text className="text-base">{displayName}</Text>
-                    {/* Only show remove button if creator and not self */}
-                    {editable && id !== currentUserId && (
-                      <TouchableOpacity
-                        onPress={() => setInviteeIds(inviteeIds.filter((uid) => uid !== id))}
-                        className="bg-red-500 px-3 py-1 rounded-md"
-                      >
-                        <Text className="text-white text-sm">Remove</Text>
-                      </TouchableOpacity>
+            {/* End Time */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>End Time</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  try {
+                    if (editable) {
+                      setShowEndPicker(true);
+                    }
+                  } catch (error) {
+                    console.error('Error opening end picker:', error);
+                  }
+                }}
+                style={styles.datePickerButton}
+                disabled={!editable}
+              >
+                <MaterialIcons name="schedule" size={20} color="rgba(255,255,255,0.7)" />
+                <Text style={styles.datePickerText}>
+                  {dayjs(endDate).format('MMM D, YYYY h:mm A')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Tags Section */}
+            <View style={styles.tagsContainer}>
+              <Text style={styles.inputLabel}>Event Tags</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tagsScrollView}
+              >
+                {CATEGORIES.map((category) => (
+                  <TouchableOpacity
+                    key={category.value}
+                    onPress={() => editable && handleTagToggle(category.value)}
+                    style={[
+                      styles.tagButton,
+                      tags.includes(category.value)
+                        ? styles.tagButtonSelected
+                        : styles.tagButtonUnselected
+                    ]}
+                    disabled={!editable}
+                  >
+                    <Text style={styles.tagEmoji}>{category.emoji}</Text>
+                    <Text style={[
+                      styles.tagText,
+                      tags.includes(category.value)
+                        ? styles.tagTextSelected
+                        : styles.tagTextUnselected
+                    ]}>
+                      {category.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Privacy Section */}
+            <View style={styles.privacyContainer}>
+              <Text style={styles.inputLabel}>Privacy</Text>
+              <TouchableOpacity
+                onPress={() => editable && setIsPrivate(!isPrivate)}
+                style={styles.privacyOption}
+                disabled={!editable}
+              >
+                <View style={[
+                  styles.checkbox,
+                  isPrivate ? styles.checkboxChecked : styles.checkboxUnchecked
+                ]}>
+                  {isPrivate && (
+                    <MaterialIcons name="check" size={14} color="#000" />
+                  )}
+                </View>
+                <View style={styles.privacyTextContainer}>
+                  <Text style={styles.privacyTitle}>Private Event</Text>
+                  <Text style={styles.privacyDescription}>
+                    Only invited users can see this event
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {/* Friend Invitations */}
+            {editable && (
+              <View style={styles.inviteSection}>
+                <Text style={styles.inputLabel}>Invite Friends</Text>
+                <TouchableOpacity onPress={handleOpenFriendPicker} style={styles.inviteButton}>
+                  <MaterialIcons name="person-add" size={20} color="rgba(255,255,255,0.7)" />
+                  <Text style={styles.inviteButtonText}>Add Friends</Text>
+                </TouchableOpacity>
+
+                {inviteeIds.length > 0 && (
+                  <View style={styles.inviteesContainer}>
+                    {inviteeIds.slice(0, 3).map((inviteeId) => {
+                      const friendProfile = friendProfiles.find(f => f.$id === inviteeId);
+                      return (
+                        <View key={inviteeId} style={styles.inviteeItem}>
+                          <UserAvatar
+                            photoUrl={friendPhotoUrls[inviteeId]}
+                            firstName={friendProfile?.firstName}
+                            lastName={friendProfile?.lastName}
+                            name={friendProfile?.name}
+                            size={32}
+                          />
+                          <View style={styles.inviteeInfo}>
+                            <Text style={styles.inviteeName}>
+                              {userDisplayUtils.getFullName(friendProfile) || friendProfile?.name || 'Unknown'}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => setInviteeIds(inviteeIds.filter(id => id !== inviteeId))}
+                            style={styles.removeButton}
+                          >
+                            <MaterialIcons name="close" size={18} color="rgba(255,255,255,0.7)" />
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                    {inviteeIds.length > 3 && (
+                      <Text style={styles.privacyDescription}>
+                        +{inviteeIds.length - 3} more invited
+                      </Text>
                     )}
                   </View>
-                );
-              })}
-            </View>
-          )}
+                )}
+              </View>
+            )}
 
-          {/* Enhanced Friend Picker Modal */}
+            {/* Diagnostic Test Button for Development */}
+            {__DEV__ && (
+              <TouchableOpacity
+                onPress={runDiagnosticTest}
+                style={[styles.actionButton, { backgroundColor: 'rgba(251,191,36,0.9)' }]}
+              >
+                <MaterialIcons name="bug-report" size={20} color="#fff" />
+                <Text style={styles.actionButtonText}>Run Diagnostic Test</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Date Time Pickers */}
+            {DateTimePickerModal ? (
+              <>
+                <DateTimePickerModal
+                  isVisible={showStartPicker}
+                  mode="datetime"
+                  date={startDate}
+                  onConfirm={handleStartDateConfirm}
+                  onCancel={() => setShowStartPicker(false)}
+                />
+                <DateTimePickerModal
+                  isVisible={showEndPicker}
+                  mode="datetime"
+                  date={endDate}
+                  onConfirm={handleEndDateConfirm}
+                  onCancel={() => setShowEndPicker(false)}
+                />
+              </>
+            ) : (
+              <>
+                <FallbackDateTimePicker
+                  isVisible={showStartPicker}
+                  mode="datetime"
+                  date={startDate}
+                  onConfirm={handleStartDateConfirm}
+                  onCancel={() => setShowStartPicker(false)}
+                />
+                <FallbackDateTimePicker
+                  isVisible={showEndPicker}
+                  mode="datetime"
+                  date={endDate}
+                  onConfirm={handleEndDateConfirm}
+                  onCancel={() => setShowEndPicker(false)}
+                />
+              </>
+            )}
+
+            {/* Delete Event Button - Only for creators */}
+            {event && isCreator && (
+              <TouchableOpacity
+                onPress={async () => {
+                  Alert.alert(
+                    'Delete Event',
+                    'Are you sure you want to delete this event? This action cannot be undone.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: async () => {
+                          try {
+                            await databases.deleteDocument(
+                              config.databaseID!,
+                              config.eventsCollectionID!,
+                              event.$id
+                            );
+                            await refetchEvents();
+                            onClose(true);
+                          } catch (err) {
+                            console.error("Error deleting event:", err);
+                            Alert.alert("Error", "Failed to delete event.");
+                          }
+                        }
+                      }
+                    ]
+                  );
+                }}
+                style={[styles.actionButton, styles.deleteButton]}
+              >
+                <MaterialIcons name="delete" size={20} color="#fff" />
+                <Text style={styles.actionButtonText}>Delete Event</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Join/Leave Event - Only for non-creators */}
+            {event && !isCreator && (
+              <View>
+                {(inviteeIds.includes(currentUserId) || isAttending) ? (
+                  <TouchableOpacity
+                    onPress={async () => {
+                      try {
+                        await removeEventAttendee(event.$id, currentUserId);
+                        setInviteeIds(inviteeIds.filter((id) => id !== currentUserId));
+                        setIsAttending(false);
+                        await refetchEvents();
+                        onClose(true);
+                      } catch (err) {
+                        console.error("Error leaving event:", err);
+                        Alert.alert("Error", "Failed to leave event.");
+                      }
+                    }}
+                    style={[styles.actionButton, styles.leaveButton]}
+                  >
+                    <MaterialIcons name="exit-to-app" size={20} color="#fff" />
+                    <Text style={styles.actionButtonText}>Leave Event</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    onPress={async () => {
+                      try {
+                        await addEventAttendee(event.$id, currentUserId);
+                        setInviteeIds([...inviteeIds, currentUserId]);
+                        setIsAttending(true);
+                        await refetchEvents();
+                        onClose(true);
+                      } catch (err) {
+                        console.error("Error joining event:", err);
+                        Alert.alert("Error", "Failed to join event.");
+                      }
+                    }}
+                    style={[styles.actionButton, styles.joinButton]}
+                  >
+                    <MaterialIcons name="check" size={20} color="#fff" />
+                    <Text style={styles.actionButtonText}>Join Event</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </ScrollView>
+
+          {/* Friend Picker Modal */}
           <Modal
             visible={showFriendPicker}
             animationType="slide"
             presentationStyle="pageSheet"
             onRequestClose={() => setShowFriendPicker(false)}
           >
-            <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-              <View style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: 16,
-                borderBottomWidth: 1,
-                borderBottomColor: colors.border,
-              }}>
-                <TouchableOpacity onPress={() => setShowFriendPicker(false)}>
-                  <Text style={{
-                    fontSize: 18,
-                    fontWeight: '500',
-                    color: colors.text,
-                  }}>Cancel</Text>
-                </TouchableOpacity>
-                <Text style={{
-                  fontSize: 20,
-                  fontWeight: '600',
-                  color: colors.text,
-                }}>Invite Friends</Text>
-                <View style={{ width: 60 }} />
-              </View>
-
-              {loadingFriends ? (
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                  <Text>Loading friends...</Text>
+            <LinearGradient
+              colors={['#FF6B6B', '#4ECDC4', '#45B7D1']}
+              style={styles.gradientContainer}
+            >
+              <SafeAreaView style={styles.safeArea}>
+                <View style={styles.friendPickerHeader}>
+                  <TouchableOpacity onPress={() => setShowFriendPicker(false)}>
+                    <Text style={styles.friendPickerCancel}>Cancel</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.friendPickerTitle}>Invite Friends</Text>
+                  <View style={{ width: 60 }} />
                 </View>
-              ) : (
-                <FlatList
-                  data={friendProfiles}
-                  keyExtractor={(item) => item.$id}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      onPress={() => {
-                        setInviteeIds([...inviteeIds, item.$id]);
-                        setShowFriendPicker(false);
-                      }}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        padding: 16,
-                        borderBottomWidth: 1,
-                        borderBottomColor: '#F3F4F6',
-                      }}
-                    >
-                      <UserAvatar
-                        photoUrl={friendPhotoUrls[item.$id]}
-                        firstName={item.firstName}
-                        lastName={item.lastName}
-                        name={item.name}
-                        size={40}
-                      />
-                      <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={{
-                          fontSize: 16,
-                          fontWeight: '600',
-                          color: colors.text,
-                        }}>
-                          {userDisplayUtils.getFullName(item) || item.name}
+
+                {loadingFriends ? (
+                  <View style={styles.friendPickerEmpty}>
+                    <MaterialIcons name="people" size={48} color="rgba(255,255,255,0.5)" />
+                    <Text style={styles.friendPickerEmptyText}>Loading friends...</Text>
+                  </View>
+                ) : (
+                  <FlatList
+                    data={friendProfiles}
+                    keyExtractor={(item) => item.$id}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setInviteeIds([...inviteeIds, item.$id]);
+                          setShowFriendPicker(false);
+                        }}
+                        style={styles.friendItem}
+                      >
+                        <UserAvatar
+                          photoUrl={friendPhotoUrls[item.$id]}
+                          firstName={item.firstName}
+                          lastName={item.lastName}
+                          name={item.name}
+                          size={40}
+                        />
+                        <View style={styles.friendItemInfo}>
+                          <Text style={styles.friendItemName}>
+                            {userDisplayUtils.getFullName(item) || item.name}
+                          </Text>
+                        </View>
+                        <TouchableOpacity style={styles.friendItemButton}>
+                          <Text style={styles.friendItemButtonText}>Invite</Text>
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    )}
+                    ListEmptyComponent={
+                      <View style={styles.friendPickerEmpty}>
+                        <MaterialIcons name="people" size={48} color="rgba(255,255,255,0.5)" />
+                        <Text style={styles.friendPickerEmptyText}>
+                          No friends available to invite
                         </Text>
                       </View>
-                      <Text style={{
-                        color: colors.primary,
-                        fontSize: 16,
-                        fontWeight: '500',
-                      }}>
-                        Invite
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  ListEmptyComponent={
-                    <View style={{
-                      flex: 1,
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      padding: 32,
-                    }}>
-                      <Text style={{
-                        color: '#6B7280',
-                        textAlign: 'center',
-                        fontSize: 16,
-                      }}>
-                        No friends available to invite
-                      </Text>
-                    </View>
-                  }
-                />
-              )}
-            </SafeAreaView>
+                    }
+                  />
+                )}
+              </SafeAreaView>
+            </LinearGradient>
           </Modal>
-
-          {/* Delete button only for creator */}
-          {event && isCreator && (
-            <TouchableOpacity
-              onPress={async () => {
-                try {
-                  await databases.deleteDocument(
-                    config.databaseID!,
-                    config.eventsCollectionID!,
-                    event.$id
-                  );
-                  await refetchEvents();
-                  onClose(true); // Pass true because deletion affects event data
-                } catch (err) {
-                  console.error("Error deleting event:", err);
-                  alert("Failed to delete event.");
-                }
-              }}
-              className="bg-black p-3 rounded-lg items-center mb-4"
-            >
-              <Text className="text-white text-lg font-semibold">Delete Event</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Join/Leave event functionality */}
-          {event && !isCreator && (
-            <View className="mb-4">
-              {(inviteeIds.includes(currentUserId) || isAttending) ? (
-                <TouchableOpacity
-                  onPress={async () => {
-                    try {
-                      // Remove user attendance/invitation using junction helpers
-                      await removeEventAttendee(event.$id, currentUserId);
-                      // Also remove from local invitee state if present
-                      setInviteeIds(inviteeIds.filter((id) => id !== currentUserId));
-                      setIsAttending(false);
-                      await refetchEvents();
-                      onClose(true); // Pass true because leaving affects event attendance
-                    } catch (err) {
-                      console.error("Error leaving event:", err);
-                      alert("Failed to leave event.");
-                    }
-                  }}
-                  className="bg-orange-500 p-3 rounded-lg items-center"
-                >
-                  <Text className="text-white text-lg font-semibold">Leave Event</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  onPress={async () => {
-                    try {
-                      // Mark user as attending using junction helper
-                      await addEventAttendee(event.$id, currentUserId);
-                      // Optionally add to local invitee state for UX
-                      setInviteeIds([...inviteeIds, currentUserId]);
-                      setIsAttending(true);
-                      await refetchEvents();
-                      onClose(true); // Pass true because joining affects event attendance
-                    } catch (err) {
-                      console.error("Error joining event:", err);
-                      alert("Failed to join event.");
-                    }
-                  }}
-                  className="bg-green-500 p-3 rounded-lg items-center"
-                >
-                  <Text className="text-white text-lg font-semibold">Join Event</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-
-          {/* Join/Leave event functionality - REMOVED */}
-          {/* Event participation management has been removed */}
-        </ScrollView>
-      </SafeAreaView>
+        </SafeAreaView>
+      </LinearGradient>
     </Modal>
   );
-
 }
+
+const styles = StyleSheet.create({
+  // Fallback DateTimePicker styles
+  fallbackPickerOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  fallbackPickerContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '85%',
+    maxWidth: 300,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  fallbackPickerHeader: {
+    marginBottom: 24,
+  },
+  fallbackPickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  fallbackPickerSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  fallbackPickerButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  fallbackCancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  fallbackCancelText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  fallbackConfirmButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: '#000',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  fallbackConfirmText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#fff',
+  },
+
+  // Main form styles
+  gradientContainer: {
+    flex: 1,
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  headerButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  headerButtonText: {
+    fontSize: 17,
+    fontWeight: '500',
+    color: '#fff',
+  },
+  headerButtonTextDisabled: {
+    color: 'rgba(255,255,255,0.5)',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    textAlign: 'center',
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+  },
+
+  // Warning styles
+  warningContainer: {
+    backgroundColor: 'rgba(255,193,7,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,193,7,0.3)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  warningText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
+  },
+
+  // Input styles
+  inputContainer: {
+    marginBottom: 24,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+  },
+  inputIcon: {
+    marginRight: 12,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#fff',
+    paddingVertical: 12,
+  },
+  textInputMultiline: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+
+  // Date picker button styles
+  datePickerButton: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  datePickerText: {
+    fontSize: 16,
+    color: '#fff',
+    marginLeft: 12,
+  },
+
+  // Tag styles
+  tagsContainer: {
+    marginBottom: 24,
+  },
+  tagsScrollView: {
+    paddingHorizontal: 4,
+  },
+  tagButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginRight: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  tagButtonSelected: {
+    backgroundColor: '#fff',
+    borderColor: '#fff',
+  },
+  tagButtonUnselected: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  tagEmoji: {
+    marginRight: 6,
+    fontSize: 14,
+  },
+  tagText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  tagTextSelected: {
+    color: '#000',
+  },
+  tagTextUnselected: {
+    color: '#fff',
+  },
+
+  // Privacy section styles
+  privacyContainer: {
+    marginBottom: 24,
+  },
+  privacyOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    padding: 16,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    marginRight: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxUnchecked: {
+    borderColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: 'transparent',
+  },
+  checkboxChecked: {
+    borderColor: '#fff',
+    backgroundColor: '#fff',
+  },
+  privacyTextContainer: {
+    flex: 1,
+  },
+  privacyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  privacyDescription: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+  },
+
+  // Invite section styles
+  inviteSection: {
+    marginBottom: 24,
+  },
+  inviteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  inviteButtonText: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '500',
+    marginLeft: 12,
+  },
+  inviteesContainer: {
+    marginTop: 16,
+  },
+  inviteeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+  },
+  inviteeInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  inviteeName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#fff',
+  },
+  removeButton: {
+    padding: 4,
+  },
+
+  // Action button styles
+  actionButton: {
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    marginBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  deleteButton: {
+    backgroundColor: 'rgba(220,38,38,0.9)',
+  },
+  joinButton: {
+    backgroundColor: 'rgba(34,197,94,0.9)',
+  },
+  leaveButton: {
+    backgroundColor: 'rgba(251,146,60,0.9)',
+  },
+  actionButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#fff',
+    marginLeft: 8,
+  },
+
+  // Friend picker modal styles
+  friendPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  friendPickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  friendPickerCancel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#fff',
+  },
+  friendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  friendItemInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  friendItemName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#fff',
+  },
+  friendItemButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 8,
+  },
+  friendItemButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#fff',
+  },
+  friendPickerEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 64,
+  },
+  friendPickerEmptyText: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.6)',
+    textAlign: 'center',
+    marginTop: 16,
+  },
+});
