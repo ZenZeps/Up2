@@ -1,4 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import DeepLinkTester from '../../components/DeepLinkTester';
 import { NotificationTester } from '../../components/debug/NotificationTester';
@@ -11,6 +12,8 @@ import AccountCreationTester from '../../components/debug/AccountCreationTester'
  * Debug page for testing our database optimizations
  */
 export default function DebugPage() {
+    const router = useRouter();
+
     return (
         <ScrollView style={styles.container}>
             <View style={styles.header}>
@@ -56,6 +59,16 @@ export default function DebugPage() {
             <View style={styles.debugTools}>
                 <Text style={styles.infoTitle}>Debug Tools</Text>
                 <DeepLinkTester />
+
+                <TouchableOpacity
+                    style={styles.debugButton}
+                    onPress={() => router.push('/debug/AttendanceMigrationTool')}
+                >
+                    <MaterialIcons name="storage" size={20} color="white" />
+                    <Text style={styles.debugButtonText}>Event Attendance Migration</Text>
+                    <MaterialIcons name="arrow-forward" size={16} color="white" />
+                </TouchableOpacity>
+
                 <TouchableOpacity style={[styles.debugButton, { opacity: 0.5 }]} disabled>
                     <MaterialIcons name="build" size={20} color="white" />
                     <Text style={styles.debugButtonText}>Additional Debug Tools Coming Soon</Text>

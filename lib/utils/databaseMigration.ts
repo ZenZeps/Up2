@@ -604,4 +604,82 @@ export const testMigrationSafety = async (testUserId: string, testEventId: strin
     }
 };
 
+/**
+ * 🔧 Migrate existing event attendance records to populate invitedBy and respondedAt fields
+ */
+export const migrateEventAttendanceMetadata = async (): Promise<void> => {
+    log.info('🔄 Starting event attendance metadata migration...');
+
+    try {
+        const collectionId = config.eventAttendancesCollectionID;
+
+        if (!collectionId || collectionId.includes('temp_')) {
+            log.warn('Event attendances collection not configured, skipping migration');
+            return;
+        }
+
+        // Get all attendance records that need migration (missing invitedBy or respondedAt)
+        const attendanceRecords = await databases.listDocuments(
+            config.databaseID!,
+            collectionId,
+            [Query.limit(1000)] // Process in batches for safety
+        );
+
+        log.info(`Found ${attendanceRecords.documents.length} attendance records to check`);
+
+        let migratedCount = 0;
+        let errorCount = 0;
+
+        for (const record of attendanceRecords.documents) {
+            try {
+                const updates: any = {};
+                let needsUpdate = false;
+
+                // If invitedBy is null and status is 'invited' or 'attending', try to infer it
+                if (!record.invitedBy && (record.status === 'invited' || record.status === 'attending')) {
+                    try {
+                        // Get the event to find the creator (likely the one who invited)
+                        const event = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, record.eventId);
+                        updates.invitedBy = event.creatorId; // Assume creator invited the user
+                        needsUpdate = true;
+                        log.info(`Setting invitedBy to event creator for record ${record.$id}`);
+                    } catch (eventError) {
+                        log.warn(`Could not fetch event ${record.eventId} for record ${record.$id}`, eventError);
+                    }
+                }
+
+                // If respondedAt is null and status is 'attending' or 'not_attending', set it
+                if (!record.respondedAt && (record.status === 'attending' || record.status === 'not_attending')) {
+                    // Use the record's updatedAt as the response time (best guess)
+                    updates.respondedAt = record.$updatedAt || new Date().toISOString();
+                    needsUpdate = true;
+                    log.info(`Setting respondedAt for record ${record.$id}`);
+                }
+
+                // Apply updates if needed
+                if (needsUpdate) {
+                    await databases.updateDocument(
+                        config.databaseID!,
+                        collectionId,
+                        record.$id,
+                        updates
+                    );
+                    migratedCount++;
+                    log.info(`✅ Migrated record ${record.$id}`);
+                }
+
+            } catch (recordError) {
+                errorCount++;
+                log.error(`Failed to migrate record ${record.$id}:`, recordError);
+            }
+        }
+
+        log.info(`🎉 Event attendance migration completed: ${migratedCount} records migrated, ${errorCount} errors`);
+
+    } catch (error) {
+        log.error('💥 Event attendance migration failed:', error);
+        throw error;
+    }
+};
+
 // Export configuration for easy toggling

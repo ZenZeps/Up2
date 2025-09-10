@@ -279,6 +279,9 @@ export function useCreatorInfo(creatorIds: string[], photoLimit: number = 20): U
   const [creatorPhotos, setCreatorPhotos] = useState<Record<string, string | null>>({});
   const [isLoading, setIsLoading] = useState(false);
 
+  // Create a stable string representation of creator IDs to avoid infinite loops
+  const creatorIdsKey = creatorIds.sort().join(',');
+
   const fetchInfo = useCallback(async () => {
     if (!creatorIds.length) {
       setCreatorNames({});
@@ -308,7 +311,7 @@ export function useCreatorInfo(creatorIds: string[], photoLimit: number = 20): U
     } finally {
       setIsLoading(false);
     }
-  }, [creatorIds, photoLimit]);
+  }, [creatorIdsKey, photoLimit]); // Use stable string key instead of array
 
   useEffect(() => {
     fetchInfo();

@@ -7,7 +7,7 @@
  * 3. Event popularity score
  */
 
-import { getEventAttendeesFor } from '@/lib/api/event';
+import { getEventAttendeesFor, isUserAttendingEvent } from '@/lib/api/event';
 import { Event as AppEvent } from '@/lib/types/Events';
 import * as Location from 'expo-location';
 
@@ -135,12 +135,14 @@ export const generateTopPicks = async (
   allEvents: AppEvent[],
   userFriends: string[],
   userLocation: UserLocation | null,
-  limit: number = 10
+  limit: number = 10,
+  currentUserId?: string
 ): Promise<TopPickEvent[]> => {
   console.log('🎯 Generating top picks for user...', {
     totalEvents: allEvents.length,
     friendsCount: userFriends.length,
     hasLocation: Boolean(userLocation),
+    currentUserId: currentUserId || 'not provided',
     limit
   });
 
@@ -156,13 +158,40 @@ export const generateTopPicks = async (
 
   console.log('📅 Filtered to future events:', futureEvents.length);
 
-  // Get event attendees in batch
-  const eventIds = futureEvents.map(event => event.$id);
+  // Filter out events the user is already attending if currentUserId is provided
+  let availableEvents = futureEvents;
+  if (currentUserId) {
+    // For performance, we'll check attendance using the junction table for the filtered events
+    const attendancePromises = futureEvents.map(async (event) => {
+      try {
+        const isAttending = await isUserAttendingEvent(currentUserId, event.$id);
+        return { event, isAttending };
+      } catch (error) {
+        // If there's an error checking attendance, include the event to be safe
+        console.warn('Error checking attendance for event', event.$id, error);
+        return { event, isAttending: false };
+      }
+    });
+
+    const attendanceResults = await Promise.all(attendancePromises);
+    availableEvents = attendanceResults
+      .filter(result => !result.isAttending)
+      .map(result => result.event);
+
+    console.log('🚫 Filtered out attending events:', {
+      futureEvents: futureEvents.length,
+      availableEvents: availableEvents.length,
+      excludedEvents: futureEvents.length - availableEvents.length
+    });
+  }
+
+  // Get event attendees in batch for the available events
+  const eventIds = availableEvents.map(event => event.$id);
   const attendeesMap = await getEventAttendeesFor(eventIds);
 
   // Process each event to calculate scores
   const topPickCandidates: TopPickEvent[] = await Promise.all(
-    futureEvents.map(async (event): Promise<TopPickEvent> => {
+    availableEvents.map(async (event): Promise<TopPickEvent> => {
       // Extract coordinates from event location
       const eventCoords = extractEventCoordinates(event.location || '');
 
@@ -235,11 +264,13 @@ export const generateTopPicks = async (
 export const generateFallbackTopPicks = async (
   allEvents: AppEvent[],
   userFriends: string[],
-  limit: number = 10
+  limit: number = 10,
+  currentUserId?: string
 ): Promise<TopPickEvent[]> => {
   console.log('🎯 Generating fallback top picks (no location)...', {
     totalEvents: allEvents.length,
     friendsCount: userFriends.length,
+    currentUserId: currentUserId || 'not provided',
     limit
   });
 
@@ -249,13 +280,38 @@ export const generateFallbackTopPicks = async (
     return eventTime > new Date();
   });
 
-  // Get event attendees in batch
-  const eventIds = futureEvents.map(event => event.$id);
+  // Filter out events the user is already attending if currentUserId is provided
+  let availableEvents = futureEvents;
+  if (currentUserId) {
+    const attendancePromises = futureEvents.map(async (event) => {
+      try {
+        const isAttending = await isUserAttendingEvent(currentUserId, event.$id);
+        return { event, isAttending };
+      } catch (error) {
+        console.warn('Error checking attendance for event', event.$id, error);
+        return { event, isAttending: false };
+      }
+    });
+
+    const attendanceResults = await Promise.all(attendancePromises);
+    availableEvents = attendanceResults
+      .filter(result => !result.isAttending)
+      .map(result => result.event);
+
+    console.log('🚫 Filtered out attending events (fallback):', {
+      futureEvents: futureEvents.length,
+      availableEvents: availableEvents.length,
+      excludedEvents: futureEvents.length - availableEvents.length
+    });
+  }
+
+  // Get event attendees in batch for available events
+  const eventIds = availableEvents.map(event => event.$id);
   const attendeesMap = await getEventAttendeesFor(eventIds);
 
   // Process each event to calculate scores (no distance component)
   const topPickCandidates: TopPickEvent[] = await Promise.all(
-    futureEvents.map(async (event): Promise<TopPickEvent> => {
+    availableEvents.map(async (event): Promise<TopPickEvent> => {
       const attendeeIds = attendeesMap[event.$id] || [];
 
       // Calculate friend attendance

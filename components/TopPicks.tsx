@@ -20,6 +20,7 @@ import { TopPickEvent, generateFallbackTopPicks, generateTopPicks as generateTop
 interface TopPicksProps {
   allEvents: AppEvent[];
   userFriends: string[];
+  currentUserId?: string;
   maxPicks?: number;
 }
 
@@ -38,6 +39,7 @@ interface TopPicksProps {
 const TopPicks: React.FC<TopPicksProps> = ({
   allEvents,
   userFriends,
+  currentUserId,
   maxPicks = 8
 }) => {
   const { colors } = useTheme();
@@ -76,15 +78,19 @@ const TopPicks: React.FC<TopPicksProps> = ({
   useEffect(() => {
     if (!allEvents || allEvents.length === 0) {
       const timeout = setTimeout(() => {
-        if (topPicks.length > 0 && (!allEvents || allEvents.length === 0)) {
-          console.log('🎯 TopPicks: Clearing stale picks after timeout');
-          setTopPicks([]);
-        }
+        // Use functional update to check current state without dependency
+        setTopPicks(currentPicks => {
+          if (currentPicks.length > 0 && (!allEvents || allEvents.length === 0)) {
+            console.log('🎯 TopPicks: Clearing stale picks after timeout');
+            return [];
+          }
+          return currentPicks;
+        });
       }, 5000); // 5 second timeout for stale data
 
       return () => clearTimeout(timeout);
     }
-  }, [allEvents, topPicks.length]);
+  }, [allEvents]); // Removed topPicks.length dependency
 
   // Simplified generation - always generate when data changes
   useEffect(() => {
@@ -99,13 +105,17 @@ const TopPicks: React.FC<TopPicksProps> = ({
       if (!allEvents || allEvents.length === 0) {
         console.log('🎯 TopPicks: No events available');
 
-        // If we already have picks displayed, keep showing them during data reload
-        if (topPicks.length === 0) {
-          console.log('🎯 TopPicks: No existing picks, setting loading false');
-          setIsLoading(false);
-        } else {
-          console.log('🎯 TopPicks: Keeping existing picks during reload');
-        }
+        // Use functional update to avoid dependency on topPicks
+        setTopPicks(currentPicks => {
+          if (currentPicks.length === 0) {
+            console.log('🎯 TopPicks: No existing picks, setting loading false');
+            setIsLoading(false);
+            return currentPicks;
+          } else {
+            console.log('🎯 TopPicks: Keeping existing picks during reload');
+            return currentPicks;
+          }
+        });
         return;
       }
 
@@ -121,10 +131,10 @@ const TopPicks: React.FC<TopPicksProps> = ({
         let picks: TopPickEvent[];
         if (userLocation) {
           console.log('📍 Using location-based algorithm');
-          picks = await generateTopPicksAlgorithm(allEvents, userFriends || [], userLocation, maxPicks);
+          picks = await generateTopPicksAlgorithm(allEvents, userFriends || [], userLocation, maxPicks, currentUserId);
         } else {
           console.log('🔄 Using fallback algorithm');
-          picks = await generateFallbackTopPicks(allEvents, userFriends || [], maxPicks);
+          picks = await generateFallbackTopPicks(allEvents, userFriends || [], maxPicks, currentUserId);
         }
 
         console.log('✅ Generated', picks.length, 'top picks');
@@ -140,17 +150,20 @@ const TopPicks: React.FC<TopPicksProps> = ({
 
       } catch (error) {
         console.error('❌ TopPicks generation failed:', error);
-        // Don't clear existing picks on error, just log it
-        if (topPicks.length === 0) {
-          setTopPicks([]);
-        }
+        // Use functional update to avoid circular dependency
+        setTopPicks(currentPicks => {
+          if (currentPicks.length === 0) {
+            return [];
+          }
+          return currentPicks; // Keep existing picks on error
+        });
       } finally {
         setIsLoading(false);
       }
     };
 
     generateTopPicks();
-  }, [allEvents, userFriends, maxPicks]); // Simple dependencies
+  }, [allEvents, userFriends, currentUserId, maxPicks]); // Added currentUserId dependency
 
   // Handle event press
   const handleEventPress = (eventId: string) => {

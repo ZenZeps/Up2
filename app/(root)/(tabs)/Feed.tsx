@@ -929,6 +929,7 @@ export default function Feed() {
           <TopPicks
             allEvents={allEventsForTopPicks}
             userFriends={friends}
+            currentUserId={currentUserId || undefined}
             maxPicks={8}
           />
 

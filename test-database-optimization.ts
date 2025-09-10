@@ -78,8 +78,8 @@ async function testDatabaseOptimization() {
 
     // Test 3: Add invitations using junction table
     await runTest('Add Invitations via Junction Tables', async () => {
-        await addEventInvitation(testEventId, testUserId2);
-        await addEventInvitation(testEventId, testUserId3);
+        await addEventInvitation(testEventId, testUserId2, testUserId1); // User 1 invites User 2
+        await addEventInvitation(testEventId, testUserId3, testUserId1); // User 1 invites User 3
 
         // Verify invitations are in junction table
         const invitees = await getEventInvitees(testEventId);

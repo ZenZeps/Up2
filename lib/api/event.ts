@@ -346,7 +346,7 @@ export async function createEvent(event: Event) {
         // Add invitations via junction table and send one notification batch
         for (const uid of incomingInvitees) {
           try {
-            await addEventInvitation(createdEvent.$id, uid);
+            await addEventInvitation(createdEvent.$id, uid, sanitizedEvent.creatorId);
           } catch (e) {
             authDebug.warn(`Failed to add invitation for user ${uid} to event ${createdEvent.$id}:`, e);
           }
@@ -446,7 +446,10 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
         invitedRecord.$id,
         {
           status: 'attending',
-          acceptedAt: new Date().toISOString(),
+          respondedAt: new Date().toISOString(), // Set when user responds to invitation
+          // Note: do not set `acceptedAt` — Appwrite uses system attribute `$updatedAt` and
+          // the collection schema does not include a custom `acceptedAt` field. Adding it
+          // causes a document_invalid_structure error.
         }
       );
 
@@ -473,6 +476,8 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
         cacheManager.remove(`event-attendees-${eventId}`);
         cacheManager.remove(`event-invitees-${eventId}`);
         cacheManager.remove(`events-user-${userId}`);
+        // Clear global events cache to ensure all screens update
+        cacheManager.remove('all-events');
       } catch (e) {
         authDebug.warn('Failed to invalidate caches after promoting invite to attending', e);
       }
@@ -520,6 +525,8 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
       cacheManager.remove(`event-${eventId}`);
       cacheManager.remove(`event-attendees-${eventId}`);
       cacheManager.remove(`events-user-${userId}`);
+      // Clear global events cache to ensure all screens update
+      cacheManager.remove('all-events');
     } catch (e) {
       authDebug.warn('Failed to invalidate caches after addEventAttendee', e);
     }
@@ -609,7 +616,7 @@ export async function removeEventAttendee(eventId: string, userId: string): Prom
 /**
  * Add user to event invitations (junction table approach)
  */
-export async function addEventInvitation(eventId: string, userId: string): Promise<boolean> {
+export async function addEventInvitation(eventId: string, userId: string, invitedBy?: string): Promise<boolean> {
   try {
     const collectionId = config.eventAttendancesCollectionID;
 
@@ -649,7 +656,9 @@ export async function addEventInvitation(eventId: string, userId: string): Promi
       {
         eventId,
         userId,
-        status: 'invited'
+        status: 'invited',
+        invitedBy: invitedBy || null, // Track who sent the invitation
+        respondedAt: null // Will be set when user responds
         // Note: do not set `invitedAt` — Appwrite uses system attribute `$createdAt` and
         // the collection schema does not include a custom `invitedAt` field. Adding it
         // causes a document_invalid_structure error.
@@ -850,7 +859,7 @@ export async function removeEventInvitation(eventId: string, userId: string): Pr
     const newInviteCount = Math.max(0, (currentEvent.inviteCount || 0) - invitationRecords.documents.length);
     await databases.updateDocument(config.databaseID!, config.eventsCollectionID!, eventId, {
       inviteCount: newInviteCount,
-      lastActivtyAt: new Date().toISOString(),
+      lastActivityAt: new Date().toISOString(),
     });
 
     authDebug.info(`Removed ${invitationRecords.documents.length} invitation(s) for user ${userId} on event ${eventId}`);
@@ -859,6 +868,8 @@ export async function removeEventInvitation(eventId: string, userId: string): Pr
       cacheManager.remove(`event-invitees-${eventId}`);
       cacheManager.remove(`event-${eventId}`);
       cacheManager.remove(`events-user-${userId}`);
+      // Clear global events cache to ensure all screens update
+      cacheManager.remove('all-events');
     } catch (e) {
       authDebug.warn('Failed to invalidate caches after removeEventInvitation', e);
     }
@@ -870,11 +881,87 @@ export async function removeEventInvitation(eventId: string, userId: string): Pr
 }
 
 /**
+ * Decline an event invitation (sets status to 'not_attending' and respondedAt timestamp)
+ */
+export async function declineEventInvitation(eventId: string, userId: string): Promise<boolean> {
+  try {
+    const collectionId = config.eventAttendancesCollectionID;
+
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
+      authDebug.info('Event attendances junction table not configured, skipping decline');
+      return false;
+    }
+
+    // Find invitation record
+    const invitationRecords = await databases.listDocuments(
+      config.databaseID!,
+      collectionId,
+      [
+        Query.equal('eventId', eventId),
+        Query.equal('userId', userId),
+        Query.equal('status', 'invited')
+      ]
+    );
+
+    if (invitationRecords.documents.length === 0) {
+      authDebug.info(`No invitation found for user ${userId} on event ${eventId}`);
+      return true;
+    }
+
+    // Update the invitation record to declined
+    const invitationRecord = invitationRecords.documents[0];
+    await databases.updateDocument(
+      config.databaseID!,
+      collectionId,
+      invitationRecord.$id,
+      {
+        status: 'not_attending',
+        respondedAt: new Date().toISOString() // Set when user responds to invitation
+      }
+    );
+
+    // Update event counters: -1 invite
+    const currentEvent = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
+    const newInviteCount = Math.max(0, (currentEvent.inviteCount || 0) - 1);
+
+    await databases.updateDocument(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      eventId,
+      {
+        inviteCount: newInviteCount,
+        lastActivityAt: new Date().toISOString(),
+      }
+    );
+
+    authDebug.info(`User ${userId} declined invitation to event ${eventId}, new invite count: ${newInviteCount}`);
+    // Invalidate caches
+    try {
+      cacheManager.remove(`event-invitees-${eventId}`);
+      cacheManager.remove(`event-${eventId}`);
+      cacheManager.remove(`events-user-${userId}`);
+      // Clear global events cache to ensure all screens update
+      cacheManager.remove('all-events');
+    } catch (e) {
+      authDebug.warn('Failed to invalidate caches after declining invitation', e);
+    }
+    return true;
+  } catch (error) {
+    authDebug.error(`Failed to decline invitation for event: ${eventId}`, error);
+    throw error;
+  }
+}
+
+/**
 /**
  * Backwards-compatible shim: Invite a user to an event via junction table
  */
-export async function inviteUserToEvent(eventId: string, userId: string) {
-  return addEventInvitation(eventId, userId);
+
+/**
+ * Backwards-compatible shim: Invite a user to an event via junction table
+ */
+export async function inviteUserToEvent(eventId: string, userId: string, invitedBy?: string) {
+  return addEventInvitation(eventId, userId, invitedBy);
 }
 
 /**
@@ -919,12 +1006,16 @@ export async function updateEventAttendance(eventId: string, userId: string, isA
         if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
           authDebug.info('Junction table not configured, skipping invitees sync');
         } else {
+          // Get event data to determine who is doing the inviting (typically the creator)
+          const eventDoc = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, id);
+          const invitedBy = eventDoc.creatorId; // Use creator as default inviter
+
           const currentInvitees = await getEventInvitees(id);
           const newInvitees = (eventData as any).inviteeIds as string[];
           const toAdd = newInvitees.filter((userId: string) => !currentInvitees.includes(userId));
           const toRemove = currentInvitees.filter((userId: string) => !newInvitees.includes(userId));
 
-          for (const userId of toAdd) await addEventInvitation(id, userId);
+          for (const userId of toAdd) await addEventInvitation(id, userId, invitedBy);
           for (const userId of toRemove) await removeEventInvitation(id, userId);
 
           authDebug.info(`Updated invitees via junctions: +${toAdd.length}, -${toRemove.length}`);

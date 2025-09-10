@@ -14,8 +14,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useEvents } from '../context/EventContext';
+import BudgetPlaceAutocomplete from './BudgetPlaceAutocomplete';
 import PlaceAutocomplete from './PlaceAutocomplete';
 import UserAvatar from './UserAvatar';
+
+// Budget-conscious location service configuration
+const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
+const USE_BUDGET_MODE = !GOOGLE_PLACES_API_KEY; // Use free OpenStreetMap if no Google API key
 
 // Conditional imports for third-party libraries
 let DateTimePickerModal: any;
@@ -242,6 +247,11 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
         return;
       }
 
+      if (!location.trim()) {
+        Alert.alert("Error", "Event location is required");
+        return;
+      }
+
       if (!startDate || !endDate) {
         Alert.alert("Error", "Start and end dates are required");
         return;
@@ -279,7 +289,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       if (savedEvent && inviteeIds.length > 0) {
         for (const inviteeId of inviteeIds) {
           try {
-            await addEventInvitation(savedEvent.$id, inviteeId);
+            await addEventInvitation(savedEvent.$id, inviteeId, currentUserId);
           } catch (error) {
             console.error('Error sending invitation to:', inviteeId, error);
           }
@@ -399,24 +409,82 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
               <View style={styles.inputWrapper}>
                 <MaterialIcons name="location-on" size={20} color="rgba(255,255,255,0.7)" style={styles.inputIcon} />
                 <View style={{ flex: 1 }}>
-                  <PlaceAutocomplete
-                    value={location}
-                    onChangeText={(v: string) => {
-                      setLocation(v);
-                      setLocationLat(null);
-                      setLocationLng(null);
-                    }}
-                    onSelect={(address: string, lat?: number, lng?: number) => {
-                      setLocation(address);
-                      if (typeof lat === 'number' && typeof lng === 'number') {
-                        setLocationLat(lat);
-                        setLocationLng(lng);
-                      }
-                    }}
-                    placeholder="Where is it happening?"
-                  />
+                  {USE_BUDGET_MODE ? (
+                    <BudgetPlaceAutocomplete
+                      value={location}
+                      onChangeText={(v: string) => {
+                        setLocation(v);
+                        // Clear coordinates when user types manually
+                        setLocationLat(null);
+                        setLocationLng(null);
+                      }}
+                      onSelect={(address: string, lat?: number, lng?: number) => {
+                        setLocation(address);
+                        if (typeof lat === 'number' && typeof lng === 'number') {
+                          setLocationLat(lat);
+                          setLocationLng(lng);
+                          console.log('FREE location selected:', { address, lat, lng });
+                        } else {
+                          console.log('Manual location selected:', address);
+                        }
+                      }}
+                      placeholder="Search restaurants, venues, addresses... (FREE)"
+                    />
+                  ) : (
+                    <PlaceAutocomplete
+                      value={location}
+                      onChangeText={(v: string) => {
+                        setLocation(v);
+                        // Clear coordinates when user types manually
+                        setLocationLat(null);
+                        setLocationLng(null);
+                      }}
+                      onSelect={(address: string, lat?: number, lng?: number) => {
+                        setLocation(address);
+                        if (typeof lat === 'number' && typeof lng === 'number') {
+                          setLocationLat(lat);
+                          setLocationLng(lng);
+                          console.log('Google Places location selected:', { address, lat, lng });
+                        } else {
+                          console.log('Location selected without coordinates:', address);
+                        }
+                      }}
+                      placeholder="Search for restaurants, venues, addresses..."
+                    />
+                  )}
                 </View>
               </View>
+
+              {/* Location validation indicator */}
+              {location.length > 0 && (
+                <View style={styles.locationValidationContainer}>
+                  {locationLat && locationLng ? (
+                    <View style={styles.locationValidated}>
+                      <MaterialIcons name="verified-user" size={16} color="#10B981" />
+                      <Text style={styles.locationValidatedText}>
+                        {USE_BUDGET_MODE ? 'FREE verified location with GPS coordinates' : 'Verified location with GPS coordinates'}
+                      </Text>
+                    </View>
+                  ) : location.length > 3 ? (
+                    <View style={styles.locationUnverified}>
+                      <MaterialIcons name="info" size={16} color="#F59E0B" />
+                      <Text style={styles.locationUnverifiedText}>
+                        {USE_BUDGET_MODE ? 'Select from FREE suggestions for GPS coordinates' : 'Select from suggestions for accurate location'}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {/* Budget mode indicator */}
+                  {USE_BUDGET_MODE && (
+                    <View style={styles.budgetModeIndicator}>
+                      <MaterialIcons name="savings" size={14} color="#10B981" />
+                      <Text style={styles.budgetModeText}>
+                        Using FREE OpenStreetMap • No API costs
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
 
             {/* Description */}
@@ -949,6 +1017,61 @@ const styles = StyleSheet.create({
   textInputMultiline: {
     minHeight: 80,
     textAlignVertical: 'top',
+  },
+
+  // Location validation styles
+  locationValidationContainer: {
+    marginTop: 8,
+  },
+  locationValidated: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16,185,129,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.3)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  locationValidatedText: {
+    color: '#10B981',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  locationUnverified: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245,158,11,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.3)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  locationUnverifiedText: {
+    color: '#F59E0B',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  budgetModeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16,185,129,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.3)',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  budgetModeText: {
+    color: '#10B981',
+    fontSize: 11,
+    fontWeight: '500',
+    marginLeft: 4,
   },
 
   // Date picker button styles

@@ -12,7 +12,7 @@ import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ShareInviteModal from '../../../components/ShareInviteModal';
 import { useEvents } from '../context/EventContext';
@@ -45,8 +45,13 @@ const EventDetailsModal = ({
   const { colors } = useTheme();
   const { refetchEvents } = useEvents();
 
+  // Stabilize creator IDs array to prevent infinite loops in useCreatorInfo
+  const creatorIds = useMemo(() => {
+    return event?.creatorId ? [event.creatorId] : [];
+  }, [event?.creatorId]);
+
   // Get creator info using the CreatorInfoManager
-  const { getCreatorName, getCreatorPhotoUrl } = useCreatorInfo([event?.creatorId].filter(Boolean), 1);
+  const { getCreatorName, getCreatorPhotoUrl } = useCreatorInfo(creatorIds, 1);
 
   const [attendeeProfiles, setAttendeeProfiles] = useState<any[]>([]);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
@@ -58,6 +63,7 @@ const EventDetailsModal = ({
   const [inviting, setInviting] = useState(false);
   const [isAttending, setIsAttending] = useState<boolean>(false);
   const [checkingAttendance, setCheckingAttendance] = useState<boolean>(true);
+  const [loadingAttendees, setLoadingAttendees] = useState(false);
 
   // Check attendance status using junction table
   useEffect(() => {
@@ -169,45 +175,74 @@ const EventDetailsModal = ({
   };
 
   useEffect(() => {
+    let mounted = true;
+
     const fetchAttendeeProfiles = async () => {
-      // Prefer junction table for attendees; fallback to legacy array only if junction fails
-      let attendeeIds: string[] = [];
+      if (!event?.$id || loadingAttendees) return;
+
+      setLoadingAttendees(true);
       try {
-        // Prefer junction table
-        const junction = await getEventAttendees(event.$id);
-        if (Array.isArray(junction) && junction.length > 0) {
-          attendeeIds = junction;
-        }
-      } catch (err) {
-        // fallback to legacy in-document attendees if present
-        if (Array.isArray(event?.attendees)) attendeeIds = event.attendees;
-      }
-
-      if (attendeeIds.length > 0) {
+        // Prefer junction table for attendees; fallback to legacy array only if junction fails
+        let attendeeIds: string[] = [];
         try {
-          const profiles = await getUsersByIds(attendeeIds);
-          setAttendeeProfiles(profiles);
-
-          // Fetch profile photos for attendees
-          const photoUrls: Record<string, string | null> = {};
-          for (const profile of profiles) {
-            try {
-              const photoUrl = await getUserProfilePhotoUrl(profile.$id);
-              photoUrls[profile.$id] = photoUrl;
-            } catch (error) {
-              console.error(`Error fetching photo for attendee ${profile.$id}:`, error);
-              photoUrls[profile.$id] = null;
-            }
+          // Prefer junction table
+          const junction = await getEventAttendees(event.$id);
+          if (Array.isArray(junction) && junction.length > 0) {
+            attendeeIds = junction;
           }
-          setAttendeePhotoUrls(photoUrls);
-        } catch (error) {
-          console.error('Error fetching attendee profiles:', error);
+        } catch (err) {
+          // fallback to legacy in-document attendees if present
+          if (Array.isArray(event?.attendees)) attendeeIds = event.attendees;
+        }
+
+        if (!mounted) return;
+
+        if (attendeeIds.length > 0) {
+          try {
+            const profiles = await getUsersByIds(attendeeIds);
+            if (!mounted) return;
+
+            setAttendeeProfiles(profiles);
+
+            // Fetch profile photos for attendees
+            const photoUrls: Record<string, string | null> = {};
+            for (const profile of profiles) {
+              try {
+                const photoUrl = await getUserProfilePhotoUrl(profile.$id);
+                photoUrls[profile.$id] = photoUrl;
+              } catch (error) {
+                console.error(`Error fetching photo for attendee ${profile.$id}:`, error);
+                photoUrls[profile.$id] = null;
+              }
+            }
+
+            if (mounted) {
+              setAttendeePhotoUrls(photoUrls);
+            }
+          } catch (error) {
+            console.error('Error fetching attendee profiles:', error);
+          }
+        } else {
+          setAttendeeProfiles([]);
+          setAttendeePhotoUrls({});
+        }
+      } finally {
+        if (mounted) {
+          setLoadingAttendees(false);
         }
       }
     };
 
-    fetchAttendeeProfiles();
-  }, [event?.$id]);
+    // Debounce to avoid rapid successive calls
+    const timeoutId = setTimeout(() => {
+      fetchAttendeeProfiles();
+    }, 100);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, [event?.$id]); // Keep stable dependency
 
   if (!event) return null;
 
@@ -266,7 +301,7 @@ const EventDetailsModal = ({
       setInviting(true);
 
       // Create invitation record via junction table
-      await addEventInvitation(event.$id, friendId);
+      await addEventInvitation(event.$id, friendId, currentUserId);
 
       // Send push notification to the invited friend
       await sendEventInviteNotification(

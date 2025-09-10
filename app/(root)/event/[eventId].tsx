@@ -248,7 +248,7 @@ const EventDetail = () => {
       setInviting(true);
 
       // Create an invitation using the junction table helper
-      await addEventInvitation(event.$id, friendId);
+      await addEventInvitation(event.$id, friendId, userId);
 
       // Refresh invitee list from junction table and update counts/profiles
       try {

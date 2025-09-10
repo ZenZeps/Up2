@@ -37,6 +37,23 @@ export default function DebugPage() {
                 </Text>
             </TouchableOpacity>
 
+            <TouchableOpacity
+                onPress={() => router.push('/(root)/debug/InviteDebugger')}
+                style={{
+                    backgroundColor: '#FF6B6B',
+                    padding: 15,
+                    borderRadius: 8,
+                    marginVertical: 10,
+                }}
+            >
+                <Text style={{ color: 'white', textAlign: 'center', fontSize: 16, fontWeight: 'bold' }}>
+                    🎯 Invite System Debugger
+                </Text>
+                <Text style={{ color: 'white', textAlign: 'center', fontSize: 12, marginTop: 5 }}>
+                    Debug event invite visibility issues
+                </Text>
+            </TouchableOpacity>
+
             <View style={{ padding: 20, backgroundColor: '#ffe0e0', borderRadius: 8, marginVertical: 10 }}>
                 <Text style={{ fontWeight: 'bold' }}>OptimizationTester Temporarily Disabled</Text>
                 <Text style={{ marginTop: 5 }}>

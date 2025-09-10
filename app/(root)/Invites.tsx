@@ -13,7 +13,7 @@ import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Query } from 'react-native-appwrite';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,7 +22,7 @@ import { useEvents } from './context/EventContext';
 
 
 export default function Invites() {
-  const { events, refetchEvents } = useEvents();
+  const { events, refetchEvents, clearScreenEvents } = useEvents();
   const { user: globalUser } = useGlobalContext();
   const [userId, setUserId] = useState('');
   const router = useRouter();
@@ -267,18 +267,28 @@ export default function Invites() {
   };
 
   const [invitesWithCreatorNames, setInvitesWithCreatorNames] = useState<any[]>([]);
+  const [computingInvites, setComputingInvites] = useState(false);
+
+  // Create a stable reference to events to prevent infinite loops
+  const eventsStableRef = useMemo(() => {
+    return events?.length ? events.map(e => ({ $id: e.$id, creatorId: e.creatorId, inviteeIds: e.inviteeIds })) : [];
+  }, [events?.length, events?.map(e => e.$id).join(',')]);
 
   useEffect(() => {
     let mounted = true;
+
     const computeInvites = async () => {
-      if (!userId) return;
+      if (!userId || !events || events.length === 0 || computingInvites) return;
+
       try {
+        setComputingInvites(true);
         const invitedEvents: any[] = [];
+
         for (const event of events) {
           if (event.creatorId === userId) continue;
           try {
-            const inviteProfiles = await getEventInvitees(event.$id);
-            const isInvited = Array.isArray(inviteProfiles) ? inviteProfiles.some((u: any) => u.$id === userId) : false;
+            const inviteeUserIds = await getEventInvitees(event.$id);
+            const isInvited = Array.isArray(inviteeUserIds) ? inviteeUserIds.includes(userId) : false;
             if (isInvited) invitedEvents.push(event);
           } catch (err) {
             // Fallback to legacy inviteeIds if junction query fails — use centralized heuristic
@@ -289,6 +299,7 @@ export default function Invites() {
         }
 
         if (!mounted) return;
+
         const updatedInvites = await Promise.all(
           invitedEvents.map(async (event) => {
             let creatorProfile = null;
@@ -302,14 +313,25 @@ export default function Invites() {
             return { ...event, creatorName: userDisplayUtils.getFullName(creatorProfile || {}, 'Unknown User') };
           })
         );
+
         if (mounted) setInvitesWithCreatorNames(updatedInvites);
       } catch (err) {
         console.error('Error computing invites:', err);
+      } finally {
+        if (mounted) setComputingInvites(false);
       }
     };
-    computeInvites();
-    return () => { mounted = false; };
-  }, [events, userId]);
+
+    // Debounce the computation to avoid rapid successive calls
+    const timeoutId = setTimeout(() => {
+      computeInvites();
+    }, 100);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, [eventsStableRef.length, userId]); // Use stable reference
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -330,7 +352,15 @@ export default function Invites() {
                 <MaterialIcons name="arrow-back" size={20} color="white" />
               </TouchableOpacity>
               <Text style={styles.headerTitle}>Invites</Text>
-              <View style={styles.headerSpacer} />
+              {__DEV__ && (
+                <TouchableOpacity
+                  onPress={() => router.push('/(root)/debug/InviteDebugger')}
+                  style={styles.debugButton}
+                >
+                  <MaterialIcons name="bug-report" size={18} color="white" />
+                </TouchableOpacity>
+              )}
+              {!__DEV__ && <View style={styles.headerSpacer} />}
             </View>
           </LinearGradient>
         </View>
@@ -452,13 +482,22 @@ export default function Invites() {
                           // Use junction table helpers to accept invite
                           await addEventAttendee(event.$id, userId);
                           await removeEventInvitation(event.$id, userId);
+
+                          // Clear all screen caches to ensure Home, Feed, and Explore update
+                          clearScreenEvents(); // Clear all screen caches
+
+                          // Refetch events to update the global context
                           if (typeof refetchEvents === 'function') {
                             await refetchEvents();
                           }
+
                           // Remove from local state
                           setInvitesWithCreatorNames(prev => prev.filter(e => e.$id !== event.$id));
+
+                          showSuccess('Success', 'Event invite accepted! You are now attending this event.');
                         } catch (err) {
                           console.error("Error accepting event invite:", err);
+                          showError('Error', 'Failed to accept event invite. Please try again.');
                         }
                       }}
                     >
@@ -553,6 +592,11 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     borderRadius: 8,
+  },
+  debugButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   headerTitle: {
     fontSize: 20,
