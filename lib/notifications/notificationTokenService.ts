@@ -28,7 +28,7 @@ export interface NotificationToken {
  * - appVersion (String, optional)
  */
 export class NotificationTokenService {
-    private static readonly COLLECTION_ID = process.env.EXPO_PUBLIC_APPWRITE_NOTIFICATION_TOKENS_ID || 'notification_tokens';
+    private static readonly COLLECTION_ID = config.notificationTokensCollectionID;
 
     /**
      * Check if the notification tokens collection exists and is properly configured

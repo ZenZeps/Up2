@@ -39,7 +39,7 @@ import UserAvatar from '../components/UserAvatar';
 import { EventsContext } from '../context/EventContext';
 
 // Define available calendar view modes
-const viewModes: Mode[] = ['day', 'week', 'month'];
+const viewModes: Mode[] = ['week', 'month'];
 
 type TabType = 'calendar' | 'agenda';
 
@@ -108,7 +108,7 @@ export default function Home() {
   const [formVisible, setFormVisible] = useState(false);
   const [selectedDateTime, setSelectedDateTime] = useState<string | null>(null);
   const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
-  const [viewMode, setViewMode] = useState<Mode>('week');
+  const [viewMode, setViewMode] = useState<Mode>('month');
   const [date, setDate] = useState(() => new Date()); // Use function to initialize once
   const [displayedMonth, setDisplayedMonth] = useState(() => new Date()); // Track the month being displayed separately
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
@@ -507,7 +507,14 @@ export default function Home() {
       ids: enrichedEvents.map((e: any) => e.$id).slice(0, 10)
     });
 
-    return processCalendarEvents(enrichedEvents, getCreatorName, userTravelData || []);
+    // Process events and ensure colors are assigned based on tags
+    const processedEvents = processCalendarEvents(enrichedEvents, getCreatorName, userTravelData || []);
+
+    // Ensure each event has a color based on its tags
+    return processedEvents.map((event: any) => ({
+      ...event,
+      color: event.color || getEventColor(event.rawEvent?.tags || [])
+    }));
   }, [enrichedEvents, getCreatorName, userTravelData]);
 
   // Memoize event handlers (declare before renderEvent to avoid dependency issues)
@@ -656,50 +663,70 @@ export default function Home() {
     setFormVisible(true);
   }, []);
 
-  // Memoize date change handler to prevent re-renders
+  // Track the currently visible month more aggressively
+  const [visibleMonth, setVisibleMonth] = useState(() => new Date());
+
+  // Simple and clean approach - track date changes and update display accordingly
   const handleDateChange = useCallback((range: any) => {
-    // The BigCalendar library passes different formats depending on the view mode
+    console.log('handleDateChange called with:', range, typeof range);
+
     let newDate: Date;
-    if (range && typeof range === 'object') {
+
+    if (Array.isArray(range) && range.length >= 2) {
+      newDate = new Date(range[0]);
+      console.log('Array range detected, using first date:', newDate);
+    } else if (range && typeof range === 'object') {
       if (range.start) {
         newDate = new Date(range.start);
-      } else if (Array.isArray(range)) {
-        newDate = new Date(range[0]);
       } else {
         newDate = new Date(range);
       }
     } else {
       newDate = new Date(range);
     }
+
+    console.log('Setting new date:', newDate);
     setDate(newDate);
-    setDisplayedMonth(new Date(newDate)); // Update the displayed month when date changes
   }, []);
 
-  // Monitor displayed month changes for swipe navigation
+  // Update displayed month whenever date changes (works for both month and week view)
   useEffect(() => {
-    if (viewMode !== 'month') return;
+    const monthToDisplay = new Date(date.getFullYear(), date.getMonth(), 1);
+    setDisplayedMonth(monthToDisplay);
+    console.log('🔄 Date changed, updated displayed month to:', monthToDisplay.toDateString());
+    console.log('📅 Date state:', date.toDateString());
+    console.log('🗓️ DisplayedMonth state:', displayedMonth.toDateString());
+    console.log('👁️ Current view mode:', viewMode);
+  }, [date]);
 
-    const interval = setInterval(() => {
-      // Check if the month or year has changed from what we're displaying
-      const currentMonth = date.getMonth();
-      const currentYear = date.getFullYear();
-      const displayedMonthValue = displayedMonth.getMonth();
-      const displayedYearValue = displayedMonth.getFullYear();
+  // Simple polling approach - check every second if the calendar has been swiped
+  // This works for both month and week views since BigCalendar doesn't properly call onChangeDate for swipes
+  useEffect(() => {
+    if (viewMode !== 'month' && viewMode !== 'week') return;
 
-      if (currentMonth !== displayedMonthValue || currentYear !== displayedYearValue) {
-        setDisplayedMonth(new Date(date));
+    const checkCalendarState = () => {
+      try {
+        // Force update display based on current date state
+        const currentMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+        if (currentMonth.getTime() !== displayedMonth.getTime()) {
+          console.log('🔄 Forcing month display sync from polling for', viewMode, 'view');
+          setDisplayedMonth(currentMonth);
+        }
+      } catch (error) {
+        console.log('Calendar state check failed:', error);
       }
-    }, 100); // Check every 100ms for responsive updates
+    };
 
+    const interval = setInterval(checkCalendarState, 1000); // Check every second
     return () => clearInterval(interval);
-  }, [viewMode, date, displayedMonth]);  // Handler for editing event
+  }, [viewMode, date, displayedMonth]);
+
+  // Handler for editing event
   const handleEditEvent = useCallback((event: AppEvent) => {
     setEditingEvent(event);
     setDetailsModalVisible(false);
     setFormVisible(true);
-  }, []);
-
-  // Memoize button handlers
+  }, []);  // Memoize button handlers
   const handleTodayPress = useCallback(() => {
     const today = new Date();
     setDate(today);
@@ -963,44 +990,89 @@ export default function Home() {
           <View style={styles.calendarContainer}>
             {/* Modern Calendar Controls */}
             <View style={[styles.controlsContainer, { backgroundColor: colors.card }]}>
-              <View style={styles.controlsLeft}>
-                <View style={styles.viewModeContainer}>
-                  {viewModes.map((mode) => (
-                    <TouchableOpacity
-                      key={mode}
-                      onPress={() => setViewMode(mode)}
+              {/* View Mode Buttons - moved to left */}
+              <View style={styles.viewModeContainer}>
+                {viewModes.map((mode) => (
+                  <TouchableOpacity
+                    key={mode}
+                    onPress={() => setViewMode(mode)}
+                    style={[
+                      styles.viewModeButton,
+                      {
+                        backgroundColor: viewMode === mode ? colors.primary : colors.background,
+                        borderColor: colors.border,
+                      }
+                    ]}
+                  >
+                    <Text
                       style={[
-                        styles.viewModeButton,
-                        {
-                          backgroundColor: viewMode === mode ? colors.primary : colors.background,
-                          borderColor: colors.border,
-                        }
+                        styles.viewModeText,
+                        { color: viewMode === mode ? colors.buttonText : colors.text }
                       ]}
                     >
-                      <Text
-                        style={[
-                          styles.viewModeText,
-                          { color: viewMode === mode ? colors.buttonText : colors.text }
-                        ]}
-                      >
-                        {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {/* Month Display */}
-                <Text style={[styles.monthDisplay, { color: colors.text }]}>
-                  {displayedMonth.toLocaleDateString('en-US', { month: 'long' })}
-                </Text>
+                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
 
-              <TouchableOpacity
-                onPress={handleTodayPress}
-                style={[styles.todayButton, { backgroundColor: colors.primary }]}
-              >
-                <Text style={[styles.todayButtonText, { color: colors.buttonText }]}>Today</Text>
-              </TouchableOpacity>
+              {/* Header container with navigation and today button */}
+              <View style={styles.headerContainer}>
+                {/* Combined navigation */}
+                <View style={styles.calendarHeaderContainer}>
+                  {/* Left navigation */}
+                  <TouchableOpacity
+                    onPress={() => {
+                      const newDate = new Date(date);
+                      if (viewMode === 'month') {
+                        newDate.setMonth(newDate.getMonth() - 1);
+                        console.log('Manual navigation to previous month:', newDate);
+                      } else {
+                        newDate.setDate(newDate.getDate() - 7);
+                        console.log('Manual navigation to previous week:', newDate);
+                      }
+                      setDate(newDate);
+                    }}
+                    style={styles.monthNavButton}
+                  >
+                    <MaterialIcons name="chevron-left" size={20} color={colors.text} />
+                  </TouchableOpacity>
+
+                  {/* Month display - compact format */}
+                  <Text style={[styles.monthDisplay, { color: colors.text }]}>
+                    {viewMode === 'month'
+                      ? `${displayedMonth.toLocaleDateString('en-US', { month: 'short' })} ${displayedMonth.getFullYear()}`
+                      : `${displayedMonth.toLocaleDateString('en-US', { month: 'short' })} ${displayedMonth.getFullYear()}`
+                    }
+                  </Text>
+
+                  {/* Right navigation */}
+                  <TouchableOpacity
+                    onPress={() => {
+                      const newDate = new Date(date);
+                      if (viewMode === 'month') {
+                        newDate.setMonth(newDate.getMonth() + 1);
+                        console.log('Manual navigation to next month:', newDate);
+                      } else {
+                        newDate.setDate(newDate.getDate() + 7);
+                        console.log('Manual navigation to next week:', newDate);
+                      }
+                      setDate(newDate);
+                    }}
+                    style={styles.monthNavButton}
+                  >
+                    <MaterialIcons name="chevron-right" size={20} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Today Button - positioned to the right */}
+                <TouchableOpacity
+                  onPress={handleTodayPress}
+                  style={[styles.todayButton, { backgroundColor: colors.primary }]}
+                >
+                  <Text style={[styles.todayButtonText, { color: colors.buttonText }]}>Today</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Calendar component */}
@@ -1013,6 +1085,7 @@ export default function Home() {
             >
               {calendarHeight > 0 && (
                 <BigCalendar
+                  key={`calendar-${viewMode}-${date.getTime()}`}
                   events={calendarEvents as any[]}
                   height={calendarHeight}
                   mode={viewMode}
@@ -1022,17 +1095,20 @@ export default function Home() {
                   onPressEvent={handlePressEvent}
                   renderEvent={renderEvent}
                   swipeEnabled={true}
-                  overlapOffset={-12} // More negative to force events closer together
+                  overlapOffset={-12}
                   ampm={false}
-                  scrollOffsetMinutes={new Date().getHours() * 60 + new Date().getMinutes() - 60} // Default to current time
+                  scrollOffsetMinutes={viewMode === 'week' ? 360 : new Date().getHours() * 60 + new Date().getMinutes() - 60} // Start earlier for week view
                   showTime={false}
-                  eventCellStyle={{ // Add custom event cell styling to minimize spacing
-                    marginVertical: -2, // Negative margins to overlap
-                    marginHorizontal: 0, // Remove horizontal margins
-                    paddingVertical: 0, // Remove vertical padding
-                    paddingHorizontal: 0, // Remove horizontal padding
+                  eventCellStyle={{
+                    marginVertical: -2,
+                    marginHorizontal: 0,
+                    paddingVertical: 0,
+                    paddingHorizontal: 0,
                   }}
-
+                  // Week view specific styling
+                  weekStartsOn={0} // Start week on Sunday
+                  weekEndHour={22} // End week view earlier to reduce bottom space
+                  weekStartHour={6} // Start week view later to reduce top space
                 />
               )}
             </View>
@@ -1141,6 +1217,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    paddingBottom: 80, // Add padding to prevent cutoff from tab bar
   },
   calendarContainer: {
     flex: 1,
@@ -1161,7 +1238,6 @@ const styles = StyleSheet.create({
   },
   viewModeContainer: {
     flexDirection: 'row',
-    marginRight: 24,
   },
   viewModeButton: {
     paddingHorizontal: 12,
@@ -1175,23 +1251,63 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'capitalize',
   },
+  monthDisplayContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4, // Reduced padding
+    paddingHorizontal: 2,
+  },
+  calendarHeaderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center', // Navigation elements centered
+    gap: 8, // Add small gap between elements
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between', // Space between navigation and today button
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e5e5',
+    gap: 20, // Add gap for more space between navigation and today button
+  },
+  monthDisplayCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 0,   // Reduced from 8
+  },
+  monthDisplayContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthNavButton: {
+    padding: 0,            // Reduced from 6
+    borderRadius: 0,
+    marginHorizontal: 0,   // Reduced from 4
+  },
   monthDisplay: {
-    fontSize: 18,
+    fontSize: 15,          // Reduced from 16
     fontWeight: '600',
+    textAlign: 'center',
   },
   todayButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingHorizontal: 12, // Larger size
+    paddingVertical: 6,    // Larger size  
+    borderRadius: 6,
+    marginLeft: 0,
   },
   todayButtonText: {
-    fontSize: 14,
+    fontSize: 13,          // Larger font
     fontWeight: '600',
     color: 'white',
   },
   calendarWrapper: {
     flex: 1,
-    marginBottom: 64,
+    marginBottom: 0, // Remove bottom margin to prevent cutoff
+    paddingBottom: 20, // Reduced padding for better fit
   },
   agendaList: {
     flex: 1,

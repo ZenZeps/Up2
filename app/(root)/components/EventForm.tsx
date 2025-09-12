@@ -11,10 +11,11 @@ import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, FlatList, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useEvents } from '../context/EventContext';
 import BudgetPlaceAutocomplete from './BudgetPlaceAutocomplete';
+import GoogleCalendarDatePicker from './GoogleCalendarDatePicker';
 import PlaceAutocomplete from './PlaceAutocomplete';
 import UserAvatar from './UserAvatar';
 
@@ -83,6 +84,8 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [isProcessing, setIsProcessing] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const [showGoogleDatePicker, setShowGoogleDatePicker] = useState(false);
+  const [isAllDay, setIsAllDay] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
 
   // Friend invitation state - enhanced approach
@@ -157,6 +160,16 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setStartDate(safeStartDate);
       setEndDate(safeEndDate);
 
+      // Check if event is all day (starts at midnight and ends at 11:59 PM or similar)
+      const startHour = safeStartDate.getHours();
+      const startMinute = safeStartDate.getMinutes();
+      const endHour = safeEndDate.getHours();
+      const endMinute = safeEndDate.getMinutes();
+      const isEventAllDay = (startHour === 0 && startMinute === 0) &&
+        ((endHour === 23 && endMinute >= 59) ||
+          (endHour === 0 && endMinute === 0 && dayjs(safeEndDate).isAfter(safeStartDate, 'day')));
+      setIsAllDay(isEventAllDay);
+
       setInviteeIds((event as any).inviteeIds || []);
     } else {
       setTitle('');
@@ -166,6 +179,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setInviteeIds([]);
       setIsPrivate(false);
       setIsAttending(false);
+      setIsAllDay(false);
 
       try {
         const newStartDate = new Date(selectedDateTime);
@@ -504,49 +518,39 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
               </View>
             </View>
 
-            {/* Start Time */}
+            {/* Date & Time - Google Calendar Style */}
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Start Time</Text>
+              <Text style={styles.inputLabel}>Date & Time</Text>
               <TouchableOpacity
                 onPress={() => {
-                  try {
-                    if (editable) {
-                      setShowStartPicker(true);
-                    }
-                  } catch (error) {
-                    console.error('Error opening start picker:', error);
+                  if (editable) {
+                    setShowGoogleDatePicker(true);
                   }
                 }}
-                style={styles.datePickerButton}
+                style={styles.googleDatePickerButton}
                 disabled={!editable}
               >
-                <MaterialIcons name="schedule" size={20} color="rgba(255,255,255,0.7)" />
-                <Text style={styles.datePickerText}>
-                  {dayjs(startDate).format('MMM D, YYYY h:mm A')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* End Time */}
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>End Time</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  try {
-                    if (editable) {
-                      setShowEndPicker(true);
-                    }
-                  } catch (error) {
-                    console.error('Error opening end picker:', error);
-                  }
-                }}
-                style={styles.datePickerButton}
-                disabled={!editable}
-              >
-                <MaterialIcons name="schedule" size={20} color="rgba(255,255,255,0.7)" />
-                <Text style={styles.datePickerText}>
-                  {dayjs(endDate).format('MMM D, YYYY h:mm A')}
-                </Text>
+                <View style={styles.dateTimeDisplay}>
+                  <View style={styles.dateTimeRow}>
+                    <MaterialIcons name="event" size={20} color="rgba(255,255,255,0.7)" />
+                    <View style={styles.dateTimeInfo}>
+                      <Text style={styles.dateRangeText}>
+                        {dayjs(startDate).format('MMM D')}
+                        {!dayjs(startDate).isSame(endDate, 'day') &&
+                          ` - ${dayjs(endDate).format('MMM D')}`}
+                      </Text>
+                      {!isAllDay && (
+                        <Text style={styles.timeRangeText}>
+                          {dayjs(startDate).format('h:mm A')} - {dayjs(endDate).format('h:mm A')}
+                        </Text>
+                      )}
+                      {isAllDay && (
+                        <Text style={styles.allDayText}>All day</Text>
+                      )}
+                    </View>
+                  </View>
+                  <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
+                </View>
               </TouchableOpacity>
             </View>
 
@@ -666,7 +670,22 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
               </TouchableOpacity>
             )}
 
-            {/* Date Time Pickers */}
+            {/* Google Calendar Style Date Picker */}
+            <GoogleCalendarDatePicker
+              visible={showGoogleDatePicker}
+              onClose={() => setShowGoogleDatePicker(false)}
+              onSave={(newStartDate, newEndDate, newIsAllDay) => {
+                setStartDate(newStartDate);
+                setEndDate(newEndDate);
+                setIsAllDay(newIsAllDay);
+              }}
+              initialStartDate={startDate}
+              initialEndDate={endDate}
+              initialIsAllDay={isAllDay}
+              title={title}
+            />
+
+            {/* Fallback Date Time Pickers (for legacy support) */}
             {DateTimePickerModal ? (
               <>
                 <DateTimePickerModal
@@ -1089,6 +1108,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     marginLeft: 12,
+  },
+
+  // Google Calendar Style Date Picker
+  googleDatePickerButton: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  dateTimeDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  dateTimeInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  dateRangeText: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  timeRangeText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  allDayText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+    fontStyle: 'italic',
   },
 
   // Tag styles

@@ -4,6 +4,7 @@ import { ID, Query } from "react-native-appwrite";
 import { authDebug } from "../debug/authDebug";
 import { cacheManager } from "../debug/cacheManager";
 import { sendEventInviteNotification } from "../notifications/notificationUtils";
+import { addAttendeeSimple, removeAttendeeSimple } from "../utils/simpleAttendeeCount";
 import { getGroupById } from "./group";
 import { getUserProfile } from "./user";
 
@@ -326,11 +327,16 @@ export async function createEvent(event: Event) {
 
     // IMPORTANT: Automatically mark the creator as attending their own event
     try {
-      await addEventAttendee(createdEvent.$id, sanitizedEvent.creatorId);
-      authDebug.info(`Creator ${sanitizedEvent.creatorId} automatically marked as attending event ${createdEvent.$id}`);
+      const { addAttendeeSimple } = await import('@/lib/utils/simpleAttendeeCount');
+      const attendeeAdded = await addAttendeeSimple(createdEvent.$id, sanitizedEvent.creatorId);
+
+      if (attendeeAdded) {
+        authDebug.info(`Creator ${sanitizedEvent.creatorId} successfully marked as attending event ${createdEvent.$id}`);
+      } else {
+        authDebug.error(`Failed to mark creator as attending event ${createdEvent.$id}`);
+      }
     } catch (attendeeError) {
-      authDebug.warn('Failed to mark creator as attending their event:', attendeeError);
-      // Don't fail event creation if attendance marking fails
+      authDebug.error('Failed to mark creator as attending their event:', attendeeError);
     }
 
     // Cache the created event
@@ -398,139 +404,12 @@ export async function createEvent(event: Event) {
 // ================== JUNCTION TABLE MANAGEMENT ==================
 
 /**
- * Add user to event attendees (junction table approach)
+ * Add user to event attendees (simplified counter approach)
  */
 export async function addEventAttendee(eventId: string, userId: string): Promise<boolean> {
   try {
-    const collectionId = config.eventAttendancesCollectionID;
-
-    // Check if junction table is properly configured
-    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
-      authDebug.info('Event attendances junction table not configured, skipping attendance recording');
-      return false;
-    }
-
-    // Fetch event document to enforce privacy rules
-    let eventDoc: any = null;
-    try {
-      eventDoc = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
-    } catch (err) {
-      // If we can't fetch event, fail safe and disallow creating an attendance record
-      authDebug.error(`Failed to fetch event ${eventId} for privacy check`, err);
-      throw new Error('Unable to verify event privacy');
-    }
-
-    // Look for any existing attendance records for this user/event
-    const existingAttendance = await databases.listDocuments(
-      config.databaseID!,
-      collectionId,
-      [
-        Query.equal('eventId', eventId),
-        Query.equal('userId', userId)
-      ]
-    );
-
-    // If an attending record already exists, nothing to do
-    if (existingAttendance.documents.some((d: any) => d.status === 'attending')) {
-      authDebug.info(`User ${userId} already attending event ${eventId}`);
-      return true;
-    }
-
-    // If an invited/pending record exists, promote it to attending and update counts
-    const invitedRecord = existingAttendance.documents.find((d: any) => d.status === 'invited' || d.status === 'pending');
-    if (invitedRecord) {
-      // Update the attendance record to attending
-      await databases.updateDocument(
-        config.databaseID!,
-        collectionId,
-        invitedRecord.$id,
-        {
-          status: 'attending',
-          respondedAt: new Date().toISOString(), // Set when user responds to invitation
-          // Note: do not set `acceptedAt` — Appwrite uses system attribute `$updatedAt` and
-          // the collection schema does not include a custom `acceptedAt` field. Adding it
-          // causes a document_invalid_structure error.
-        }
-      );
-
-      // Update event counters: +1 attendee, -1 invite (if present)
-      const currentEvent = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
-      const newAttendeeCount = (currentEvent.attendeeCount || 0) + 1;
-      const newInviteCount = Math.max(0, (currentEvent.inviteCount || 0) - 1);
-
-      await databases.updateDocument(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        eventId,
-        {
-          attendeeCount: newAttendeeCount,
-          inviteCount: newInviteCount,
-          lastActivityAt: new Date().toISOString(),
-        }
-      );
-
-      authDebug.info(`User ${userId} promoted from invite to attending for event ${eventId}, new attendee count: ${newAttendeeCount}`);
-      // Targeted cache invalidation for affected keys
-      try {
-        cacheManager.remove(`event-${eventId}`);
-        cacheManager.remove(`event-attendees-${eventId}`);
-        cacheManager.remove(`event-invitees-${eventId}`);
-        cacheManager.remove(`events-user-${userId}`);
-        // Clear global events cache to ensure all screens update
-        cacheManager.remove('all-events');
-      } catch (e) {
-        authDebug.warn('Failed to invalidate caches after promoting invite to attending', e);
-      }
-      return true;
-    }
-
-    // No existing records -> enforce privacy: private events require an invite (junction table only)
-    if (eventDoc && eventDoc.isPrivate && String(eventDoc.creatorId) !== String(userId)) {
-      authDebug.warn(`User ${userId} attempted to attend private event ${eventId} without an invite`);
-      throw new Error('User is not invited to this private event');
-    }
-
-    // No existing records -> create a fresh attending record
-    await databases.createDocument(
-      config.databaseID!,
-      collectionId,
-      ID.unique(),
-      {
-        eventId,
-        userId,
-        status: 'attending',
-        // Note: do not set `createdAt` — Appwrite uses system attribute `$createdAt` and
-        // the collection schema does not include a custom `createdAt` field. Adding it
-        // causes a document_invalid_structure error.
-      }
-    );
-
-    // Update event attendee count
-    const currentEvent = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
-    const newCount = (currentEvent.attendeeCount || 0) + 1;
-
-    await databases.updateDocument(
-      config.databaseID!,
-      config.eventsCollectionID!,
-      eventId,
-      {
-        attendeeCount: newCount,
-        lastActivityAt: new Date().toISOString(),
-      }
-    );
-
-    authDebug.info(`User ${userId} added to event ${eventId}, new count: ${newCount}`);
-    // Targeted cache invalidation for the affected event and user
-    try {
-      cacheManager.remove(`event-${eventId}`);
-      cacheManager.remove(`event-attendees-${eventId}`);
-      cacheManager.remove(`events-user-${userId}`);
-      // Clear global events cache to ensure all screens update
-      cacheManager.remove('all-events');
-    } catch (e) {
-      authDebug.warn('Failed to invalidate caches after addEventAttendee', e);
-    }
-    return true;
+    // Just use simple counter approach directly
+    return await addAttendeeSimple(eventId, userId);
   } catch (error) {
     authDebug.error(`Failed to add attendee to event: ${eventId}`, error);
     throw error;
@@ -538,75 +417,12 @@ export async function addEventAttendee(eventId: string, userId: string): Promise
 }
 
 /**
- * Remove user from event attendees (junction table approach)
+ * Remove user from event attendees (simplified counter approach)
  */
 export async function removeEventAttendee(eventId: string, userId: string): Promise<boolean> {
   try {
-    const collectionId = config.eventAttendancesCollectionID;
-
-    // Check if junction table is configured
-    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
-      authDebug.info('Event attendances junction table not configured, skipping attendance removal');
-      return false;
-    }
-
-    // Find attendance record
-    const attendanceRecords = await databases.listDocuments(
-      config.databaseID!,
-      collectionId,
-      [
-        Query.equal('eventId', eventId),
-        Query.equal('userId', userId)
-      ]
-    );
-
-    if (attendanceRecords.documents.length === 0) {
-      authDebug.info(`No attendance/invite records found for user ${userId} on event ${eventId}`);
-      return true;
-    }
-
-    // Determine what kinds of records we deleted so we can adjust counts appropriately
-    let attendingDeleted = 0;
-    let invitedDeleted = 0;
-
-    for (const record of attendanceRecords.documents) {
-      if (record.status === 'attending') attendingDeleted++;
-      if (record.status === 'invited' || record.status === 'pending') invitedDeleted++;
-
-      await databases.deleteDocument(
-        config.databaseID!,
-        collectionId,
-        record.$id
-      );
-    }
-
-    // Update event counters accordingly
-    const currentEvent = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
-    const newAttendeeCount = Math.max(0, (currentEvent.attendeeCount || 0) - attendingDeleted);
-    const newInviteCount = Math.max(0, (currentEvent.inviteCount || 0) - invitedDeleted);
-
-    await databases.updateDocument(
-      config.databaseID!,
-      config.eventsCollectionID!,
-      eventId,
-      {
-        attendeeCount: newAttendeeCount,
-        inviteCount: newInviteCount,
-        lastActivityAt: new Date().toISOString(),
-      }
-    );
-
-    authDebug.info(`User ${userId} removed from event ${eventId}, attendeeDelta: -${attendingDeleted}, inviteDelta: -${invitedDeleted}`);
-    // Targeted cache invalidation for affected keys
-    try {
-      cacheManager.remove(`event-${eventId}`);
-      cacheManager.remove(`event-attendees-${eventId}`);
-      cacheManager.remove(`event-invitees-${eventId}`);
-      cacheManager.remove(`events-user-${userId}`);
-    } catch (e) {
-      authDebug.warn('Failed to invalidate caches after removeEventAttendee', e);
-    }
-    return true;
+    // Just use simple counter approach directly
+    return await removeAttendeeSimple(eventId, userId);
   } catch (error) {
     authDebug.error(`Failed to remove attendee from event: ${eventId}`, error);
     throw error;
@@ -621,8 +437,8 @@ export async function addEventInvitation(eventId: string, userId: string, invite
     const collectionId = config.eventAttendancesCollectionID;
 
     // Check config
-    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
-      authDebug.info('Event attendances junction table not configured, skipping invitation creation');
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id' || collectionId === 'event_attendances') {
+      authDebug.info('Event attendances junction table not configured (placeholder detected), skipping invitation creation');
       return false;
     }
 
@@ -708,8 +524,8 @@ export async function getEventAttendees(eventId: string): Promise<string[]> {
     const collectionId = config.eventAttendancesCollectionID;
     authDebug.debug(`Checking attendees collection config: ${collectionId}`);
 
-    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
-      authDebug.info('Junction table not configured, skipping attendees lookup');
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id' || collectionId === 'event_attendances') {
+      authDebug.info('Junction table not configured (placeholder detected), skipping attendees lookup');
       cacheManager.set<string[]>(cacheKey, [], 60 * 1000);
       return [];
     }
@@ -749,8 +565,8 @@ export async function getEventAttendeesFor(eventIds: string[]): Promise<Record<s
     const collectionId = config.eventAttendancesCollectionID;
     authDebug.debug(`Batch fetching attendees for ${eventIds.length} events from: ${collectionId}`);
 
-    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
-      authDebug.info('Junction table not configured, skipping batched attendees lookup');
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id' || collectionId === 'event_attendances') {
+      authDebug.info('Junction table not configured (placeholder detected), skipping batched attendees lookup');
       return {};
     }
 

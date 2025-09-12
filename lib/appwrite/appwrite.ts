@@ -56,6 +56,8 @@ export const config = {
   groupInvitesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_GROUP_INVITES_ID || "deprecated_group_invites",
   chatsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_CHATS_ID || "temp_chats_id",
   messagesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_MESSAGES_ID || "temp_messages_id",
+  // ✅ NEW: Notification system
+  notificationTokensCollectionID: process.env.EXPO_PUBLIC_APPWRITE_NOTIFICATION_TOKENS_ID || "notification_tokens",
 };
 
 const client = new Client()
