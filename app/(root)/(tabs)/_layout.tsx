@@ -2,6 +2,7 @@ import icons from '@/constants/icons';
 import { config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { Tabs } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
@@ -96,6 +97,7 @@ const TabIcon = ({ focused, icon, title, colors, hasNotifications = false }: {
 // TabsLayout: Main layout for the tab navigator
 const TabsLayout = () => {
   const { colors, isDark } = useTheme();
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const hasNotifications = useNotificationCount();
 
@@ -124,7 +126,7 @@ const TabsLayout = () => {
             title: 'Home',
             headerShown: false, // Hide the header for this tab
             tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.home} focused={focused} title="Home" colors={colors} hasNotifications={false} />
+              <TabIcon icon={icons.home} focused={focused} title={t('navigation.home')} colors={colors} hasNotifications={false} />
             )
           }}
         />
@@ -149,7 +151,7 @@ const TabsLayout = () => {
             title: 'Explore',
             headerShown: false,
             tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.search} focused={focused} title="Explore" colors={colors} hasNotifications={false} />
+              <TabIcon icon={icons.search} focused={focused} title={t('navigation.explore')} colors={colors} hasNotifications={false} />
             )
           }}
         />
@@ -160,7 +162,7 @@ const TabsLayout = () => {
             title: 'Profile',
             headerShown: false,
             tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.person} focused={focused} title="Profile" colors={colors} hasNotifications={false} />
+              <TabIcon icon={icons.person} focused={focused} title={t('navigation.profile')} colors={colors} hasNotifications={false} />
             )
           }}
         />

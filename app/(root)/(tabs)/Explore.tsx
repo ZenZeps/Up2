@@ -12,6 +12,7 @@ import { useGlobalContext } from '@/lib/global-provider';
 import { useActionTracker } from '@/lib/hooks/useOptimizedData';
 import { useRealTimeUI } from '@/lib/hooks/useRealTimeUI';
 import { useUserLocation } from '@/lib/hooks/useUserLocation';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
 import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
@@ -35,6 +36,7 @@ dayjs.extend(relativeTime);
 const Explore = () => {
   const router = useRouter();
   const { colors, isDark, isColorful } = useTheme();
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const { events, refetchEvents, hasInitialLoad, getScreenEvents, setScreenEvents, markScreenLoadedFromDb } = useEvents();
   const { showAlert } = useAlert();
@@ -1173,7 +1175,7 @@ const Explore = () => {
           <View style={[styles.searchContainer, { backgroundColor: '#FFFFFF' }]}>
             <MaterialIcons name="search" size={20} color={colors.textSecondary} />
             <TextInput
-              placeholder={`Search ${mode}...`}
+              placeholder={mode === 'events' ? t('explore.searchEvents') : mode === 'users' ? t('explore.searchUsers') : t('explore.searchGroups')}
               value={query}
               onChangeText={setQuery}
               style={[styles.searchInput, { color: colors.text }]}
@@ -1199,7 +1201,7 @@ const Explore = () => {
                 size={20}
                 color={showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any'
                   ? colors.buttonText
-                  : colors.text}
+                  : '#000000'}
               />
               {/* Filter count badge */}
               {(dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') && (
@@ -1235,7 +1237,7 @@ const Explore = () => {
                 { color: mode === 'events' ? colors.buttonText : colors.text }
               ]}
             >
-              Events
+              {t('explore.events')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -1258,7 +1260,7 @@ const Explore = () => {
                 { color: mode === 'users' ? colors.buttonText : colors.text }
               ]}
             >
-              Users
+              {t('explore.users')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -1281,7 +1283,7 @@ const Explore = () => {
                 { color: mode === 'groups' ? 'white' : colors.text }
               ]}
             >
-              Groups
+              {t('explore.groups')}
             </Text>
           </TouchableOpacity>
         </View>

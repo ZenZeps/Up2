@@ -54,6 +54,7 @@ export async function createUserProfile(profile: UserProfile) {
         isPublic: profile.isPublic,
         photoId: profile.photoId,
         age: profile.age,
+        language: profile.language || 'en', // Default to English if not specified
         // ✅ NEW: Required fields for optimized database
         accountStatus: 'active', // Default to active
         lastActive: new Date().toISOString(),
@@ -159,6 +160,7 @@ export async function updateUserProfile(profile: UserProfile) {
         age: profile.age,
         about: profile.about,
         nationality: profile.nationality,
+        language: profile.language, // Add language field support
         // ✅ NEW: Update optimized fields if provided
         lastActive: new Date().toISOString(), // Always update last active on profile update
         ...(profile.accountStatus && { accountStatus: profile.accountStatus }),

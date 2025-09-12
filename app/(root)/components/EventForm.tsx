@@ -7,6 +7,7 @@ import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUsersByIds } from '@/lib/api/user';
 import { config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { Event } from '@/lib/types/Events';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -35,27 +36,22 @@ try {
 
 // Fallback components for when third-party libraries fail
 const FallbackDateTimePicker = ({ isVisible, onConfirm, onCancel, date, mode }: any) => {
-  if (!isVisible) return null;
+  const { t } = useLanguage();
 
   return (
     <Modal visible={isVisible} transparent animationType="fade">
       <View style={styles.fallbackPickerOverlay}>
         <View style={styles.fallbackPickerContainer}>
           <View style={styles.fallbackPickerHeader}>
-            <Text style={styles.fallbackPickerTitle}>Date/Time Picker</Text>
-            <Text style={styles.fallbackPickerSubtitle}>
-              Current: {dayjs(date).format('MMM D, YYYY h:mm A')}
-            </Text>
+            <Text style={styles.fallbackPickerTitle}>{t('eventForm.dateTimePicker')}</Text>
+            <Text style={styles.fallbackPickerSubtitle}>Selected: {date.toLocaleDateString()}</Text>
           </View>
           <View style={styles.fallbackPickerButtons}>
-            <TouchableOpacity onPress={onCancel} style={styles.fallbackCancelButton}>
-              <Text style={styles.fallbackCancelText}>Cancel</Text>
+            <TouchableOpacity style={styles.fallbackCancelButton} onPress={onCancel}>
+              <Text style={styles.fallbackCancelText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => onConfirm(date)}
-              style={styles.fallbackConfirmButton}
-            >
-              <Text style={styles.fallbackConfirmText}>OK</Text>
+            <TouchableOpacity style={styles.fallbackConfirmButton} onPress={() => onConfirm(date)}>
+              <Text style={styles.fallbackConfirmText}>{t('common.ok')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -102,6 +98,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [endDate, setEndDate] = useState<Date>(new Date());
 
   const { colors, isColorful } = useTheme();
+  const { t } = useLanguage();
   const { addEvent, updateEvent, refetchEvents } = useEvents();
 
   // Helper functions
@@ -373,7 +370,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                 <MaterialIcons name="close" size={24} color="#fff" />
               </TouchableOpacity>
               <Text style={styles.headerTitle}>
-                {event ? 'Edit Event' : 'New Event'}
+                {event ? t('eventForm.updateEvent') : t('eventForm.createEvent')}
               </Text>
               {editable && (
                 <TouchableOpacity
@@ -385,7 +382,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                     styles.headerButtonText,
                     isProcessing && styles.headerButtonTextDisabled
                   ]}>
-                    {isProcessing ? 'Saving...' : 'Save'}
+                    {isProcessing ? t('common.loading') : t('common.save')}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -405,11 +402,11 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
               {/* Event Name */}
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Event Name</Text>
+                <Text style={styles.inputLabel}>{t('eventForm.eventName')}</Text>
                 <View style={styles.inputWrapper}>
                   <MaterialIcons name="event" size={20} color="rgba(255,255,255,0.7)" style={styles.inputIcon} />
                   <TextInput
-                    placeholder="What's happening?"
+                    placeholder={t('eventForm.whatsHappening')}
                     value={title}
                     onChangeText={setTitle}
                     style={styles.textInput}
@@ -421,7 +418,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
               {/* Location */}
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Location</Text>
+                <Text style={styles.inputLabel}>{t('eventForm.location')}</Text>
                 <View style={styles.inputWrapper}>
                   <MaterialIcons name="location-on" size={20} color="rgba(255,255,255,0.7)" style={styles.inputIcon} />
                   <View style={{ flex: 1 }}>
@@ -444,7 +441,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                             console.log('Manual location selected:', address);
                           }
                         }}
-                        placeholder="Search restaurants, venues, addresses... (FREE)"
+                        placeholder={t('eventForm.searchLocationFree')}
                       />
                     ) : (
                       <PlaceAutocomplete
@@ -465,7 +462,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                             console.log('Location selected without coordinates:', address);
                           }
                         }}
-                        placeholder="Search for restaurants, venues, addresses..."
+                        placeholder={t('eventForm.searchLocation')}
                       />
                     )}
                   </View>
@@ -505,11 +502,11 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
               {/* Description */}
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Description</Text>
+                <Text style={styles.inputLabel}>{t('eventForm.description')}</Text>
                 <View style={styles.inputWrapper}>
                   <MaterialIcons name="description" size={20} color="rgba(255,255,255,0.7)" style={[styles.inputIcon, { alignSelf: 'flex-start', marginTop: 12 }]} />
                   <TextInput
-                    placeholder="Tell people more about your event..."
+                    placeholder={t('eventForm.tellMoreAboutEvent')}
                     value={description}
                     onChangeText={setDescription}
                     style={[styles.textInput, styles.textInputMultiline]}
@@ -522,7 +519,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
               {/* Date & Time - Google Calendar Style */}
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Date & Time</Text>
+                <Text style={styles.inputLabel}>{t('eventForm.dateTime')}</Text>
                 <TouchableOpacity
                   onPress={() => {
                     if (editable) {
@@ -547,7 +544,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                           </Text>
                         )}
                         {isAllDay && (
-                          <Text style={styles.allDayText}>All day</Text>
+                          <Text style={styles.allDayText}>{t('eventForm.allDay')}</Text>
                         )}
                       </View>
                     </View>
@@ -558,7 +555,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
               {/* Tags Section */}
               <View style={styles.tagsContainer}>
-                <Text style={styles.inputLabel}>Event Tags</Text>
+                <Text style={styles.inputLabel}>{t('eventForm.eventTags')}</Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -592,7 +589,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
               {/* Privacy Section */}
               <View style={styles.privacyContainer}>
-                <Text style={styles.inputLabel}>Privacy</Text>
+                <Text style={styles.inputLabel}>{t('eventForm.privacy')}</Text>
                 <TouchableOpacity
                   onPress={() => editable && setIsPrivate(!isPrivate)}
                   style={styles.privacyOption}
@@ -607,7 +604,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                     )}
                   </View>
                   <View style={styles.privacyTextContainer}>
-                    <Text style={styles.privacyTitle}>Private Event</Text>
+                    <Text style={styles.privacyTitle}>{t('eventForm.privateEvent')}</Text>
                     <Text style={styles.privacyDescription}>
                       Only invited users can see this event
                     </Text>
@@ -618,10 +615,10 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
               {/* Friend Invitations */}
               {editable && (
                 <View style={styles.inviteSection}>
-                  <Text style={styles.inputLabel}>Invite Friends</Text>
+                  <Text style={styles.inputLabel}>{t('eventForm.inviteFriends')}</Text>
                   <TouchableOpacity onPress={handleOpenFriendPicker} style={styles.inviteButton}>
                     <MaterialIcons name="person-add" size={20} color="rgba(255,255,255,0.7)" />
-                    <Text style={styles.inviteButtonText}>Add Friends</Text>
+                    <Text style={styles.inviteButtonText}>{t('eventForm.addFriends')}</Text>
                   </TouchableOpacity>
 
                   {inviteeIds.length > 0 && (
@@ -668,7 +665,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   style={[styles.actionButton, { backgroundColor: 'rgba(251,191,36,0.9)' }]}
                 >
                   <MaterialIcons name="bug-report" size={20} color="#fff" />
-                  <Text style={styles.actionButtonText}>Run Diagnostic Test</Text>
+                  <Text style={styles.actionButtonText}>{t('eventForm.runDiagnosticTest')}</Text>
                 </TouchableOpacity>
               )}
 
@@ -757,7 +754,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   style={[styles.actionButton, styles.deleteButton]}
                 >
                   <MaterialIcons name="delete" size={20} color="#fff" />
-                  <Text style={styles.actionButtonText}>Delete Event</Text>
+                  <Text style={styles.actionButtonText}>{t('eventForm.deleteEvent')}</Text>
                 </TouchableOpacity>
               )}
 
@@ -781,7 +778,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                       style={[styles.actionButton, styles.leaveButton]}
                     >
                       <MaterialIcons name="exit-to-app" size={20} color="#fff" />
-                      <Text style={styles.actionButtonText}>Leave Event</Text>
+                      <Text style={styles.actionButtonText}>{t('eventForm.leaveEvent')}</Text>
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
@@ -800,7 +797,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                       style={[styles.actionButton, styles.joinButton]}
                     >
                       <MaterialIcons name="check" size={20} color="#fff" />
-                      <Text style={styles.actionButtonText}>Join Event</Text>
+                      <Text style={styles.actionButtonText}>{t('eventForm.joinEvent')}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -822,16 +819,16 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   <SafeAreaView style={styles.safeArea}>
                     <View style={styles.friendPickerHeader}>
                       <TouchableOpacity onPress={() => setShowFriendPicker(false)}>
-                        <Text style={styles.friendPickerCancel}>Cancel</Text>
+                        <Text style={styles.friendPickerCancel}>{t('common.cancel')}</Text>
                       </TouchableOpacity>
-                      <Text style={styles.friendPickerTitle}>Invite Friends</Text>
+                      <Text style={styles.friendPickerTitle}>{t('eventForm.selectFriends')}</Text>
                       <View style={{ width: 60 }} />
                     </View>
 
                     {loadingFriends ? (
                       <View style={styles.friendPickerEmpty}>
                         <MaterialIcons name="people" size={48} color="rgba(255,255,255,0.5)" />
-                        <Text style={styles.friendPickerEmptyText}>Loading friends...</Text>
+                        <Text style={styles.friendPickerEmptyText}>{t('common.loading')}</Text>
                       </View>
                     ) : (
                       <FlatList
@@ -866,7 +863,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                           <View style={styles.friendPickerEmpty}>
                             <MaterialIcons name="people" size={48} color="rgba(255,255,255,0.5)" />
                             <Text style={styles.friendPickerEmptyText}>
-                              No friends available to invite
+                              {t('eventForm.noFriendsToInvite')}
                             </Text>
                           </View>
                         }

@@ -3,6 +3,7 @@ import { getProfilePhotoUrl, pickProfilePhoto, uploadProfilePhoto } from '@/lib/
 import { getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -23,6 +24,7 @@ const ProfileSettings = () => {
     const router = useRouter();
     const { user, refetch } = useGlobalContext();
     const { colors } = useTheme();
+    const { t } = useLanguage();
     const userId = user?.$id;
 
     const [firstName, setFirstName] = useState(user?.profile?.firstName || '');
@@ -188,7 +190,7 @@ const ProfileSettings = () => {
                         <TouchableOpacity style={styles.changePhotoButton} onPress={handlePhotoUpload}>
                             <MaterialIcons name="edit" size={16} color={colors.primary} />
                             <Text style={[styles.changePhotoText, { color: colors.primary }]}>
-                                Change Photo
+                                {t('settingsProfile.changePhoto')}
                             </Text>
                         </TouchableOpacity>
                     </View>
@@ -198,15 +200,15 @@ const ProfileSettings = () => {
                 <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <View style={styles.cardHeader}>
                         <MaterialIcons name="person" size={20} color={colors.primary} />
-                        <Text style={[styles.cardTitle, { color: colors.text }]}>Personal Information</Text>
+                        <Text style={[styles.cardTitle, { color: colors.text }]}>{t('settingsProfile.personalInformation')}</Text>
                     </View>
 
                     <View style={styles.inputGroup}>
-                        <Text style={[styles.inputLabel, { color: colors.text }]}>First Name</Text>
+                        <Text style={[styles.inputLabel, { color: colors.text }]}>{t('settingsProfile.firstName')}</Text>
                         <TextInput
                             value={firstName}
                             onChangeText={setFirstName}
-                            placeholder="Enter first name"
+                            placeholder={t('settingsProfile.enterFirstName')}
                             style={[
                                 styles.textInput,
                                 {
@@ -220,11 +222,11 @@ const ProfileSettings = () => {
                     </View>
 
                     <View style={styles.inputGroup}>
-                        <Text style={[styles.inputLabel, { color: colors.text }]}>Last Name</Text>
+                        <Text style={[styles.inputLabel, { color: colors.text }]}>{t('settingsProfile.lastName')}</Text>
                         <TextInput
                             value={lastName}
                             onChangeText={setLastName}
-                            placeholder="Enter last name"
+                            placeholder={t('settingsProfile.enterLastName')}
                             style={[
                                 styles.textInput,
                                 {

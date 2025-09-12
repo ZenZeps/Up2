@@ -1,10 +1,11 @@
 import { Background } from '@/components/Background';
 import { DeleteAccountButton } from '@/components/DeleteAccountButton';
+import { getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
 import {
     Alert,
     ScrollView,
@@ -20,27 +21,63 @@ const AccountSettings = () => {
     const router = useRouter();
     const { user, refetch } = useGlobalContext();
     const { isDark, toggleTheme, isColorful, setColorfulMode, colors } = useTheme();
+    const { currentLanguage, setLanguage, t } = useLanguage();
     const userId = user?.$id;
-    const [selectedLanguage, setSelectedLanguage] = useState('English');
 
     const handleLanguageChange = () => {
         Alert.alert(
-            'Select Language',
-            'Choose your preferred language:',
+            t('settings.language'),
+            t('settings.changeLanguage'),
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: t('common.cancel'), style: 'cancel' },
                 {
                     text: 'English',
-                    onPress: () => {
-                        setSelectedLanguage('English');
-                        Alert.alert('Success', 'Language changed to English');
+                    onPress: async () => {
+                        await setLanguage('en');
+                        // Also update the user profile with the language preference
+                        if (userId) {
+                            try {
+                                const currentProfile = await getUserProfile(userId);
+                                if (currentProfile) {
+                                    await updateUserProfile({
+                                        ...currentProfile,
+                                        language: 'en'
+                                    });
+                                    Alert.alert(t('common.success'), t('accountSettings.languageUpdatedInProfile'));
+                                } else {
+                                    Alert.alert(t('common.success'), 'Language changed to English');
+                                }
+                            } catch (error) {
+                                Alert.alert(t('common.success'), 'Language changed to English');
+                            }
+                        } else {
+                            Alert.alert(t('common.success'), 'Language changed to English');
+                        }
                     }
                 },
                 {
                     text: 'Español',
-                    onPress: () => {
-                        setSelectedLanguage('Español');
-                        Alert.alert('Éxito', 'Idioma cambiado a Español');
+                    onPress: async () => {
+                        await setLanguage('es');
+                        // Also update the user profile with the language preference
+                        if (userId) {
+                            try {
+                                const currentProfile = await getUserProfile(userId);
+                                if (currentProfile) {
+                                    await updateUserProfile({
+                                        ...currentProfile,
+                                        language: 'es'
+                                    });
+                                    Alert.alert(t('common.success'), t('accountSettings.languageUpdatedInProfile'));
+                                } else {
+                                    Alert.alert(t('common.success'), 'Idioma cambiado a Español');
+                                }
+                            } catch (error) {
+                                Alert.alert(t('common.success'), 'Idioma cambiado a Español');
+                            }
+                        } else {
+                            Alert.alert(t('common.success'), 'Idioma cambiado a Español');
+                        }
                     }
                 }
             ]
@@ -117,9 +154,9 @@ const AccountSettings = () => {
                         {/* Dark Mode Toggle */}
                         <View style={styles.settingItem}>
                             <View style={styles.settingContent}>
-                                <Text style={[styles.settingTitle, { color: colors.text }]}>Dark Mode</Text>
+                                <Text style={[styles.settingTitle, { color: colors.text }]}>{t('settings.darkMode')}</Text>
                                 <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
-                                    Use dark theme throughout the app
+                                    {t('settings.useDarkTheme')}
                                 </Text>
                             </View>
                             <Switch
@@ -133,9 +170,9 @@ const AccountSettings = () => {
                         {/* Colorful Mode Toggle */}
                         <View style={[styles.settingItem, styles.settingItemBorder, { borderTopColor: colors.border }]}>
                             <View style={styles.settingContent}>
-                                <Text style={[styles.settingTitle, { color: colors.text }]}>Colorful Mode</Text>
+                                <Text style={[styles.settingTitle, { color: colors.text }]}>{t('settings.colorfulMode')}</Text>
                                 <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
-                                    Use colorful gradient backgrounds throughout the app
+                                    {t('settings.useColorfulTheme')}
                                 </Text>
                             </View>
                             <Switch
@@ -149,9 +186,9 @@ const AccountSettings = () => {
                         {/* Language Setting */}
                         <TouchableOpacity style={[styles.settingItem, styles.settingItemBorder, { borderTopColor: colors.border }]} onPress={handleLanguageChange}>
                             <View style={styles.settingContent}>
-                                <Text style={[styles.settingTitle, { color: colors.text }]}>Language</Text>
+                                <Text style={[styles.settingTitle, { color: colors.text }]}>{t('settings.language')}</Text>
                                 <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
-                                    Change app language ({selectedLanguage})
+                                    {t('settings.changeLanguage')} ({currentLanguage === 'en' ? 'English' : 'Español'})
                                 </Text>
                             </View>
                             <TouchableOpacity style={styles.chevronButton} onPress={handleLanguageChange}>

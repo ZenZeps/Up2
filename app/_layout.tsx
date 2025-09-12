@@ -3,6 +3,8 @@ import { AlertProvider } from "@/lib/context/AlertContext";
 import { ThemeProvider } from "@/lib/context/ThemeContext";
 import { setupGlobalErrorHandler } from "@/lib/debug/globalErrorHandler";
 import GlobalProvider from "@/lib/global-provider";
+import "@/lib/i18n"; // Initialize i18n
+import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import notificationService from "@/lib/notifications/notificationService";
 import { useFonts } from "expo-font";
 import * as Linking from 'expo-linking';
@@ -196,24 +198,26 @@ export default function RootLayout() {
   // Decide whether to expose debug screens (dev or explicit flag)
   const showDebugScreens = __DEV__ || process.env.EXPO_PUBLIC_SHOW_CONFIG_SCREEN === '1';
 
-  // Wrap the Stack in ThemeProvider, AlertProvider, GlobalProvider, and ErrorBoundary for crash protection
+  // Wrap the Stack in ThemeProvider, AlertProvider, GlobalProvider, LanguageProvider, and ErrorBoundary for crash protection
   return (
     <ErrorBoundary>
-      <ThemeProvider>
-        <AlertProvider>
-          <GlobalProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="(root)" />
-              <Stack.Screen name="SignIn" />
-              <Stack.Screen name="SignUp" />
-              <Stack.Screen name="Verify" />
-              <Stack.Screen name="ResetPassword" />
-              {showDebugScreens && <Stack.Screen name="DebugConfig" />}
-            </Stack>
-          </GlobalProvider>
-        </AlertProvider>
-      </ThemeProvider>
+      <LanguageProvider>
+        <ThemeProvider>
+          <AlertProvider>
+            <GlobalProvider>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="(root)" />
+                <Stack.Screen name="SignIn" />
+                <Stack.Screen name="SignUp" />
+                <Stack.Screen name="Verify" />
+                <Stack.Screen name="ResetPassword" />
+                {showDebugScreens && <Stack.Screen name="DebugConfig" />}
+              </Stack>
+            </GlobalProvider>
+          </AlertProvider>
+        </ThemeProvider>
+      </LanguageProvider>
     </ErrorBoundary>
   );
 }

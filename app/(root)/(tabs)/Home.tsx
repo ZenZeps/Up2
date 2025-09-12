@@ -10,6 +10,7 @@ import { useGlobalContext } from '@/lib/global-provider';
 import { useEventAttendeeCount } from '@/lib/hooks/useEventAttendeeCount';
 import { useActionTracker } from '@/lib/hooks/useOptimizedData';
 import { useRealTimeUI } from '@/lib/hooks/useRealTimeUI';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
@@ -46,6 +47,7 @@ type TabType = 'calendar' | 'agenda';
 
 export default function Home() {
   const { colors, isColorful } = useTheme();
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
@@ -917,7 +919,7 @@ export default function Home() {
                 { color: activeTab === 'agenda' ? colors.primary : colors.textSecondary }
               ]}
             >
-              Agenda
+              {t('homeScreen.agenda')}
             </Text>
           </TouchableOpacity>
 
@@ -939,7 +941,7 @@ export default function Home() {
                 { color: activeTab === 'calendar' ? colors.primary : colors.textSecondary }
               ]}
             >
-              Calendar
+              {t('homeScreen.calendar')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -955,7 +957,7 @@ export default function Home() {
               renderItem={({ item: dayGroup }) => (
                 <View style={styles.dayGroup}>
                   {/* Day Header */}
-                  <View style={[styles.dayHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+                  <View style={[styles.dayHeader, { borderBottomColor: colors.border }]}>
                     <Text style={[styles.dayHeaderText, { color: colors.text }]}>
                       {formatDateHeader(dayGroup.date)}
                     </Text>
@@ -998,8 +1000,8 @@ export default function Home() {
 
                       <View style={styles.feedRightCol}>
                         <View style={{ alignItems: 'flex-end' }}>
-                          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{getAttendeeCount(item)} attending</Text>
-                          <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{(item as any).inviteCount ?? 0} invited</Text>
+                          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{getAttendeeCount(item)} {t('homeScreen.attending')}</Text>
+                          <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{(item as any).inviteCount ?? 0} {t('homeScreen.invited')}</Text>
                         </View>
                       </View>
                     </TouchableOpacity>
@@ -1105,7 +1107,7 @@ export default function Home() {
                     onPress={handleTodayPress}
                     style={[styles.todayButton, { backgroundColor: colors.primary }]}
                   >
-                    <Text style={[styles.todayButtonText, { color: colors.buttonText }]}>Today</Text>
+                    <Text style={[styles.todayButtonText, { color: colors.buttonText }]}>{t('homeScreen.today')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1142,8 +1144,6 @@ export default function Home() {
                     }}
                     // Week view specific styling
                     weekStartsOn={0} // Start week on Sunday
-                    weekEndHour={22} // End week view earlier to reduce bottom space
-                    weekStartHour={6} // Start week view later to reduce top space
                   />
                 )}
               </View>

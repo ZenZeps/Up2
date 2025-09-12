@@ -5,6 +5,7 @@ import { getUserProfile, getUsersByIds, updateUserProfile } from '@/lib/api/user
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { useActionTracker } from '@/lib/hooks/useOptimizedData';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { Group } from '@/lib/types/Groups';
 import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
 import { on as onEvent } from '@/lib/utils/eventBus';
@@ -31,6 +32,7 @@ const Profile = () => {
   const router = useRouter();
   const { user } = useGlobalContext();
   const { colors } = useTheme();
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const userId = user?.$id;
 
@@ -321,23 +323,23 @@ const Profile = () => {
             <View style={styles.statsContainer}>
               <TouchableOpacity style={styles.statItem}>
                 <Text style={[styles.statNumber, { color: colors.text }]}>{stats.friends}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Friends</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('profile.friends')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.statItem}>
                 <Text style={[styles.statNumber, { color: colors.text }]}>{stats.groups}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Groups</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('profile.groups')}</Text>
               </TouchableOpacity>
             </View>
 
             {/* Action Buttons */}
             <View style={styles.actionButtons}>
               <TouchableOpacity style={[styles.editProfileButton, { backgroundColor: colors.primary }]} onPress={() => setIsEditing(true)}>
-                <MaterialIcons name="edit" size={16} color="white" />
-                <Text style={styles.editProfileButtonText}>Edit Profile</Text>
+                <MaterialIcons name="edit" size={16} color={colors.buttonText} />
+                <Text style={[styles.editProfileButtonText, { color: colors.buttonText }]}>{t('profile.editProfile')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.shareButton, { borderColor: colors.border, backgroundColor: colors.background }]}>
                 <MaterialIcons name="share" size={16} color={colors.text} />
-                <Text style={[styles.shareButtonText, { color: colors.text }]}>Share</Text>
+                <Text style={[styles.shareButtonText, { color: colors.text }]}>{t('profile.share')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -348,7 +350,7 @@ const Profile = () => {
           <View style={styles.cardHeader}>
             <View style={styles.cardTitleContainer}>
               <MaterialIcons name="info" size={20} color={colors.primary} />
-              <Text style={[styles.cardTitle, { color: colors.text }]}>Bio</Text>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>{t('profile.bio')}</Text>
             </View>
             <TouchableOpacity
               onPress={() => setIsEditing(!isEditing)}
@@ -430,7 +432,7 @@ const Profile = () => {
                 style={[styles.saveButton, { backgroundColor: colors.primary }]}
               >
                 <MaterialIcons name="check" size={16} color={colors.buttonText} />
-                <Text style={[styles.saveButtonText, { color: colors.buttonText }]}>Save Changes</Text>
+                <Text style={[styles.saveButtonText, { color: colors.buttonText }]}>{t('profile.saveChanges')}</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -688,7 +690,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   editProfileButtonText: {
-    color: 'white',
     fontSize: 14,
     fontWeight: '600',
   },

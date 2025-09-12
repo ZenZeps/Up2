@@ -12,6 +12,7 @@ export interface UserProfile {
     about?: string;
     nationality?: string;
     age?: number;
+    language?: string; // User's preferred language (en, es, etc.)
     createdAt?: string;
     updatedAt?: string;
 

@@ -1,19 +1,25 @@
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 // Temporary fallback
 import { notificationTokenManager } from './tokenManager';
 
-// Configure notifications
-Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-        shouldShowBanner: true,
-        shouldShowList: true,
-    }),
-});
+// Conditional import for notifications to handle Expo Go limitation
+let Notifications: any = null;
+try {
+    Notifications = require('expo-notifications');
+    // Configure notifications only if available
+    Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: true,
+            shouldSetBadge: false,
+            shouldShowBanner: true,
+            shouldShowList: true,
+        }),
+    });
+} catch (error) {
+    console.warn('📱 Push notifications not available in Expo Go. Use a development build for notifications.');
+}
 
 export class NotificationService {
     private static instance: NotificationService;
@@ -30,6 +36,11 @@ export class NotificationService {
      * Register for push notifications and get the token
      */
     public async registerForPushNotifications(): Promise<string | null> {
+        if (!Notifications) {
+            console.warn('📱 Push notifications not available in Expo Go. Use a development build.');
+            return null;
+        }
+
         let token = null;
 
         if (Platform.OS === 'android') {
@@ -95,6 +106,11 @@ export class NotificationService {
      * Send a local notification (for testing)
      */
     public async sendLocalNotification(title: string, body: string, data?: any): Promise<void> {
+        if (!Notifications) {
+            console.warn('📱 Local notifications not available in Expo Go');
+            return;
+        }
+
         await Notifications.scheduleNotificationAsync({
             content: {
                 title,
@@ -191,8 +207,9 @@ export class NotificationService {
      * Add notification listener
      */
     public addNotificationListener(
-        callback: (notification: Notifications.Notification) => void
-    ): Notifications.Subscription {
+        callback: (notification: any) => void
+    ): any {
+        if (!Notifications) return null;
         return Notifications.addNotificationReceivedListener(callback);
     }
 
@@ -200,16 +217,19 @@ export class NotificationService {
      * Add notification response listener (when user taps notification)
      */
     public addNotificationResponseListener(
-        callback: (response: Notifications.NotificationResponse) => void
-    ): Notifications.Subscription {
+        callback: (response: any) => void
+    ): any {
+        if (!Notifications) return null;
         return Notifications.addNotificationResponseReceivedListener(callback);
     }
 
     /**
      * Remove notification listener - FIXED deprecated method
      */
-    public removeNotificationListener(subscription: Notifications.Subscription): void {
-        subscription.remove(); // Use the new method instead of deprecated removeNotificationSubscription
+    public removeNotificationListener(subscription: any): void {
+        if (subscription) {
+            subscription.remove(); // Use the new method instead of deprecated removeNotificationSubscription
+        }
     }
 
     /**
