@@ -1,3 +1,4 @@
+import { Background } from '@/components/Background';
 import { getEventColor, getEventEmoji } from '@/constants/categories';
 import { enrichEventsWithGroupNames, getEventInvitees, getUserAttendingEvents } from '@/lib/api/event';
 import { getUserGroupInvites } from '@/lib/api/group';
@@ -44,7 +45,7 @@ const viewModes: Mode[] = ['week', 'month'];
 type TabType = 'calendar' | 'agenda';
 
 export default function Home() {
-  const { colors } = useTheme();
+  const { colors, isColorful } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
@@ -831,328 +832,362 @@ export default function Home() {
   }, [viewMode, smartRefetchEvents, eventsContext?.events]);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header matching Feed styles */}
-      <LinearGradient colors={["#9b8fb6", "#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]} style={[styles.headerGradient]}>
-        <View style={styles.headerContent}>
-          <Text style={[styles.headerTitle, { color: '#fff' }]}>UP2 YOU</Text>
-          <View style={styles.headerButtonsContainer}>
-            <TouchableOpacity
-              onPress={handleCreateEventPress}
-              style={[
-                styles.headerButton,
-                { marginRight: 12 }
-              ]}
-            >
-              <MaterialIcons name="add" size={24} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => router.push('/(root)/Invites')}
-              style={styles.headerButton}
-            >
-              <MaterialIcons
-                name="notifications"
-                size={24}
-                color={hasInvites ? '#FF3B30' : 'white'}
-              />
-              {hasInvites && (
-                <View style={styles.notificationDot} />
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </LinearGradient>
-
-      {/* Modern Tab Navigation */}
-      <View style={[styles.tabContainer, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity
-          onPress={() => setActiveTab('agenda')}
-          style={[
-            styles.tabButton,
-            { borderBottomColor: activeTab === 'agenda' ? colors.primary : 'transparent' }
-          ]}
-        >
-          <MaterialIcons
-            name="list"
-            size={20}
-            color={activeTab === 'agenda' ? colors.primary : colors.textSecondary}
-          />
-          <Text
-            style={[
-              styles.tabText,
-              { color: activeTab === 'agenda' ? colors.primary : colors.textSecondary }
-            ]}
-          >
-            Agenda
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => setActiveTab('calendar')}
-          style={[
-            styles.tabButton,
-            { borderBottomColor: activeTab === 'calendar' ? colors.primary : 'transparent' }
-          ]}
-        >
-          <MaterialIcons
-            name="calendar-today"
-            size={20}
-            color={activeTab === 'calendar' ? colors.primary : colors.textSecondary}
-          />
-          <Text
-            style={[
-              styles.tabText,
-              { color: activeTab === 'calendar' ? colors.primary : colors.textSecondary }
-            ]}
-          >
-            Calendar
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Content */}
-      <View style={styles.content}>
-        {activeTab === 'agenda' ? (
-          /* Modern Agenda View with Day Groupings */
-          <FlatList
-            style={[styles.agendaList, { backgroundColor: colors.background }]}
-            data={transformGroupedEventsForList(groupEventsByDay(agendaEvents))}
-            keyExtractor={(item) => item.date.toDateString()}
-            renderItem={({ item: dayGroup }) => (
-              <View style={styles.dayGroup}>
-                {/* Day Header */}
-                <View style={[styles.dayHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-                  <Text style={[styles.dayHeaderText, { color: colors.text }]}>
-                    {formatDateHeader(dayGroup.date)}
-                  </Text>
-                </View>
-
-                {/* Events for this day */}
-                {dayGroup.events.map(item => (
-                  <TouchableOpacity
-                    key={item.$id}
-                    onPress={() => handlePressEvent({
-                      id: item.$id,
-                      title: item.title,
-                      start: new Date(item.startTime),
-                      end: new Date(item.endTime),
-                      location: item.location,
-                      color: getEventColor(item.tags || []),
-                      rawEvent: item
-                    })}
-                    style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  >
-                    <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={styles.feedThumb}>
-                      <Text style={styles.eventEmojiThumb}>{getEventEmoji(item.tags)}</Text>
-                    </LinearGradient>
-
-                    <View style={styles.feedBody}>
-                      <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
-                      <View style={styles.feedMetaRow}>
-                        <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
-                        <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{new Date(item.startTime).toLocaleDateString()}</Text>
-                        <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
-                        <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
-                        <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
-                      </View>
-
-                      <View style={styles.feedSubRow}>
-                        <UserAvatar photoUrl={getCreatorPhotoUrl(item.creatorId)} name={getCreatorName(item.creatorId)} size={28} />
-                        <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(item.creatorId)}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.feedRightCol}>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{getAttendeeCount(item)} attending</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-            ListEmptyComponent={
-              <View style={styles.emptyState}>
-                <MaterialIcons name="event" size={64} color={colors.textSecondary} />
-                <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
-                  No Upcoming Events
-                </Text>
-                <Text style={[styles.emptyStateDescription, { color: colors.textSecondary }]}>
-                  You're not attending any upcoming events. Join some events to see them here!
-                </Text>
-              </View>
-            }
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.agendaContent, { paddingBottom: 70 + insets.bottom }]}
-          />
-        ) : (
-          /* Modern Calendar View */
-          <View style={styles.calendarContainer}>
-            {/* Modern Calendar Controls */}
-            <View style={[styles.controlsContainer, { backgroundColor: colors.card }]}>
-              {/* View Mode Buttons - moved to left */}
-              <View style={styles.viewModeContainer}>
-                {viewModes.map((mode) => (
-                  <TouchableOpacity
-                    key={mode}
-                    onPress={() => setViewMode(mode)}
-                    style={[
-                      styles.viewModeButton,
-                      {
-                        backgroundColor: viewMode === mode ? colors.primary : colors.background,
-                        borderColor: colors.border,
-                      }
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.viewModeText,
-                        { color: viewMode === mode ? colors.buttonText : colors.text }
-                      ]}
-                    >
-                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Header container with navigation and today button */}
-              <View style={styles.headerContainer}>
-                {/* Combined navigation */}
-                <View style={styles.calendarHeaderContainer}>
-                  {/* Left navigation */}
-                  <TouchableOpacity
-                    onPress={() => {
-                      const newDate = new Date(date);
-                      if (viewMode === 'month') {
-                        newDate.setMonth(newDate.getMonth() - 1);
-                        console.log('Manual navigation to previous month:', newDate);
-                      } else {
-                        newDate.setDate(newDate.getDate() - 7);
-                        console.log('Manual navigation to previous week:', newDate);
-                      }
-                      setDate(newDate);
-                    }}
-                    style={styles.monthNavButton}
-                  >
-                    <MaterialIcons name="chevron-left" size={20} color={colors.text} />
-                  </TouchableOpacity>
-
-                  {/* Month display - compact format */}
-                  <Text style={[styles.monthDisplay, { color: colors.text }]}>
-                    {viewMode === 'month'
-                      ? `${displayedMonth.toLocaleDateString('en-US', { month: 'short' })} ${displayedMonth.getFullYear()}`
-                      : `${displayedMonth.toLocaleDateString('en-US', { month: 'short' })} ${displayedMonth.getFullYear()}`
-                    }
-                  </Text>
-
-                  {/* Right navigation */}
-                  <TouchableOpacity
-                    onPress={() => {
-                      const newDate = new Date(date);
-                      if (viewMode === 'month') {
-                        newDate.setMonth(newDate.getMonth() + 1);
-                        console.log('Manual navigation to next month:', newDate);
-                      } else {
-                        newDate.setDate(newDate.getDate() + 7);
-                        console.log('Manual navigation to next week:', newDate);
-                      }
-                      setDate(newDate);
-                    }}
-                    style={styles.monthNavButton}
-                  >
-                    <MaterialIcons name="chevron-right" size={20} color={colors.text} />
-                  </TouchableOpacity>
-                </View>
-
-                {/* Today Button - positioned to the right */}
+    <Background>
+      <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
+        {/* Conditional Header - gradient only in colorful mode */}
+        {isColorful ? (
+          <LinearGradient colors={["#9b8fb6", "#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]} style={[styles.headerGradient]}>
+            <View style={styles.headerContent}>
+              <Text style={[styles.headerTitle, { color: '#fff' }]}>UP2 YOU</Text>
+              <View style={styles.headerButtonsContainer}>
                 <TouchableOpacity
-                  onPress={handleTodayPress}
-                  style={[styles.todayButton, { backgroundColor: colors.primary }]}
+                  onPress={handleCreateEventPress}
+                  style={[
+                    styles.headerButton,
+                    { marginRight: 12 }
+                  ]}
                 >
-                  <Text style={[styles.todayButtonText, { color: colors.buttonText }]}>Today</Text>
+                  <MaterialIcons name="add" size={24} color="white" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => router.push('/(root)/Invites')}
+                  style={styles.headerButton}
+                >
+                  <MaterialIcons
+                    name="notifications"
+                    size={24}
+                    color={hasInvites ? '#FF3B30' : 'white'}
+                  />
+                  {hasInvites && (
+                    <View style={styles.notificationDot} />
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
-
-            {/* Calendar component */}
-            <View
-              style={styles.calendarWrapper}
-              onLayout={(event) => {
-                const { height } = event.nativeEvent.layout;
-                setCalendarHeight(height);
-              }}
-            >
-              {calendarHeight > 0 && (
-                <BigCalendar
-                  key={`calendar-${viewMode}-${date.getTime()}`}
-                  events={calendarEvents as any[]}
-                  height={calendarHeight}
-                  mode={viewMode}
-                  date={date}
-                  onChangeDate={handleDateChange}
-                  onPressCell={handleCellPress}
-                  onPressEvent={handlePressEvent}
-                  renderEvent={renderEvent}
-                  swipeEnabled={true}
-                  overlapOffset={-12}
-                  ampm={false}
-                  scrollOffsetMinutes={viewMode === 'week' ? 360 : new Date().getHours() * 60 + new Date().getMinutes() - 60} // Start earlier for week view
-                  showTime={false}
-                  eventCellStyle={{
-                    marginVertical: -2,
-                    marginHorizontal: 0,
-                    paddingVertical: 0,
-                    paddingHorizontal: 0,
-                  }}
-                  // Week view specific styling
-                  weekStartsOn={0} // Start week on Sunday
-                  weekEndHour={22} // End week view earlier to reduce bottom space
-                  weekStartHour={6} // Start week view later to reduce top space
-                />
-              )}
+          </LinearGradient>
+        ) : (
+          <View style={[styles.headerGradient, { backgroundColor: colors.background }]}>
+            <View style={styles.headerContent}>
+              <Text style={[styles.headerTitle, { color: colors.text }]}>UP2 YOU</Text>
+              <View style={styles.headerButtonsContainer}>
+                <TouchableOpacity
+                  onPress={handleCreateEventPress}
+                  style={[
+                    styles.headerButton,
+                    { marginRight: 12 }
+                  ]}
+                >
+                  <MaterialIcons name="add" size={24} color={colors.text} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => router.push('/(root)/Invites')}
+                  style={styles.headerButton}
+                >
+                  <MaterialIcons
+                    name="notifications"
+                    size={24}
+                    color={hasInvites ? '#FF3B30' : colors.text}
+                  />
+                  {hasInvites && (
+                    <View style={styles.notificationDot} />
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         )}
-      </View>
 
-      {/* Event Form Modal */}
-      {formVisible && (
-        <EventForm
-          visible={formVisible}
-          onClose={handleFormClose}
-          event={editingEvent || undefined}
-          selectedDateTime={selectedDateTime || new Date().toISOString()}
-          currentUserId={currentUser?.$id || ''}
-          friends={(userProfile?.friends || []) as string[]}
-        />
-      )}
+        {/* Modern Tab Navigation */}
+        <View style={[styles.tabContainer, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity
+            onPress={() => setActiveTab('agenda')}
+            style={[
+              styles.tabButton,
+              { borderBottomColor: activeTab === 'agenda' ? colors.primary : 'transparent' }
+            ]}
+          >
+            <MaterialIcons
+              name="list"
+              size={20}
+              color={activeTab === 'agenda' ? colors.primary : colors.textSecondary}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                { color: activeTab === 'agenda' ? colors.primary : colors.textSecondary }
+              ]}
+            >
+              Agenda
+            </Text>
+          </TouchableOpacity>
 
-      {/* Event Details Modal */}
-      {detailsModalVisible && selectedEvent && (
-        <EventDetailsModal
-          event={selectedEvent}
-          isCreator={selectedEvent.creatorId === currentUser?.$id}
-          onClose={() => setDetailsModalVisible(false)}
-          onEdit={() => handleEditEvent(selectedEvent)}
-          onAttend={handleEventAttend}
-          onNotAttend={handleEventNotAttend}
-          onChat={() => handleEventChat(selectedEvent)}
-          currentUserId={currentUser?.$id || ''}
-        />
-      )}
+          <TouchableOpacity
+            onPress={() => setActiveTab('calendar')}
+            style={[
+              styles.tabButton,
+              { borderBottomColor: activeTab === 'calendar' ? colors.primary : 'transparent' }
+            ]}
+          >
+            <MaterialIcons
+              name="calendar-today"
+              size={20}
+              color={activeTab === 'calendar' ? colors.primary : colors.textSecondary}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                { color: activeTab === 'calendar' ? colors.primary : colors.textSecondary }
+              ]}
+            >
+              Calendar
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-      {/* Message Modal */}
-      {messageModalVisible && selectedEvent && (
-        <MessageModal
-          visible={messageModalVisible}
-          onClose={() => setMessageModalVisible(false)}
-          eventId={selectedEvent.$id}
-          title={`${selectedEvent.title} Chat`}
-          currentUserId={currentUser?.$id || ''}
-        />
-      )}
-    </SafeAreaView>
+        {/* Content */}
+        <View style={styles.content}>
+          {activeTab === 'agenda' ? (
+            /* Modern Agenda View with Day Groupings */
+            <FlatList
+              style={[styles.agendaList, { backgroundColor: colors.background }]}
+              data={transformGroupedEventsForList(groupEventsByDay(agendaEvents))}
+              keyExtractor={(item) => item.date.toDateString()}
+              renderItem={({ item: dayGroup }) => (
+                <View style={styles.dayGroup}>
+                  {/* Day Header */}
+                  <View style={[styles.dayHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+                    <Text style={[styles.dayHeaderText, { color: colors.text }]}>
+                      {formatDateHeader(dayGroup.date)}
+                    </Text>
+                  </View>
+
+                  {/* Events for this day */}
+                  {dayGroup.events.map(item => (
+                    <TouchableOpacity
+                      key={item.$id}
+                      onPress={() => handlePressEvent({
+                        id: item.$id,
+                        title: item.title,
+                        start: new Date(item.startTime),
+                        end: new Date(item.endTime),
+                        location: item.location,
+                        color: getEventColor(item.tags || []),
+                        rawEvent: item
+                      })}
+                      style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    >
+                      <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={styles.feedThumb}>
+                        <Text style={styles.eventEmojiThumb}>{getEventEmoji(item.tags)}</Text>
+                      </LinearGradient>
+
+                      <View style={styles.feedBody}>
+                        <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
+                        <View style={styles.feedMetaRow}>
+                          <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
+                          <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{new Date(item.startTime).toLocaleDateString()}</Text>
+                          <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
+                          <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
+                          <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
+                        </View>
+
+                        <View style={styles.feedSubRow}>
+                          <UserAvatar photoUrl={getCreatorPhotoUrl(item.creatorId)} name={getCreatorName(item.creatorId)} size={28} />
+                          <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(item.creatorId)}</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.feedRightCol}>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{getAttendeeCount(item)} attending</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              ListEmptyComponent={
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="event" size={64} color={colors.textSecondary} />
+                  <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
+                    No Upcoming Events
+                  </Text>
+                  <Text style={[styles.emptyStateDescription, { color: colors.textSecondary }]}>
+                    You're not attending any upcoming events. Join some events to see them here!
+                  </Text>
+                </View>
+              }
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[styles.agendaContent, { paddingBottom: 70 + insets.bottom }]}
+            />
+          ) : (
+            /* Modern Calendar View */
+            <View style={styles.calendarContainer}>
+              {/* Modern Calendar Controls */}
+              <View style={[styles.controlsContainer, { backgroundColor: colors.card }]}>
+                {/* View Mode Buttons - moved to left */}
+                <View style={styles.viewModeContainer}>
+                  {viewModes.map((mode) => (
+                    <TouchableOpacity
+                      key={mode}
+                      onPress={() => setViewMode(mode)}
+                      style={[
+                        styles.viewModeButton,
+                        {
+                          backgroundColor: viewMode === mode ? colors.primary : colors.background,
+                          borderColor: colors.border,
+                        }
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.viewModeText,
+                          { color: viewMode === mode ? colors.buttonText : colors.text }
+                        ]}
+                      >
+                        {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Header container with navigation and today button */}
+                <View style={styles.headerContainer}>
+                  {/* Combined navigation */}
+                  <View style={styles.calendarHeaderContainer}>
+                    {/* Left navigation */}
+                    <TouchableOpacity
+                      onPress={() => {
+                        const newDate = new Date(date);
+                        if (viewMode === 'month') {
+                          newDate.setMonth(newDate.getMonth() - 1);
+                          console.log('Manual navigation to previous month:', newDate);
+                        } else {
+                          newDate.setDate(newDate.getDate() - 7);
+                          console.log('Manual navigation to previous week:', newDate);
+                        }
+                        setDate(newDate);
+                      }}
+                      style={styles.monthNavButton}
+                    >
+                      <MaterialIcons name="chevron-left" size={20} color={colors.text} />
+                    </TouchableOpacity>
+
+                    {/* Month display - compact format */}
+                    <Text style={[styles.monthDisplay, { color: colors.text }]}>
+                      {viewMode === 'month'
+                        ? `${displayedMonth.toLocaleDateString('en-US', { month: 'short' })} ${displayedMonth.getFullYear()}`
+                        : `${displayedMonth.toLocaleDateString('en-US', { month: 'short' })} ${displayedMonth.getFullYear()}`
+                      }
+                    </Text>
+
+                    {/* Right navigation */}
+                    <TouchableOpacity
+                      onPress={() => {
+                        const newDate = new Date(date);
+                        if (viewMode === 'month') {
+                          newDate.setMonth(newDate.getMonth() + 1);
+                          console.log('Manual navigation to next month:', newDate);
+                        } else {
+                          newDate.setDate(newDate.getDate() + 7);
+                          console.log('Manual navigation to next week:', newDate);
+                        }
+                        setDate(newDate);
+                      }}
+                      style={styles.monthNavButton}
+                    >
+                      <MaterialIcons name="chevron-right" size={20} color={colors.text} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Today Button - positioned to the right */}
+                  <TouchableOpacity
+                    onPress={handleTodayPress}
+                    style={[styles.todayButton, { backgroundColor: colors.primary }]}
+                  >
+                    <Text style={[styles.todayButtonText, { color: colors.buttonText }]}>Today</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Calendar component */}
+              <View
+                style={styles.calendarWrapper}
+                onLayout={(event) => {
+                  const { height } = event.nativeEvent.layout;
+                  setCalendarHeight(height);
+                }}
+              >
+                {calendarHeight > 0 && (
+                  <BigCalendar
+                    key={`calendar-${viewMode}-${date.getTime()}`}
+                    events={calendarEvents as any[]}
+                    height={calendarHeight}
+                    mode={viewMode}
+                    date={date}
+                    onChangeDate={handleDateChange}
+                    onPressCell={handleCellPress}
+                    onPressEvent={handlePressEvent}
+                    renderEvent={renderEvent}
+                    swipeEnabled={true}
+                    overlapOffset={-12}
+                    ampm={false}
+                    scrollOffsetMinutes={viewMode === 'week' ? 360 : new Date().getHours() * 60 + new Date().getMinutes() - 60} // Start earlier for week view
+                    showTime={false}
+                    eventCellStyle={{
+                      marginVertical: -2,
+                      marginHorizontal: 0,
+                      paddingVertical: 0,
+                      paddingHorizontal: 0,
+                    }}
+                    // Week view specific styling
+                    weekStartsOn={0} // Start week on Sunday
+                    weekEndHour={22} // End week view earlier to reduce bottom space
+                    weekStartHour={6} // Start week view later to reduce top space
+                  />
+                )}
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Event Form Modal */}
+        {formVisible && (
+          <EventForm
+            visible={formVisible}
+            onClose={handleFormClose}
+            event={editingEvent || undefined}
+            selectedDateTime={selectedDateTime || new Date().toISOString()}
+            currentUserId={currentUser?.$id || ''}
+            friends={(userProfile?.friends || []) as string[]}
+          />
+        )}
+
+        {/* Event Details Modal */}
+        {detailsModalVisible && selectedEvent && (
+          <EventDetailsModal
+            event={selectedEvent}
+            isCreator={selectedEvent.creatorId === currentUser?.$id}
+            onClose={() => setDetailsModalVisible(false)}
+            onEdit={() => handleEditEvent(selectedEvent)}
+            onAttend={handleEventAttend}
+            onNotAttend={handleEventNotAttend}
+            onChat={() => handleEventChat(selectedEvent)}
+            currentUserId={currentUser?.$id || ''}
+          />
+        )}
+
+        {/* Message Modal */}
+        {messageModalVisible && selectedEvent && (
+          <MessageModal
+            visible={messageModalVisible}
+            onClose={() => setMessageModalVisible(false)}
+            eventId={selectedEvent.$id}
+            title={`${selectedEvent.title} Chat`}
+            currentUserId={currentUser?.$id || ''}
+          />
+        )}
+      </SafeAreaView>
+    </Background>
   );
 }
 

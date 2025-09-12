@@ -1,3 +1,4 @@
+import { Background } from '@/components/Background';
 import { CATEGORIES, getCategoriesByValues, getEventEmoji } from '@/constants/categories';
 import { addEventAttendee, enrichEventsWithGroupNames, fetchEventsWithGroupNames, isUserAttendingEvent, removeEventInvitation } from '@/lib/api/event';
 import { cancelFriendRequest, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
@@ -33,7 +34,7 @@ dayjs.extend(relativeTime);
 
 const Explore = () => {
   const router = useRouter();
-  const { colors, isDark } = useTheme();
+  const { colors, isDark, isColorful } = useTheme();
   const insets = useSafeAreaInsets();
   const { events, refetchEvents, hasInitialLoad, getScreenEvents, setScreenEvents, markScreenLoadedFromDb } = useEvents();
   const { showAlert } = useAlert();
@@ -1165,10 +1166,10 @@ const Explore = () => {
   };
 
   return (
-    <LinearGradient colors={["#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]} style={[styles.container]}>
+    <Background>
       <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
         {/* Header with Search */}
-        <View style={[styles.searchHeader, { backgroundColor: 'transparent', borderBottomColor: colors.border }]}>
+        <View style={[styles.searchHeader, { backgroundColor: isColorful ? 'transparent' : colors.background, borderBottomColor: colors.border }]}>
           <View style={[styles.searchContainer, { backgroundColor: '#FFFFFF' }]}>
             <MaterialIcons name="search" size={20} color={colors.textSecondary} />
             <TextInput
@@ -1679,7 +1680,7 @@ const Explore = () => {
           )}
         </ScrollView>
       </SafeAreaView>
-    </LinearGradient>
+    </Background>
   );
 };
 

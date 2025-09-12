@@ -1,12 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-type Theme = 'light' | 'dark';
+type Theme = 'light' | 'dark' | 'colorful';
 
 interface ThemeContextType {
     theme: Theme;
     isDark: boolean;
+    isColorful: boolean;
     toggleTheme: () => void;
+    setColorfulMode: (enabled: boolean) => void;
     colors: {
         background: string;
         surface: string;
@@ -63,15 +65,35 @@ const darkColors = {
     buttonText: '#000000',
 };
 
+const colorfulColors = {
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', // Will be handled specially for gradient
+    surface: 'rgba(255, 255, 255, 0.9)',
+    primary: '#000000',
+    secondary: '#6c757d',
+    text: '#000000',
+    textSecondary: '#333333',
+    border: 'rgba(255, 255, 255, 0.3)',
+    error: '#dc3545',
+    success: '#28a745',
+    warning: '#ffc107',
+    card: 'rgba(255, 255, 255, 0.9)',
+    tabBar: 'rgba(255, 255, 255, 0.95)',
+    shadow: 'rgba(0, 0, 0, 0.2)',
+    buttonText: '#ffffff',
+};
+
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_STORAGE_KEY = 'app_theme';
+const COLORFUL_MODE_KEY = 'colorful_mode';
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [theme, setTheme] = useState<Theme>('light');
+    const [isColorfulMode, setIsColorfulMode] = useState(false);
 
     useEffect(() => {
         loadTheme();
+        loadColorfulMode();
     }, []);
 
     const loadTheme = async () => {
@@ -82,6 +104,17 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
         } catch (error) {
             console.error('Error loading theme:', error);
+        }
+    };
+
+    const loadColorfulMode = async () => {
+        try {
+            const savedColorfulMode = await AsyncStorage.getItem(COLORFUL_MODE_KEY);
+            if (savedColorfulMode !== null) {
+                setIsColorfulMode(savedColorfulMode === 'true');
+            }
+        } catch (error) {
+            console.error('Error loading colorful mode:', error);
         }
     };
 
@@ -96,11 +129,29 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
     };
 
+    const setColorfulMode = async (enabled: boolean) => {
+        setIsColorfulMode(enabled);
+        try {
+            await AsyncStorage.setItem(COLORFUL_MODE_KEY, enabled.toString());
+        } catch (error) {
+            console.error('Error saving colorful mode:', error);
+        }
+    };
+
+    const getColors = () => {
+        if (isColorfulMode) {
+            return colorfulColors;
+        }
+        return theme === 'dark' ? darkColors : lightColors;
+    };
+
     const value: ThemeContextType = {
-        theme,
+        theme: isColorfulMode ? 'colorful' : theme,
         isDark: theme === 'dark',
+        isColorful: isColorfulMode,
         toggleTheme,
-        colors: theme === 'dark' ? darkColors : lightColors,
+        setColorfulMode,
+        colors: getColors(),
     };
 
     return (

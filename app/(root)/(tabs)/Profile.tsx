@@ -11,9 +11,8 @@ import { on as onEvent } from '@/lib/utils/eventBus';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -281,59 +280,70 @@ const Profile = () => {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 70 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Modern Header (moved into ScrollView so it scrolls with the page) */}
-        <View style={[styles.header, { marginHorizontal: -16, paddingTop: 0 }]}>
-          <LinearGradient
-            colors={['#FF6B6B', '#FFD166']}
-            start={[0, 0]}
-            end={[1, 1]}
-            style={[styles.coverGradient, { paddingHorizontal: 0 }]}
-          >
-            <View style={styles.coverContent}>
-              <View style={styles.leftArea}>
-                <TouchableOpacity
-                  onPress={handleUpdateProfilePhoto}
-                  disabled={isUploadingPhoto}
-                  style={styles.avatarWrapper}
-                >
-                  <LinearGradient colors={[colors.card, 'rgba(255,255,255,0.04)']} style={styles.avatarRing}>
-                    {profilePhotoUrl ? (
-                      <Image source={{ uri: profilePhotoUrl }} style={[styles.avatarLarge, { borderColor: colors.card }]} />
-                    ) : (
-                      <View style={[styles.avatarPlaceholderLarge, { backgroundColor: 'rgba(255,255,255,0.04)', borderColor: colors.card }]}>
-                        <Text style={[styles.avatarTextLarge, { color: colors.text }]}>{userDisplayUtils.getInitials({ firstName, lastName })}</Text>
-                      </View>
-                    )}
-                  </LinearGradient>
-                  <View style={[styles.editIndicator, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <MaterialIcons name={isUploadingPhoto ? 'hourglass-empty' : 'camera-alt'} size={14} color={colors.text} />
-                  </View>
-                </TouchableOpacity>
-
-                <Text style={[styles.userNameLarge, { color: colors.text, marginTop: 12 }]}>{userDisplayUtils.getFullName({ firstName, lastName })}</Text>
-                <Text style={[styles.userSubtitleSmall, { color: colors.textSecondary, marginTop: 6 }]}>{about ? about.slice(0, 60) + (about.length > 60 ? '...' : '') : 'No bio yet'}</Text>
-
-                <View style={[styles.statsRow, { marginTop: 12 }]}>
-                  <View style={[styles.statCard, { backgroundColor: 'transparent' }]}>
-                    <Text style={[styles.statNumberLarge, { color: colors.text }]}>{stats.friends}</Text>
-                    <Text style={[styles.statLabelSmall, { color: colors.textSecondary }]}>Friends</Text>
-                  </View>
-                  <View style={[styles.statCard, { backgroundColor: 'transparent' }]}>
-                    <Text style={[styles.statNumberLarge, { color: colors.text }]}>{stats.groups}</Text>
-                    <Text style={[styles.statLabelSmall, { color: colors.textSecondary }]}>Groups</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.rightArea}>
-                <TouchableOpacity style={[styles.settingsButton, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => router.push('/(root)/Settings')}>
-                  <MaterialIcons name="settings" size={20} color={colors.text} />
-                </TouchableOpacity>
-              </View>
+        {/* Original Simple Profile Header */}
+        <View style={[styles.profileHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          {/* Header Actions */}
+          <View style={styles.headerActions}>
+            <View style={styles.headerSpacer} />
+            <Text style={[styles.headerTitle, { color: colors.text }]}>Profile</Text>
+            <View style={styles.headerRight}>
+              <TouchableOpacity style={[styles.headerButton, { backgroundColor: colors.background }]} onPress={() => router.push('/(root)/Settings')}>
+                <MaterialIcons name="settings" size={20} color={colors.text} />
+              </TouchableOpacity>
             </View>
-          </LinearGradient>
+          </View>
+
+          {/* Profile Content */}
+          <View style={styles.profileContent}>
+            <TouchableOpacity
+              onPress={handleUpdateProfilePhoto}
+              disabled={isUploadingPhoto}
+              style={styles.avatarContainer}
+            >
+              {profilePhotoUrl ? (
+                <Image source={{ uri: profilePhotoUrl }} style={[styles.profileAvatar, { borderColor: colors.border }]} />
+              ) : (
+                <View style={[styles.avatarPlaceholder, { backgroundColor: colors.primary, borderColor: colors.border }]}>
+                  <Text style={styles.avatarText}>{userDisplayUtils.getInitials({ firstName, lastName })}</Text>
+                </View>
+              )}
+              <View style={[styles.cameraIcon, { backgroundColor: colors.primary }]}>
+                <MaterialIcons name={isUploadingPhoto ? 'hourglass-empty' : 'camera-alt'} size={16} color="white" />
+              </View>
+            </TouchableOpacity>
+
+            <Text style={[styles.profileName, { color: colors.text }]}>{userDisplayUtils.getFullName({ firstName, lastName })}</Text>
+            <Text style={[styles.profileTitle, { color: colors.textSecondary }]}>
+              {about ? about.slice(0, 80) + (about.length > 80 ? '...' : '') : 'Add your bio to tell others about yourself'}
+            </Text>
+
+            {/* Simple Stats Row */}
+            <View style={styles.statsContainer}>
+              <TouchableOpacity style={styles.statItem}>
+                <Text style={[styles.statNumber, { color: colors.text }]}>{stats.friends}</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Friends</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.statItem}>
+                <Text style={[styles.statNumber, { color: colors.text }]}>{stats.groups}</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Groups</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.actionButtons}>
+              <TouchableOpacity style={[styles.editProfileButton, { backgroundColor: colors.primary }]} onPress={() => setIsEditing(true)}>
+                <MaterialIcons name="edit" size={16} color="white" />
+                <Text style={styles.editProfileButtonText}>Edit Profile</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.shareButton, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                <MaterialIcons name="share" size={16} color={colors.text} />
+                <Text style={[styles.shareButtonText, { color: colors.text }]}>Share</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-        {/* Bio Section (only bio text) */}
+
+        {/* Bio Section with Edit Functionality */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 16 }]}>
           <View style={styles.cardHeader}>
             <View style={styles.cardTitleContainer}>
@@ -460,8 +470,6 @@ const Profile = () => {
           )}
         </View>
 
-        {/* Personal Details removed per request */}
-
         {/* Friends Section (stylish) */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.cardHeader}>
@@ -507,7 +515,7 @@ const Profile = () => {
           </View>
         </View>
 
-        {/* Groups (horizontal scroll, compact) */}
+        {/* Groups Section */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.cardHeader}>
             <View style={styles.cardTitleContainer}>
@@ -548,9 +556,6 @@ const Profile = () => {
             />
           </View>
         </View>
-
-        {/* Tags removed per request (kept styles available) */}
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -560,117 +565,171 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  // header: removed duplicate - kept enhanced header below
-  headerGradient: {
-    paddingHorizontal: 20,
-    paddingVertical: 24,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  profileSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginRight: 16,
-  },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 3,
-    borderColor: 'white',
-  },
-  avatarPlaceholder: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: 'white',
-  },
-  avatarText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: 'white',
-  },
-  editIndicator: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 20,
-    height: 20,
-    backgroundColor: 'white',
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#000',
-  },
-  nameSection: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: 'white',
-    marginBottom: 4,
-  },
-  userSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '400',
-  },
-  statsSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 12,
-  },
-  statItem: {
-    alignItems: 'center',
-    paddingHorizontal: 8,
-  },
-  statNumber: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: 'white',
-  },
-  statLabel: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '500',
-  },
-  statDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  settingsButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   scrollContainer: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingBottom: 20,
   },
+  profileHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+  },
+  gradientBackground: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 50,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  headerButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileContent: {
+    alignItems: 'center',
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  profileAvatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 2,
+  },
+  avatarPlaceholder: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+  },
+  avatarText: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: 'white',
+  },
+  cameraIcon: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  profileName: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  profileTitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+    paddingHorizontal: 20,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    gap: 40,
+    marginBottom: 20,
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  editProfileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 6,
+  },
+  editProfileButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  shareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
+  },
+  shareButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  followButton: {
+    backgroundColor: 'white',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  followButtonText: {
+    color: '#FF8A65',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  messageButton: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  messageButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  // Card and functional styles
   card: {
     marginBottom: 16,
     padding: 18,
@@ -685,163 +744,33 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 6,
   },
-  coverGradient: {
-    paddingVertical: 18,
-    paddingHorizontal: 18,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-  },
-  coverContent: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  leftArea: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-    width: '100%',
-  },
-  header: {
-    position: 'relative',
-    overflow: 'hidden',
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-  },
-  avatarWrapper: {
-    position: 'relative',
-    marginBottom: 8,
-  },
-  avatarRing: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarLarge: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    borderWidth: 3,
-    borderColor: 'white',
-  },
-  avatarPlaceholderLarge: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    backgroundColor: 'rgba(0,0,0,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarTextLarge: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: 'white',
-  },
-  centerArea: {
-    flex: 0,
-    paddingLeft: 0,
-    alignItems: 'center',
-  },
-  userNameLarge: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: 'white',
-    textAlign: 'center',
-  },
-  userSubtitleSmall: {
-    marginTop: 6,
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.9)',
-    textAlign: 'center',
-  },
-  statsRow: {
-    marginTop: 12,
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  statCard: {
-    minWidth: 86,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+  cardTitleContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 8,
   },
-  statNumberLarge: {
+  cardTitle: {
     fontSize: 16,
-    fontWeight: '800',
-    color: 'white',
-  },
-  statLabelSmall: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.85)'
-  },
-  aboutRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 6,
-  },
-  aboutIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  aboutTextWrap: {
-    flex: 1,
-  },
-  // Collections & tags styles
-  collectionList: {
-    flexDirection: 'column',
-    gap: 12,
-  },
-  collectionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 10,
-  },
-  collectionImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 10,
-    marginRight: 12,
-  },
-  collectionInfo: {
-    flex: 1,
-  },
-  collectionTitle: {
-    fontSize: 14,
     fontWeight: '700',
+    marginLeft: 8,
   },
-  collectionMeta: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  tagsContainer: {
+  editButton: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 8,
-  },
-  tagPill: {
+    alignItems: 'center',
     paddingVertical: 6,
     paddingHorizontal: 10,
-    borderRadius: 999,
+    borderRadius: 10,
   },
-  tagText: {
-    fontSize: 12,
+  editButtonText: {
+    color: 'white',
+    marginLeft: 8,
     fontWeight: '600',
   },
-
   editContainer: {
     gap: 12,
   },
@@ -852,6 +781,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     minHeight: 80,
     textAlignVertical: 'top',
+  },
+  detailsEditContainer: {
+    gap: 16,
+  },
+  inputGroup: {
+    gap: 8,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  detailInput: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    fontSize: 16,
   },
   saveButton: {
     flexDirection: 'row',
@@ -872,25 +817,22 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
   },
-  contentText: {
-    fontSize: 16,
-    lineHeight: 24,
+  aboutRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 6,
   },
-  detailsEditContainer: {
-    gap: 16,
+  aboutIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
-  inputGroup: {
-    gap: 8,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  detailInput: {
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    fontSize: 16,
+  aboutTextWrap: {
+    flex: 1,
   },
   detailsContainer: {
     gap: 8,
@@ -918,19 +860,22 @@ const styles = StyleSheet.create({
   friendsList: {
     paddingHorizontal: 4,
   },
-  friendItem: {
+  friendItemModern: {
     alignItems: 'center',
     marginHorizontal: 8,
+    width: 84,
+  },
+  friendAvatarWrap: {
     width: 64,
+    height: 64,
+    borderRadius: 32,
+    overflow: 'hidden',
   },
   friendName: {
     fontSize: 12,
     fontWeight: '500',
     marginTop: 8,
     textAlign: 'center',
-  },
-  groupsList: {
-    paddingHorizontal: 4,
   },
   groupItem: {
     alignItems: 'center',
@@ -961,47 +906,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 2,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  cardTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 8,
-  },
-  cardTitleSmall: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginLeft: 0,
-  },
-  editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-  },
-  editButtonText: {
-    color: 'white',
-    marginLeft: 8,
-    fontWeight: '600',
-  },
-  editProfileButton: {
-    padding: 8,
-    borderRadius: 10,
-  },
-  rightArea: {
-    position: 'absolute',
-    right: 16,
-    top: 16,
-  },
   createButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1013,17 +917,6 @@ const styles = StyleSheet.create({
     color: 'white',
     marginLeft: 8,
     fontWeight: '600',
-  },
-  friendItemModern: {
-    alignItems: 'center',
-    marginHorizontal: 8,
-    width: 84,
-  },
-  friendAvatarWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    overflow: 'hidden',
   },
   emptyContainer: {
     flex: 1,

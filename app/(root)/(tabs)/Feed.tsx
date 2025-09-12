@@ -1,3 +1,4 @@
+import { Background } from '@/components/Background';
 import TopPicks from '@/components/TopPicks';
 import { getCategoriesByValues, getEventEmoji } from '@/constants/categories';
 import { addEventAttendee, getEventAttendeesFor, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
@@ -22,7 +23,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { LinearGradient } from 'expo-linear-gradient';
 // header will be plain white
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -43,7 +44,7 @@ type ExtendedEvent = AppEvent & { attendees?: string[]; inviteeIds?: string[]; i
 
 type FeedItem = (ExtendedEvent & { type: 'event' }) | (TravelAnnouncementWithUserInfo & { type: 'travel' });
 export default function Feed() {
-  const { colors } = useTheme();
+  const { colors, isColorful } = useTheme();
   const insets = useSafeAreaInsets();
   const { events, refetchEvents, hasInitialLoad, getScreenEvents, setScreenEvents, markScreenLoadedFromDb, getScreenLoadedFromDb } = useEvents();
   const { user: globalUser } = useGlobalContext();
@@ -906,22 +907,38 @@ export default function Feed() {
   };
 
   return (
-    <LinearGradient colors={["#9b8fb6", "#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]} style={[styles.container]}>
+    <Background>
       <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
-        {/* Improved gradient header (transparent so the full-screen gradient shows through) */}
-        <View style={[styles.headerGradient, { backgroundColor: 'transparent' }]}>
-          <View style={styles.headerContent}>
-            <Text style={[styles.headerTitle, { color: '#fff' }]}>UP2 YOU</Text>
-            <View style={styles.headerActions}>
-              <TouchableOpacity onPress={() => setTravelFormVisible(true)} style={styles.headerActionButton}>
-                <MaterialIcons name="flight" size={18} color={'#fff'} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setFormVisible(true)} style={styles.headerActionButton}>
-                <MaterialIcons name="add" size={18} color={'#fff'} />
-              </TouchableOpacity>
+        {/* Conditional Header - gradient only in colorful mode */}
+        {isColorful ? (
+          <View style={[styles.headerGradient, { backgroundColor: 'transparent' }]}>
+            <View style={styles.headerContent}>
+              <Text style={[styles.headerTitle, { color: '#fff' }]}>UP2 YOU</Text>
+              <View style={styles.headerActions}>
+                <TouchableOpacity onPress={() => setTravelFormVisible(true)} style={styles.headerActionButton}>
+                  <MaterialIcons name="flight" size={18} color={'#fff'} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setFormVisible(true)} style={styles.headerActionButton}>
+                  <MaterialIcons name="add" size={18} color={'#fff'} />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        ) : (
+          <View style={[styles.headerGradient, { backgroundColor: colors.background }]}>
+            <View style={styles.headerContent}>
+              <Text style={[styles.headerTitle, { color: colors.text }]}>UP2 YOU</Text>
+              <View style={styles.headerActions}>
+                <TouchableOpacity onPress={() => setTravelFormVisible(true)} style={styles.headerActionButton}>
+                  <MaterialIcons name="flight" size={18} color={colors.text} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setFormVisible(true)} style={styles.headerActionButton}>
+                  <MaterialIcons name="add" size={18} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Event Feed as a single vertical FlatList with pull-to-refresh */}
         <View style={[styles.feedContent, { paddingBottom: 70 + insets.bottom }]}>
@@ -1008,7 +1025,7 @@ export default function Feed() {
           />
         )}
       </SafeAreaView>
-    </LinearGradient>
+    </Background>
   );
 }
 
