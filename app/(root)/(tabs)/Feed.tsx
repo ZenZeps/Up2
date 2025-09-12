@@ -823,6 +823,7 @@ export default function Feed() {
 
           <View style={{ alignItems: 'flex-end' }}>
             <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{(item as any).attendeeCount ?? 0} attending</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{(item as any).inviteCount ?? 0} invited</Text>
           </View>
         </View>
       </TouchableOpacity>

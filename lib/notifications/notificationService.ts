@@ -1,7 +1,6 @@
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import { NotificationTokenService } from './notificationTokenService';
 // Temporary fallback
 import { notificationTokenManager } from './tokenManager';
 
@@ -76,21 +75,16 @@ export class NotificationService {
     }
 
     /**
- * Update the notification token for a specific user using proper architecture
- */
+     * Update the notification token for a specific user using temporary storage (simplest approach)
+     */
     public async updateUserNotificationToken(userId: string): Promise<void> {
         try {
             const token = await this.registerForPushNotifications();
             if (token) {
-                try {
-                    // Use production NotificationTokenService
-                    await NotificationTokenService.registerToken(userId, token);
-                    console.log('✅ Notification token registered in production database');
-                } catch (error) {
-                    console.log('⚠️ Production database failed, using temporary storage as fallback:', error);
-                    notificationTokenManager.setUserToken(userId, token, true);
-                    console.log('✅ Notification token stored temporarily for user:', userId);
-                }
+                // Store token using temporary storage (no database schema changes needed)
+                notificationTokenManager.setUserToken(userId, token, true);
+                console.log('📱 Token stored for user', userId + ':', token.substring(0, 25) + '...');
+                console.log('✅ Notification token stored temporarily for user:', userId);
             }
         } catch (error) {
             console.error('Error updating user notification token:', error);

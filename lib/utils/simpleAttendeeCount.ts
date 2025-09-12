@@ -8,7 +8,7 @@ import { cacheManager } from '../debug/cacheManager';
  */
 
 /**
- * Add attendee (simple counter increment)
+ * Add attendee (simple counter increment + legacy attendees array)
  */
 export async function addAttendeeSimple(eventId: string, userId: string): Promise<boolean> {
     try {
@@ -19,7 +19,17 @@ export async function addAttendeeSimple(eventId: string, userId: string): Promis
             eventId
         );
 
-        // Simply increment the count
+        // Get current attendees array (for UI compatibility)
+        const currentAttendees: string[] = Array.isArray(currentEvent.attendees) ? currentEvent.attendees : [];
+
+        // Check if user is already attending
+        if (currentAttendees.includes(userId)) {
+            authDebug.info(`User ${userId} is already attending event ${eventId}`);
+            return true;
+        }
+
+        // Add user to attendees array and increment the count
+        const updatedAttendees = [...currentAttendees, userId];
         const newCount = (currentEvent.attendeeCount || 0) + 1;
 
         await databases.updateDocument(
@@ -27,12 +37,13 @@ export async function addAttendeeSimple(eventId: string, userId: string): Promis
             config.eventsCollectionID!,
             eventId,
             {
-                attendeeCount: newCount,
+                attendees: updatedAttendees, // Store IDs for UI avatar display
+                attendeeCount: newCount,     // Keep counter for performance
                 lastActivityAt: new Date().toISOString(),
             }
         );
 
-        authDebug.info(`Simple: Added attendee ${userId} to event ${eventId}, new count: ${newCount}`);
+        authDebug.info(`Simple: Added attendee ${userId} to event ${eventId}, new count: ${newCount}, total attendees: ${updatedAttendees.length}`);
 
         // Clear relevant caches
         try {
@@ -53,7 +64,7 @@ export async function addAttendeeSimple(eventId: string, userId: string): Promis
 }
 
 /**
- * Remove attendee (simple counter decrement)
+ * Remove attendee (simple counter decrement + legacy attendees array)
  */
 export async function removeAttendeeSimple(eventId: string, userId: string): Promise<boolean> {
     try {
@@ -64,7 +75,17 @@ export async function removeAttendeeSimple(eventId: string, userId: string): Pro
             eventId
         );
 
-        // Simply decrement the count (don't go below 0)
+        // Get current attendees array (for UI compatibility)
+        const currentAttendees: string[] = Array.isArray(currentEvent.attendees) ? currentEvent.attendees : [];
+
+        // Check if user is actually attending
+        if (!currentAttendees.includes(userId)) {
+            authDebug.info(`User ${userId} is not attending event ${eventId}`);
+            return true;
+        }
+
+        // Remove user from attendees array and decrement the count
+        const updatedAttendees = currentAttendees.filter(id => id !== userId);
         const newCount = Math.max(0, (currentEvent.attendeeCount || 0) - 1);
 
         await databases.updateDocument(
@@ -72,12 +93,13 @@ export async function removeAttendeeSimple(eventId: string, userId: string): Pro
             config.eventsCollectionID!,
             eventId,
             {
-                attendeeCount: newCount,
+                attendees: updatedAttendees, // Update IDs for UI avatar display
+                attendeeCount: newCount,     // Keep counter for performance
                 lastActivityAt: new Date().toISOString(),
             }
         );
 
-        authDebug.info(`Simple: Removed attendee ${userId} from event ${eventId}, new count: ${newCount}`);
+        authDebug.info(`Simple: Removed attendee ${userId} from event ${eventId}, new count: ${newCount}, total attendees: ${updatedAttendees.length}`);
 
         // Clear relevant caches
         try {

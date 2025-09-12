@@ -1,3 +1,4 @@
+import { Background } from '@/components/Background';
 import { getEventEmoji } from '@/constants/categories';
 import icons from '@/constants/icons';
 import { addEventAttendee, addEventInvitation, getEventAttendees, getEventInvitees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
@@ -12,7 +13,7 @@ import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ShareInviteModal from '../../../components/ShareInviteModal';
 import { useEvents } from '../context/EventContext';
@@ -58,6 +59,8 @@ const EventDetailsModal = ({
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [attendeePhotoUrls, setAttendeePhotoUrls] = useState<Record<string, string | null>>({});
+  const [inviteeProfiles, setInviteeProfiles] = useState<any[]>([]);
+  const [inviteeCount, setInviteeCount] = useState(0);
   const [friends, setFriends] = useState<any[]>([]);
   const [friendPhotoUrls, setFriendPhotoUrls] = useState<Record<string, string | null>>({});
   const [inviting, setInviting] = useState(false);
@@ -182,26 +185,73 @@ const EventDetailsModal = ({
 
       setLoadingAttendees(true);
       try {
-        // Prefer junction table for attendees; fallback to legacy array only if junction fails
+        // Prefer junction table for attendees; fallback to legacy array if junction is empty or fails
         let attendeeIds: string[] = [];
+        let useJunction = false;
+
         try {
           // Prefer junction table
           const junction = await getEventAttendees(event.$id);
-          if (Array.isArray(junction) && junction.length > 0) {
+          if (Array.isArray(junction)) {
             attendeeIds = junction;
+            useJunction = true;
+            console.log(`Junction table returned ${junction.length} attendees for event ${event.$id}`);
           }
         } catch (err) {
-          // fallback to legacy in-document attendees if present
-          if (Array.isArray(event?.attendees)) attendeeIds = event.attendees;
+          console.warn('Junction table attendees failed:', err);
+          useJunction = false;
+        }
+
+        // If junction table returned empty array or failed, try legacy attendees
+        if (!useJunction || attendeeIds.length === 0) {
+          console.log('Event data:', JSON.stringify(event, null, 2));
+          if (Array.isArray(event?.attendees) && event.attendees.length > 0) {
+            attendeeIds = event.attendees;
+            console.log(`Using legacy attendees (${event.attendees.length} found):`, attendeeIds);
+          } else {
+            console.log(`No attendees found in either junction table or legacy field for event ${event.$id}`);
+            console.log(`Event.attendees is:`, event?.attendees);
+          }
+        }
+
+        // Also fetch invitee count and profiles
+        try {
+          const inviteeIds = await getEventInvitees(event.$id);
+          if (mounted && Array.isArray(inviteeIds)) {
+            setInviteeCount(inviteeIds.length);
+
+            // Fetch invitee profiles for avatars
+            if (inviteeIds.length > 0) {
+              try {
+                const profiles = await getUsersByIds(inviteeIds);
+                if (mounted) {
+                  setInviteeProfiles(profiles);
+                }
+              } catch (profileError) {
+                console.error('Error fetching invitee profiles:', profileError);
+                if (mounted) setInviteeProfiles([]);
+              }
+            } else {
+              if (mounted) setInviteeProfiles([]);
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching invitees:', err);
+          if (mounted) {
+            setInviteeCount(0);
+            setInviteeProfiles([]);
+          }
         }
 
         if (!mounted) return;
 
         if (attendeeIds.length > 0) {
           try {
+            console.log(`Fetching profiles for ${attendeeIds.length} attendees:`, attendeeIds);
             const profiles = await getUsersByIds(attendeeIds);
             if (!mounted) return;
 
+            console.log(`Successfully fetched ${profiles.length} attendee profiles`);
             setAttendeeProfiles(profiles);
 
             // Fetch profile photos for attendees
@@ -218,11 +268,24 @@ const EventDetailsModal = ({
 
             if (mounted) {
               setAttendeePhotoUrls(photoUrls);
+              console.log(`Set photo URLs for ${Object.keys(photoUrls).length} attendees`);
             }
           } catch (error) {
             console.error('Error fetching attendee profiles:', error);
+            // Reset to empty on error
+            if (mounted) {
+              setAttendeeProfiles([]);
+              setAttendeePhotoUrls({});
+            }
           }
         } else {
+          console.log('No attendees found for event', event.$id);
+          setAttendeeProfiles([]);
+          setAttendeePhotoUrls({});
+        }
+      } catch (overallError) {
+        console.error('Overall error in fetchAttendeeProfiles:', overallError);
+        if (mounted) {
           setAttendeeProfiles([]);
           setAttendeePhotoUrls({});
         }
@@ -371,123 +434,158 @@ const EventDetailsModal = ({
       visible={!!event}
       onRequestClose={onClose}
     >
-      <View style={styles.centeredView}>
-        <View style={styles.modalView}>
-          {/* Header with black background and invite button */}
-          <View style={[styles.header, { backgroundColor: colors.primary }]}>
-            <Text style={[styles.headerTitle, { color: colors.buttonText }]}>{event.title}</Text>
-            <View style={styles.headerButtons}>
-              {isAttending && onChat && (
-                <TouchableOpacity style={styles.headerButton} onPress={() => onChat(event)}>
-                  <Image source={icons.chat} style={[styles.headerChatIcon, { tintColor: colors.buttonText }]} />
+      <Background>
+        <View style={styles.centeredView}>
+          <View style={[styles.modalView, { backgroundColor: colors.card }]}>
+            {/* Modern Header */}
+            <View style={[styles.modernHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+              <Text style={[styles.modernHeaderTitle, { color: colors.text }]}>{event.title}</Text>
+              <View style={styles.headerButtons}>
+                {isAttending && onChat && (
+                  <TouchableOpacity style={styles.headerButton} onPress={() => onChat(event)}>
+                    <Image source={icons.chat} style={[styles.headerChatIcon, { tintColor: colors.primary }]} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.headerButton} onPress={() => setShowShareModal(true)}>
+                  <MaterialIcons name="share" size={24} color={colors.primary} />
                 </TouchableOpacity>
-              )}
-              <TouchableOpacity style={styles.headerButton} onPress={() => setShowShareModal(true)}>
-                <MaterialIcons name="share" size={24} color={colors.buttonText} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.headerButton} onPress={handleInviteFriend}>
-                <MaterialIcons name="person-add" size={24} color={colors.buttonText} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.headerButton} onPress={onClose}>
-                <MaterialIcons name="close" size={24} color={colors.buttonText} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <ScrollView showsVerticalScrollIndicator={false} style={styles.contentContainer} contentContainerStyle={{ minHeight: 300 }}>
-            {/* Event Emoji */}
-            <View style={styles.eventEmojiContainer}>
-              <Text style={styles.eventEmoji}>{getEventEmoji(event.tags || [])}</Text>
-            </View>
-
-            {/* Creator Info */}
-            <View style={styles.creatorInfo}>
-              <UserAvatar
-                photoUrl={getCreatorPhotoUrl(event.creatorId)}
-                name={getCreatorName(event.creatorId) || 'Unknown Creator'}
-                size={20}
-              />
-              <Text style={styles.creatorName}>
-                {getCreatorName(event.creatorId) || 'Unknown Creator'}
-              </Text>
-            </View>
-
-            {/* Event Details */}
-            <TouchableOpacity
-              style={styles.detailRow}
-              onPress={() => {
-                try {
-                  const evAny = event as any;
-                  if (evAny.locationLat && evAny.locationLng) {
-                    const url = `https://www.google.com/maps/search/?api=1&query=${evAny.locationLat},${evAny.locationLng}`;
-                    Linking.openURL(url);
-                  } else if (event.location) {
-                    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`;
-                    Linking.openURL(url);
-                  }
-                } catch (err) {
-                  console.error('Failed to open maps:', err);
-                }
-              }}
-            >
-              <Image source={icons.location} style={styles.detailIcon} />
-              <Text style={[styles.detailText, { textDecorationLine: 'underline' }]}>{event.location}</Text>
-            </TouchableOpacity>
-            <View style={styles.detailRow}>
-              <Image source={icons.calendar} style={styles.detailIcon} />
-              <Text style={styles.detailText}>
-                {event.startTime && dayjs(event.startTime).isValid() ? dayjs(event.startTime).format('MMM D, YYYY h:mm A') : 'Invalid date'}
-                {' - '}
-                {event.endTime && dayjs(event.endTime).isValid() ? dayjs(event.endTime).format('h:mm A') : 'Invalid date'}
-              </Text>
-            </View>
-
-            {/* Event Description */}
-            <Text style={[styles.description, { color: colors.text }]}>{event.description || 'No description available.'}</Text>
-
-            {/* Attendees Section */}
-            {attendeeProfiles.length > 0 && (
-              <View style={styles.attendeesSection}>
-                <Pressable onPress={() => setShowAttendeesModal(true)}>
-                  <Text style={styles.attendeesTitle}>
-                    Attending ({attendeeProfiles.length})
-                  </Text>
-                </Pressable>
-                <AttendeesList profiles={attendeeProfiles} limit={5 as any} />
+                <TouchableOpacity style={styles.headerButton} onPress={handleInviteFriend}>
+                  <MaterialIcons name="person-add" size={24} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.headerButton} onPress={onClose}>
+                  <MaterialIcons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
               </View>
-            )}
-
-            {/* Action Buttons */}
-            <View style={styles.actionButtons}>
-              {!isCreator && (
-                <TouchableOpacity
-                  style={[
-                    styles.button,
-                    isAttending ? styles.notAttendingButton : styles.attendingButton,
-                    { backgroundColor: isAttending ? colors.error : colors.primary }
-                  ]}
-                  onPress={isAttending ? handleNotAttendClick : handleAttendClick}
-                >
-                  <Text style={[styles.buttonText, { color: colors.buttonText }]}>
-                    {checkingAttendance ? 'Loading...' : (isAttending ? 'Not Attending' : 'Attend Event')}
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              {isCreator && (
-                <TouchableOpacity
-                  style={[styles.button, styles.editButtonBottom, { backgroundColor: colors.primary }]}
-                  onPress={() => onEdit(event)}
-                >
-                  <Text style={[styles.buttonText, { color: colors.buttonText }]}>Edit Event</Text>
-                </TouchableOpacity>
-              )}
             </View>
-          </ScrollView>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.contentContainer} contentContainerStyle={{ minHeight: 300 }}>
+              {/* Event Emoji */}
+              <View style={styles.eventEmojiContainer}>
+                <Text style={styles.eventEmoji}>{getEventEmoji(event.tags || [])}</Text>
+              </View>
+
+              {/* Creator Info */}
+              <View style={styles.creatorInfo}>
+                <UserAvatar
+                  photoUrl={getCreatorPhotoUrl(event.creatorId)}
+                  name={getCreatorName(event.creatorId) || 'Unknown Creator'}
+                  size={20}
+                />
+                <Text style={[styles.creatorName, { color: colors.textSecondary }]}>
+                  {getCreatorName(event.creatorId) || 'Unknown Creator'}
+                </Text>
+              </View>
+
+              {/* Event Details */}
+              <TouchableOpacity
+                style={styles.detailRow}
+                onPress={() => {
+                  try {
+                    const evAny = event as any;
+                    if (evAny.locationLat && evAny.locationLng) {
+                      const url = `https://www.google.com/maps/search/?api=1&query=${evAny.locationLat},${evAny.locationLng}`;
+                      Linking.openURL(url);
+                    } else if (event.location) {
+                      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`;
+                      Linking.openURL(url);
+                    }
+                  } catch (err) {
+                    console.error('Failed to open maps:', err);
+                  }
+                }}
+              >
+                <Image source={icons.location} style={[styles.detailIcon, { tintColor: colors.primary }]} />
+                <Text style={[styles.detailText, { textDecorationLine: 'underline', color: colors.text }]}>{event.location}</Text>
+              </TouchableOpacity>
+              <View style={styles.detailRow}>
+                <Image source={icons.calendar} style={[styles.detailIcon, { tintColor: colors.primary }]} />
+                <Text style={[styles.detailText, { color: colors.text }]}>
+                  {event.startTime && dayjs(event.startTime).isValid() ? dayjs(event.startTime).format('MMM D, YYYY h:mm A') : 'Invalid date'}
+                  {' - '}
+                  {event.endTime && dayjs(event.endTime).isValid() ? dayjs(event.endTime).format('h:mm A') : 'Invalid date'}
+                </Text>
+              </View>
+
+              {/* Event Description */}
+              <Text style={[styles.description, { color: colors.text }]}>{event.description || 'No description available.'}</Text>
+
+              {/* Attendees Section */}
+              {attendeeProfiles.length > 0 && (
+                <View style={styles.attendeesSection}>
+                  <Pressable onPress={() => setShowAttendeesModal(true)}>
+                    <Text style={[styles.attendeesTitle, { color: colors.text }]}>
+                      Attending ({attendeeProfiles.length})
+                    </Text>
+                  </Pressable>
+                  <AttendeesList profiles={attendeeProfiles} limit={5 as any} />
+                </View>
+              )}
+
+              {/* Invitees Section */}
+              {inviteeProfiles.length > 0 && (
+                <View style={styles.attendeesSection}>
+                  <Text style={[styles.attendeesTitle, { color: colors.text }]}>
+                    Invited ({inviteeProfiles.length})
+                  </Text>
+                  <AttendeesList profiles={inviteeProfiles} limit={5 as any} />
+                </View>
+              )}
+
+              {/* Action Buttons */}
+              <View style={styles.actionButtons}>
+                {!isCreator && (
+                  <TouchableOpacity
+                    style={[
+                      styles.button,
+                      isAttending ? styles.notAttendingButton : styles.attendingButton,
+                      { backgroundColor: isAttending ? colors.error : colors.primary }
+                    ]}
+                    onPress={isAttending ? handleNotAttendClick : handleAttendClick}
+                  >
+                    <Text style={[styles.buttonText, { color: colors.buttonText }]}>
+                      {checkingAttendance ? 'Loading...' : (isAttending ? 'Not Attending' : 'Attend Event')}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {isCreator && (
+                  <TouchableOpacity
+                    style={[styles.button, styles.editButtonBottom, { backgroundColor: colors.primary }]}
+                    onPress={() => onEdit(event)}
+                  >
+                    <Text style={[styles.buttonText, { color: colors.buttonText }]}>Edit Event</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </ScrollView>
+          </View>
         </View>
-      </View>
+      </Background>
 
       {/* Full Attendees List Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showAttendeesModal}
+        onRequestClose={() => setShowAttendeesModal(false)}
+      >
+        <View style={styles.centeredView}>
+          <View style={[styles.modalView, styles.attendeesModalView]}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowAttendeesModal(false)}
+            >
+              <MaterialIcons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+
+            <Text style={styles.attendeesModalTitle}>Attendees</Text>
+
+            <ScrollView style={styles.attendeesModalList}>
+              <AttendeesList profiles={attendeeProfiles} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
       <Modal
         animationType="slide"
         transparent={true}
@@ -770,22 +868,63 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },
+  modernHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderBottomWidth: 1,
+  },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     flex: 1,
   },
+  modernHeaderTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    flex: 1,
+  },
   headerButtons: {
     flexDirection: 'row',
-    gap: 5,
+    gap: 8,
   },
   headerButton: {
-    padding: 5,
+    padding: 8,
+    borderRadius: 8,
   },
   headerChatIcon: {
     width: 20,
     height: 20,
     tintColor: 'white',
+  },
+  eventStatsSection: {
+    flexDirection: 'row',
+    marginVertical: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  statDivider: {
+    width: 1,
+    height: '100%',
+    marginHorizontal: 20,
   },
   contentContainer: {
     padding: 20,

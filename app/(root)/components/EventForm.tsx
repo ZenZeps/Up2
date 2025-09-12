@@ -1,3 +1,4 @@
+import { Background } from '@/components/Background';
 import { CATEGORIES } from '@/constants/categories';
 import { addEventAttendee, addEventInvitation, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
@@ -100,7 +101,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [endDate, setEndDate] = useState<Date>(new Date());
 
-  const { colors } = useTheme();
+  const { colors, isColorful } = useTheme();
   const { addEvent, updateEvent, refetchEvents } = useEvents();
 
   // Helper functions
@@ -360,520 +361,543 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={() => onClose(false)}>
-      <LinearGradient
-        colors={['#FF6B6B', '#4ECDC4', '#45B7D1']}
-        style={styles.gradientContainer}
-      >
-        <SafeAreaView style={styles.safeArea}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => onClose(false)} style={styles.headerButton}>
-              <MaterialIcons name="close" size={24} color="#fff" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>
-              {event ? 'Edit Event' : 'New Event'}
-            </Text>
-            {editable && (
-              <TouchableOpacity
-                onPress={handleSave}
-                style={styles.headerButton}
-                disabled={isProcessing}
-              >
-                <Text style={[
-                  styles.headerButtonText,
-                  isProcessing && styles.headerButtonTextDisabled
-                ]}>
-                  {isProcessing ? 'Saving...' : 'Save'}
-                </Text>
+      {isColorful ? (
+        <LinearGradient
+          colors={['#FF6B6B', '#4ECDC4', '#45B7D1']}
+          style={styles.gradientContainer}
+        >
+          <SafeAreaView style={styles.safeArea}>
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => onClose(false)} style={styles.headerButton}>
+                <MaterialIcons name="close" size={24} color="#fff" />
               </TouchableOpacity>
-            )}
-            {!editable && <View style={{ width: 48 }} />}
-          </View>
-
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
-            {/* Production error indicator */}
-            {!DateTimePickerModal && (
-              <View style={styles.warningContainer}>
-                <MaterialIcons name="warning" size={20} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={styles.warningText}>
-                  Using fallback components for better compatibility
-                </Text>
-              </View>
-            )}
-
-            {/* Event Name */}
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Event Name</Text>
-              <View style={styles.inputWrapper}>
-                <MaterialIcons name="event" size={20} color="rgba(255,255,255,0.7)" style={styles.inputIcon} />
-                <TextInput
-                  placeholder="What's happening?"
-                  value={title}
-                  onChangeText={setTitle}
-                  style={styles.textInput}
-                  placeholderTextColor="rgba(255,255,255,0.6)"
-                  editable={editable}
-                />
-              </View>
+              <Text style={styles.headerTitle}>
+                {event ? 'Edit Event' : 'New Event'}
+              </Text>
+              {editable && (
+                <TouchableOpacity
+                  onPress={handleSave}
+                  style={styles.headerButton}
+                  disabled={isProcessing}
+                >
+                  <Text style={[
+                    styles.headerButtonText,
+                    isProcessing && styles.headerButtonTextDisabled
+                  ]}>
+                    {isProcessing ? 'Saving...' : 'Save'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {!editable && <View style={{ width: 48 }} />}
             </View>
 
-            {/* Location */}
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Location</Text>
-              <View style={styles.inputWrapper}>
-                <MaterialIcons name="location-on" size={20} color="rgba(255,255,255,0.7)" style={styles.inputIcon} />
-                <View style={{ flex: 1 }}>
-                  {USE_BUDGET_MODE ? (
-                    <BudgetPlaceAutocomplete
-                      value={location}
-                      onChangeText={(v: string) => {
-                        setLocation(v);
-                        // Clear coordinates when user types manually
-                        setLocationLat(null);
-                        setLocationLng(null);
-                      }}
-                      onSelect={(address: string, lat?: number, lng?: number) => {
-                        setLocation(address);
-                        if (typeof lat === 'number' && typeof lng === 'number') {
-                          setLocationLat(lat);
-                          setLocationLng(lng);
-                          console.log('FREE location selected:', { address, lat, lng });
-                        } else {
-                          console.log('Manual location selected:', address);
-                        }
-                      }}
-                      placeholder="Search restaurants, venues, addresses... (FREE)"
-                    />
-                  ) : (
-                    <PlaceAutocomplete
-                      value={location}
-                      onChangeText={(v: string) => {
-                        setLocation(v);
-                        // Clear coordinates when user types manually
-                        setLocationLat(null);
-                        setLocationLng(null);
-                      }}
-                      onSelect={(address: string, lat?: number, lng?: number) => {
-                        setLocation(address);
-                        if (typeof lat === 'number' && typeof lng === 'number') {
-                          setLocationLat(lat);
-                          setLocationLng(lng);
-                          console.log('Google Places location selected:', { address, lat, lng });
-                        } else {
-                          console.log('Location selected without coordinates:', address);
-                        }
-                      }}
-                      placeholder="Search for restaurants, venues, addresses..."
-                    />
-                  )}
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
+              {/* Production error indicator */}
+              {!DateTimePickerModal && (
+                <View style={styles.warningContainer}>
+                  <MaterialIcons name="warning" size={20} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.warningText}>
+                    Using fallback components for better compatibility
+                  </Text>
+                </View>
+              )}
+
+              {/* Event Name */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Event Name</Text>
+                <View style={styles.inputWrapper}>
+                  <MaterialIcons name="event" size={20} color="rgba(255,255,255,0.7)" style={styles.inputIcon} />
+                  <TextInput
+                    placeholder="What's happening?"
+                    value={title}
+                    onChangeText={setTitle}
+                    style={styles.textInput}
+                    placeholderTextColor="rgba(255,255,255,0.6)"
+                    editable={editable}
+                  />
                 </View>
               </View>
 
-              {/* Location validation indicator */}
-              {location.length > 0 && (
-                <View style={styles.locationValidationContainer}>
-                  {locationLat && locationLng ? (
-                    <View style={styles.locationValidated}>
-                      <MaterialIcons name="verified-user" size={16} color="#10B981" />
-                      <Text style={styles.locationValidatedText}>
-                        {USE_BUDGET_MODE ? 'FREE verified location with GPS coordinates' : 'Verified location with GPS coordinates'}
-                      </Text>
-                    </View>
-                  ) : location.length > 3 ? (
-                    <View style={styles.locationUnverified}>
-                      <MaterialIcons name="info" size={16} color="#F59E0B" />
-                      <Text style={styles.locationUnverifiedText}>
-                        {USE_BUDGET_MODE ? 'Select from FREE suggestions for GPS coordinates' : 'Select from suggestions for accurate location'}
-                      </Text>
-                    </View>
-                  ) : null}
+              {/* Location */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Location</Text>
+                <View style={styles.inputWrapper}>
+                  <MaterialIcons name="location-on" size={20} color="rgba(255,255,255,0.7)" style={styles.inputIcon} />
+                  <View style={{ flex: 1 }}>
+                    {USE_BUDGET_MODE ? (
+                      <BudgetPlaceAutocomplete
+                        value={location}
+                        onChangeText={(v: string) => {
+                          setLocation(v);
+                          // Clear coordinates when user types manually
+                          setLocationLat(null);
+                          setLocationLng(null);
+                        }}
+                        onSelect={(address: string, lat?: number, lng?: number) => {
+                          setLocation(address);
+                          if (typeof lat === 'number' && typeof lng === 'number') {
+                            setLocationLat(lat);
+                            setLocationLng(lng);
+                            console.log('FREE location selected:', { address, lat, lng });
+                          } else {
+                            console.log('Manual location selected:', address);
+                          }
+                        }}
+                        placeholder="Search restaurants, venues, addresses... (FREE)"
+                      />
+                    ) : (
+                      <PlaceAutocomplete
+                        value={location}
+                        onChangeText={(v: string) => {
+                          setLocation(v);
+                          // Clear coordinates when user types manually
+                          setLocationLat(null);
+                          setLocationLng(null);
+                        }}
+                        onSelect={(address: string, lat?: number, lng?: number) => {
+                          setLocation(address);
+                          if (typeof lat === 'number' && typeof lng === 'number') {
+                            setLocationLat(lat);
+                            setLocationLng(lng);
+                            console.log('Google Places location selected:', { address, lat, lng });
+                          } else {
+                            console.log('Location selected without coordinates:', address);
+                          }
+                        }}
+                        placeholder="Search for restaurants, venues, addresses..."
+                      />
+                    )}
+                  </View>
+                </View>
 
-                  {/* Budget mode indicator */}
-                  {USE_BUDGET_MODE && (
-                    <View style={styles.budgetModeIndicator}>
-                      <MaterialIcons name="savings" size={14} color="#10B981" />
-                      <Text style={styles.budgetModeText}>
-                        Using FREE OpenStreetMap • No API costs
+                {/* Location validation indicator */}
+                {location.length > 0 && (
+                  <View style={styles.locationValidationContainer}>
+                    {locationLat && locationLng ? (
+                      <View style={styles.locationValidated}>
+                        <MaterialIcons name="verified-user" size={16} color="#10B981" />
+                        <Text style={styles.locationValidatedText}>
+                          {USE_BUDGET_MODE ? 'FREE verified location with GPS coordinates' : 'Verified location with GPS coordinates'}
+                        </Text>
+                      </View>
+                    ) : location.length > 3 ? (
+                      <View style={styles.locationUnverified}>
+                        <MaterialIcons name="info" size={16} color="#F59E0B" />
+                        <Text style={styles.locationUnverifiedText}>
+                          {USE_BUDGET_MODE ? 'Select from FREE suggestions for GPS coordinates' : 'Select from suggestions for accurate location'}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {/* Budget mode indicator */}
+                    {USE_BUDGET_MODE && (
+                      <View style={styles.budgetModeIndicator}>
+                        <MaterialIcons name="savings" size={14} color="#10B981" />
+                        <Text style={styles.budgetModeText}>
+                          Using FREE OpenStreetMap • No API costs
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* Description */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Description</Text>
+                <View style={styles.inputWrapper}>
+                  <MaterialIcons name="description" size={20} color="rgba(255,255,255,0.7)" style={[styles.inputIcon, { alignSelf: 'flex-start', marginTop: 12 }]} />
+                  <TextInput
+                    placeholder="Tell people more about your event..."
+                    value={description}
+                    onChangeText={setDescription}
+                    style={[styles.textInput, styles.textInputMultiline]}
+                    placeholderTextColor="rgba(255,255,255,0.6)"
+                    multiline
+                    editable={editable}
+                  />
+                </View>
+              </View>
+
+              {/* Date & Time - Google Calendar Style */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Date & Time</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (editable) {
+                      setShowGoogleDatePicker(true);
+                    }
+                  }}
+                  style={styles.googleDatePickerButton}
+                  disabled={!editable}
+                >
+                  <View style={styles.dateTimeDisplay}>
+                    <View style={styles.dateTimeRow}>
+                      <MaterialIcons name="event" size={20} color="rgba(255,255,255,0.7)" />
+                      <View style={styles.dateTimeInfo}>
+                        <Text style={styles.dateRangeText}>
+                          {dayjs(startDate).format('MMM D')}
+                          {!dayjs(startDate).isSame(endDate, 'day') &&
+                            ` - ${dayjs(endDate).format('MMM D')}`}
+                        </Text>
+                        {!isAllDay && (
+                          <Text style={styles.timeRangeText}>
+                            {dayjs(startDate).format('h:mm A')} - {dayjs(endDate).format('h:mm A')}
+                          </Text>
+                        )}
+                        {isAllDay && (
+                          <Text style={styles.allDayText}>All day</Text>
+                        )}
+                      </View>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* Tags Section */}
+              <View style={styles.tagsContainer}>
+                <Text style={styles.inputLabel}>Event Tags</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.tagsScrollView}
+                >
+                  {CATEGORIES.map((category) => (
+                    <TouchableOpacity
+                      key={category.value}
+                      onPress={() => editable && handleTagToggle(category.value)}
+                      style={[
+                        styles.tagButton,
+                        tags.includes(category.value)
+                          ? styles.tagButtonSelected
+                          : styles.tagButtonUnselected
+                      ]}
+                      disabled={!editable}
+                    >
+                      <Text style={styles.tagEmoji}>{category.emoji}</Text>
+                      <Text style={[
+                        styles.tagText,
+                        tags.includes(category.value)
+                          ? styles.tagTextSelected
+                          : styles.tagTextUnselected
+                      ]}>
+                        {category.label}
                       </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Privacy Section */}
+              <View style={styles.privacyContainer}>
+                <Text style={styles.inputLabel}>Privacy</Text>
+                <TouchableOpacity
+                  onPress={() => editable && setIsPrivate(!isPrivate)}
+                  style={styles.privacyOption}
+                  disabled={!editable}
+                >
+                  <View style={[
+                    styles.checkbox,
+                    isPrivate ? styles.checkboxChecked : styles.checkboxUnchecked
+                  ]}>
+                    {isPrivate && (
+                      <MaterialIcons name="check" size={14} color="#000" />
+                    )}
+                  </View>
+                  <View style={styles.privacyTextContainer}>
+                    <Text style={styles.privacyTitle}>Private Event</Text>
+                    <Text style={styles.privacyDescription}>
+                      Only invited users can see this event
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* Friend Invitations */}
+              {editable && (
+                <View style={styles.inviteSection}>
+                  <Text style={styles.inputLabel}>Invite Friends</Text>
+                  <TouchableOpacity onPress={handleOpenFriendPicker} style={styles.inviteButton}>
+                    <MaterialIcons name="person-add" size={20} color="rgba(255,255,255,0.7)" />
+                    <Text style={styles.inviteButtonText}>Add Friends</Text>
+                  </TouchableOpacity>
+
+                  {inviteeIds.length > 0 && (
+                    <View style={styles.inviteesContainer}>
+                      {inviteeIds.slice(0, 3).map((inviteeId) => {
+                        const friendProfile = friendProfiles.find(f => f.$id === inviteeId);
+                        return (
+                          <View key={inviteeId} style={styles.inviteeItem}>
+                            <UserAvatar
+                              photoUrl={friendPhotoUrls[inviteeId]}
+                              firstName={friendProfile?.firstName}
+                              lastName={friendProfile?.lastName}
+                              name={friendProfile?.name}
+                              size={32}
+                            />
+                            <View style={styles.inviteeInfo}>
+                              <Text style={styles.inviteeName}>
+                                {userDisplayUtils.getFullName(friendProfile) || friendProfile?.name || 'Unknown'}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              onPress={() => setInviteeIds(inviteeIds.filter(id => id !== inviteeId))}
+                              style={styles.removeButton}
+                            >
+                              <MaterialIcons name="close" size={18} color="rgba(255,255,255,0.7)" />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                      {inviteeIds.length > 3 && (
+                        <Text style={styles.privacyDescription}>
+                          +{inviteeIds.length - 3} more invited
+                        </Text>
+                      )}
                     </View>
                   )}
                 </View>
               )}
-            </View>
 
-            {/* Description */}
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Description</Text>
-              <View style={styles.inputWrapper}>
-                <MaterialIcons name="description" size={20} color="rgba(255,255,255,0.7)" style={[styles.inputIcon, { alignSelf: 'flex-start', marginTop: 12 }]} />
-                <TextInput
-                  placeholder="Tell people more about your event..."
-                  value={description}
-                  onChangeText={setDescription}
-                  style={[styles.textInput, styles.textInputMultiline]}
-                  placeholderTextColor="rgba(255,255,255,0.6)"
-                  multiline
-                  editable={editable}
-                />
-              </View>
-            </View>
-
-            {/* Date & Time - Google Calendar Style */}
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Date & Time</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  if (editable) {
-                    setShowGoogleDatePicker(true);
-                  }
-                }}
-                style={styles.googleDatePickerButton}
-                disabled={!editable}
-              >
-                <View style={styles.dateTimeDisplay}>
-                  <View style={styles.dateTimeRow}>
-                    <MaterialIcons name="event" size={20} color="rgba(255,255,255,0.7)" />
-                    <View style={styles.dateTimeInfo}>
-                      <Text style={styles.dateRangeText}>
-                        {dayjs(startDate).format('MMM D')}
-                        {!dayjs(startDate).isSame(endDate, 'day') &&
-                          ` - ${dayjs(endDate).format('MMM D')}`}
-                      </Text>
-                      {!isAllDay && (
-                        <Text style={styles.timeRangeText}>
-                          {dayjs(startDate).format('h:mm A')} - {dayjs(endDate).format('h:mm A')}
-                        </Text>
-                      )}
-                      {isAllDay && (
-                        <Text style={styles.allDayText}>All day</Text>
-                      )}
-                    </View>
-                  </View>
-                  <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            {/* Tags Section */}
-            <View style={styles.tagsContainer}>
-              <Text style={styles.inputLabel}>Event Tags</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.tagsScrollView}
-              >
-                {CATEGORIES.map((category) => (
-                  <TouchableOpacity
-                    key={category.value}
-                    onPress={() => editable && handleTagToggle(category.value)}
-                    style={[
-                      styles.tagButton,
-                      tags.includes(category.value)
-                        ? styles.tagButtonSelected
-                        : styles.tagButtonUnselected
-                    ]}
-                    disabled={!editable}
-                  >
-                    <Text style={styles.tagEmoji}>{category.emoji}</Text>
-                    <Text style={[
-                      styles.tagText,
-                      tags.includes(category.value)
-                        ? styles.tagTextSelected
-                        : styles.tagTextUnselected
-                    ]}>
-                      {category.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-
-            {/* Privacy Section */}
-            <View style={styles.privacyContainer}>
-              <Text style={styles.inputLabel}>Privacy</Text>
-              <TouchableOpacity
-                onPress={() => editable && setIsPrivate(!isPrivate)}
-                style={styles.privacyOption}
-                disabled={!editable}
-              >
-                <View style={[
-                  styles.checkbox,
-                  isPrivate ? styles.checkboxChecked : styles.checkboxUnchecked
-                ]}>
-                  {isPrivate && (
-                    <MaterialIcons name="check" size={14} color="#000" />
-                  )}
-                </View>
-                <View style={styles.privacyTextContainer}>
-                  <Text style={styles.privacyTitle}>Private Event</Text>
-                  <Text style={styles.privacyDescription}>
-                    Only invited users can see this event
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            {/* Friend Invitations */}
-            {editable && (
-              <View style={styles.inviteSection}>
-                <Text style={styles.inputLabel}>Invite Friends</Text>
-                <TouchableOpacity onPress={handleOpenFriendPicker} style={styles.inviteButton}>
-                  <MaterialIcons name="person-add" size={20} color="rgba(255,255,255,0.7)" />
-                  <Text style={styles.inviteButtonText}>Add Friends</Text>
+              {/* Diagnostic Test Button for Development */}
+              {__DEV__ && (
+                <TouchableOpacity
+                  onPress={runDiagnosticTest}
+                  style={[styles.actionButton, { backgroundColor: 'rgba(251,191,36,0.9)' }]}
+                >
+                  <MaterialIcons name="bug-report" size={20} color="#fff" />
+                  <Text style={styles.actionButtonText}>Run Diagnostic Test</Text>
                 </TouchableOpacity>
+              )}
 
-                {inviteeIds.length > 0 && (
-                  <View style={styles.inviteesContainer}>
-                    {inviteeIds.slice(0, 3).map((inviteeId) => {
-                      const friendProfile = friendProfiles.find(f => f.$id === inviteeId);
-                      return (
-                        <View key={inviteeId} style={styles.inviteeItem}>
-                          <UserAvatar
-                            photoUrl={friendPhotoUrls[inviteeId]}
-                            firstName={friendProfile?.firstName}
-                            lastName={friendProfile?.lastName}
-                            name={friendProfile?.name}
-                            size={32}
-                          />
-                          <View style={styles.inviteeInfo}>
-                            <Text style={styles.inviteeName}>
-                              {userDisplayUtils.getFullName(friendProfile) || friendProfile?.name || 'Unknown'}
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => setInviteeIds(inviteeIds.filter(id => id !== inviteeId))}
-                            style={styles.removeButton}
-                          >
-                            <MaterialIcons name="close" size={18} color="rgba(255,255,255,0.7)" />
-                          </TouchableOpacity>
-                        </View>
-                      );
-                    })}
-                    {inviteeIds.length > 3 && (
-                      <Text style={styles.privacyDescription}>
-                        +{inviteeIds.length - 3} more invited
-                      </Text>
-                    )}
-                  </View>
-                )}
-              </View>
-            )}
+              {/* Google Calendar Style Date Picker */}
+              <GoogleCalendarDatePicker
+                visible={showGoogleDatePicker}
+                onClose={() => setShowGoogleDatePicker(false)}
+                onSave={(newStartDate, newEndDate, newIsAllDay) => {
+                  setStartDate(newStartDate);
+                  setEndDate(newEndDate);
+                  setIsAllDay(newIsAllDay);
+                }}
+                initialStartDate={startDate}
+                initialEndDate={endDate}
+                initialIsAllDay={isAllDay}
+                title={title}
+              />
 
-            {/* Diagnostic Test Button for Development */}
-            {__DEV__ && (
-              <TouchableOpacity
-                onPress={runDiagnosticTest}
-                style={[styles.actionButton, { backgroundColor: 'rgba(251,191,36,0.9)' }]}
-              >
-                <MaterialIcons name="bug-report" size={20} color="#fff" />
-                <Text style={styles.actionButtonText}>Run Diagnostic Test</Text>
-              </TouchableOpacity>
-            )}
+              {/* Fallback Date Time Pickers (for legacy support) */}
+              {DateTimePickerModal ? (
+                <>
+                  <DateTimePickerModal
+                    isVisible={showStartPicker}
+                    mode="datetime"
+                    date={startDate}
+                    onConfirm={handleStartDateConfirm}
+                    onCancel={() => setShowStartPicker(false)}
+                  />
+                  <DateTimePickerModal
+                    isVisible={showEndPicker}
+                    mode="datetime"
+                    date={endDate}
+                    onConfirm={handleEndDateConfirm}
+                    onCancel={() => setShowEndPicker(false)}
+                  />
+                </>
+              ) : (
+                <>
+                  <FallbackDateTimePicker
+                    isVisible={showStartPicker}
+                    mode="datetime"
+                    date={startDate}
+                    onConfirm={handleStartDateConfirm}
+                    onCancel={() => setShowStartPicker(false)}
+                  />
+                  <FallbackDateTimePicker
+                    isVisible={showEndPicker}
+                    mode="datetime"
+                    date={endDate}
+                    onConfirm={handleEndDateConfirm}
+                    onCancel={() => setShowEndPicker(false)}
+                  />
+                </>
+              )}
 
-            {/* Google Calendar Style Date Picker */}
-            <GoogleCalendarDatePicker
-              visible={showGoogleDatePicker}
-              onClose={() => setShowGoogleDatePicker(false)}
-              onSave={(newStartDate, newEndDate, newIsAllDay) => {
-                setStartDate(newStartDate);
-                setEndDate(newEndDate);
-                setIsAllDay(newIsAllDay);
-              }}
-              initialStartDate={startDate}
-              initialEndDate={endDate}
-              initialIsAllDay={isAllDay}
-              title={title}
-            />
-
-            {/* Fallback Date Time Pickers (for legacy support) */}
-            {DateTimePickerModal ? (
-              <>
-                <DateTimePickerModal
-                  isVisible={showStartPicker}
-                  mode="datetime"
-                  date={startDate}
-                  onConfirm={handleStartDateConfirm}
-                  onCancel={() => setShowStartPicker(false)}
-                />
-                <DateTimePickerModal
-                  isVisible={showEndPicker}
-                  mode="datetime"
-                  date={endDate}
-                  onConfirm={handleEndDateConfirm}
-                  onCancel={() => setShowEndPicker(false)}
-                />
-              </>
-            ) : (
-              <>
-                <FallbackDateTimePicker
-                  isVisible={showStartPicker}
-                  mode="datetime"
-                  date={startDate}
-                  onConfirm={handleStartDateConfirm}
-                  onCancel={() => setShowStartPicker(false)}
-                />
-                <FallbackDateTimePicker
-                  isVisible={showEndPicker}
-                  mode="datetime"
-                  date={endDate}
-                  onConfirm={handleEndDateConfirm}
-                  onCancel={() => setShowEndPicker(false)}
-                />
-              </>
-            )}
-
-            {/* Delete Event Button - Only for creators */}
-            {event && isCreator && (
-              <TouchableOpacity
-                onPress={async () => {
-                  Alert.alert(
-                    'Delete Event',
-                    'Are you sure you want to delete this event? This action cannot be undone.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Delete',
-                        style: 'destructive',
-                        onPress: async () => {
-                          try {
-                            await databases.deleteDocument(
-                              config.databaseID!,
-                              config.eventsCollectionID!,
-                              event.$id
-                            );
-                            await refetchEvents();
-                            onClose(true);
-                          } catch (err) {
-                            console.error("Error deleting event:", err);
-                            Alert.alert("Error", "Failed to delete event.");
+              {/* Delete Event Button - Only for creators */}
+              {event && isCreator && (
+                <TouchableOpacity
+                  onPress={async () => {
+                    Alert.alert(
+                      'Delete Event',
+                      'Are you sure you want to delete this event? This action cannot be undone.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              await databases.deleteDocument(
+                                config.databaseID!,
+                                config.eventsCollectionID!,
+                                event.$id
+                              );
+                              await refetchEvents();
+                              onClose(true);
+                            } catch (err) {
+                              console.error("Error deleting event:", err);
+                              Alert.alert("Error", "Failed to delete event.");
+                            }
                           }
                         }
-                      }
-                    ]
-                  );
-                }}
-                style={[styles.actionButton, styles.deleteButton]}
-              >
-                <MaterialIcons name="delete" size={20} color="#fff" />
-                <Text style={styles.actionButtonText}>Delete Event</Text>
-              </TouchableOpacity>
-            )}
+                      ]
+                    );
+                  }}
+                  style={[styles.actionButton, styles.deleteButton]}
+                >
+                  <MaterialIcons name="delete" size={20} color="#fff" />
+                  <Text style={styles.actionButtonText}>Delete Event</Text>
+                </TouchableOpacity>
+              )}
 
-            {/* Join/Leave Event - Only for non-creators */}
-            {event && !isCreator && (
-              <View>
-                {(inviteeIds.includes(currentUserId) || isAttending) ? (
-                  <TouchableOpacity
-                    onPress={async () => {
-                      try {
-                        await removeEventAttendee(event.$id, currentUserId);
-                        setInviteeIds(inviteeIds.filter((id) => id !== currentUserId));
-                        setIsAttending(false);
-                        await refetchEvents();
-                        onClose(true);
-                      } catch (err) {
-                        console.error("Error leaving event:", err);
-                        Alert.alert("Error", "Failed to leave event.");
-                      }
-                    }}
-                    style={[styles.actionButton, styles.leaveButton]}
-                  >
-                    <MaterialIcons name="exit-to-app" size={20} color="#fff" />
-                    <Text style={styles.actionButtonText}>Leave Event</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={async () => {
-                      try {
-                        await addEventAttendee(event.$id, currentUserId);
-                        setInviteeIds([...inviteeIds, currentUserId]);
-                        setIsAttending(true);
-                        await refetchEvents();
-                        onClose(true);
-                      } catch (err) {
-                        console.error("Error joining event:", err);
-                        Alert.alert("Error", "Failed to join event.");
-                      }
-                    }}
-                    style={[styles.actionButton, styles.joinButton]}
-                  >
-                    <MaterialIcons name="check" size={20} color="#fff" />
-                    <Text style={styles.actionButtonText}>Join Event</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-          </ScrollView>
-
-          {/* Friend Picker Modal */}
-          <Modal
-            visible={showFriendPicker}
-            animationType="slide"
-            presentationStyle="pageSheet"
-            onRequestClose={() => setShowFriendPicker(false)}
-          >
-            <LinearGradient
-              colors={['#FF6B6B', '#4ECDC4', '#45B7D1']}
-              style={styles.gradientContainer}
-            >
-              <SafeAreaView style={styles.safeArea}>
-                <View style={styles.friendPickerHeader}>
-                  <TouchableOpacity onPress={() => setShowFriendPicker(false)}>
-                    <Text style={styles.friendPickerCancel}>Cancel</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.friendPickerTitle}>Invite Friends</Text>
-                  <View style={{ width: 60 }} />
+              {/* Join/Leave Event - Only for non-creators */}
+              {event && !isCreator && (
+                <View>
+                  {(inviteeIds.includes(currentUserId) || isAttending) ? (
+                    <TouchableOpacity
+                      onPress={async () => {
+                        try {
+                          await removeEventAttendee(event.$id, currentUserId);
+                          setInviteeIds(inviteeIds.filter((id) => id !== currentUserId));
+                          setIsAttending(false);
+                          await refetchEvents();
+                          onClose(true);
+                        } catch (err) {
+                          console.error("Error leaving event:", err);
+                          Alert.alert("Error", "Failed to leave event.");
+                        }
+                      }}
+                      style={[styles.actionButton, styles.leaveButton]}
+                    >
+                      <MaterialIcons name="exit-to-app" size={20} color="#fff" />
+                      <Text style={styles.actionButtonText}>Leave Event</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={async () => {
+                        try {
+                          await addEventAttendee(event.$id, currentUserId);
+                          setInviteeIds([...inviteeIds, currentUserId]);
+                          setIsAttending(true);
+                          await refetchEvents();
+                          onClose(true);
+                        } catch (err) {
+                          console.error("Error joining event:", err);
+                          Alert.alert("Error", "Failed to join event.");
+                        }
+                      }}
+                      style={[styles.actionButton, styles.joinButton]}
+                    >
+                      <MaterialIcons name="check" size={20} color="#fff" />
+                      <Text style={styles.actionButtonText}>Join Event</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
+              )}
+            </ScrollView>
 
-                {loadingFriends ? (
-                  <View style={styles.friendPickerEmpty}>
-                    <MaterialIcons name="people" size={48} color="rgba(255,255,255,0.5)" />
-                    <Text style={styles.friendPickerEmptyText}>Loading friends...</Text>
-                  </View>
-                ) : (
-                  <FlatList
-                    data={friendProfiles}
-                    keyExtractor={(item) => item.$id}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        onPress={() => {
-                          setInviteeIds([...inviteeIds, item.$id]);
-                          setShowFriendPicker(false);
-                        }}
-                        style={styles.friendItem}
-                      >
-                        <UserAvatar
-                          photoUrl={friendPhotoUrls[item.$id]}
-                          firstName={item.firstName}
-                          lastName={item.lastName}
-                          name={item.name}
-                          size={40}
-                        />
-                        <View style={styles.friendItemInfo}>
-                          <Text style={styles.friendItemName}>
-                            {userDisplayUtils.getFullName(item) || item.name}
-                          </Text>
-                        </View>
-                        <TouchableOpacity style={styles.friendItemButton}>
-                          <Text style={styles.friendItemButtonText}>Invite</Text>
-                        </TouchableOpacity>
+            {/* Friend Picker Modal */}
+            <Modal
+              visible={showFriendPicker}
+              animationType="slide"
+              presentationStyle="pageSheet"
+              onRequestClose={() => setShowFriendPicker(false)}
+            >
+              {isColorful ? (
+                <LinearGradient
+                  colors={['#FF6B6B', '#4ECDC4', '#45B7D1']}
+                  style={styles.gradientContainer}
+                >
+                  <SafeAreaView style={styles.safeArea}>
+                    <View style={styles.friendPickerHeader}>
+                      <TouchableOpacity onPress={() => setShowFriendPicker(false)}>
+                        <Text style={styles.friendPickerCancel}>Cancel</Text>
                       </TouchableOpacity>
-                    )}
-                    ListEmptyComponent={
+                      <Text style={styles.friendPickerTitle}>Invite Friends</Text>
+                      <View style={{ width: 60 }} />
+                    </View>
+
+                    {loadingFriends ? (
                       <View style={styles.friendPickerEmpty}>
                         <MaterialIcons name="people" size={48} color="rgba(255,255,255,0.5)" />
-                        <Text style={styles.friendPickerEmptyText}>
-                          No friends available to invite
-                        </Text>
+                        <Text style={styles.friendPickerEmptyText}>Loading friends...</Text>
                       </View>
-                    }
-                  />
-                )}
-              </SafeAreaView>
-            </LinearGradient>
-          </Modal>
-        </SafeAreaView>
-      </LinearGradient>
+                    ) : (
+                      <FlatList
+                        data={friendProfiles}
+                        keyExtractor={(item) => item.$id}
+                        renderItem={({ item }) => (
+                          <TouchableOpacity
+                            onPress={() => {
+                              setInviteeIds([...inviteeIds, item.$id]);
+                              setShowFriendPicker(false);
+                            }}
+                            style={styles.friendItem}
+                          >
+                            <UserAvatar
+                              photoUrl={friendPhotoUrls[item.$id]}
+                              firstName={item.firstName}
+                              lastName={item.lastName}
+                              name={item.name}
+                              size={40}
+                            />
+                            <View style={styles.friendItemInfo}>
+                              <Text style={styles.friendItemName}>
+                                {userDisplayUtils.getFullName(item) || item.name}
+                              </Text>
+                            </View>
+                            <TouchableOpacity style={styles.friendItemButton}>
+                              <Text style={styles.friendItemButtonText}>Invite</Text>
+                            </TouchableOpacity>
+                          </TouchableOpacity>
+                        )}
+                        ListEmptyComponent={
+                          <View style={styles.friendPickerEmpty}>
+                            <MaterialIcons name="people" size={48} color="rgba(255,255,255,0.5)" />
+                            <Text style={styles.friendPickerEmptyText}>
+                              No friends available to invite
+                            </Text>
+                          </View>
+                        }
+                      />
+                    )}
+                  </SafeAreaView>
+                </LinearGradient>
+              ) : (
+                <Background>
+                  <SafeAreaView style={styles.safeArea}>
+                    <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border, borderBottomWidth: 1 }]}>
+                      <TouchableOpacity onPress={() => setShowFriendPicker(false)} style={styles.headerButton}>
+                        <MaterialIcons name="close" size={24} color={colors.text} />
+                      </TouchableOpacity>
+                      <Text style={[styles.headerTitle, { color: colors.text }]}>Invite Friends</Text>
+                      <View style={{ width: 40 }} />
+                    </View>
+                    {/* Non-colorful content would go here */}
+                  </SafeAreaView>
+                </Background>
+              )}
+            </Modal>
+          </SafeAreaView>
+        </LinearGradient>
+      ) : (
+        <Background>
+          <SafeAreaView style={styles.safeArea}>
+            {/* Non-colorful main content would go here */}
+          </SafeAreaView>
+        </Background>
+      )}
     </Modal>
   );
 }

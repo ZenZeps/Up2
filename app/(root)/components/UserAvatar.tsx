@@ -1,3 +1,4 @@
+import { useTheme } from '@/lib/context/ThemeContext';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import React from 'react';
 import { Image, Text, View } from 'react-native';
@@ -21,12 +22,18 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
     name,
     size = 40,
     textSize,
-    backgroundColor = '#e5e7eb', // gray-200
-    textColor = '#9ca3af', // gray-400
+    backgroundColor,
+    textColor,
     className = '',
 }) => {
+    const { colors } = useTheme();
+
     // Calculate text size based on avatar size if not provided
     const calculatedTextSize = textSize || Math.floor(size * 0.4);
+
+    // Use theme-aware defaults if not provided
+    const finalBackgroundColor = backgroundColor || colors.primary;
+    const finalTextColor = textColor || colors.buttonText;
 
     // Get initials from firstName/lastName or fallback to name
     const initials = firstName && lastName
@@ -41,7 +48,7 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
     const initialsContainerStyle = {
         width: size,
         height: size,
-        backgroundColor,
+        backgroundColor: finalBackgroundColor,
         borderRadius: size / 2,
         alignItems: 'center' as const,
         justifyContent: 'center' as const,
@@ -49,7 +56,7 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
 
     const textStyle = {
         fontSize: calculatedTextSize,
-        color: textColor,
+        color: finalTextColor,
         fontWeight: '500' as const,
     };
 

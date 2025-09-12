@@ -1,8 +1,5 @@
-import { getUsersByIds } from '../api/user';
 import notificationService from './notificationService';
-import { NotificationTokenService } from './notificationTokenService';
-// Temporary fallback to token manager until collection is created
-import { notificationTokenManager } from './tokenManager';
+import { SimpleNotificationService } from './simpleNotificationService';
 
 /**
  * Send notification when a user receives an event invite
@@ -13,44 +10,59 @@ export async function sendEventInviteNotification(
     inviterName: string,
     eventId: string
 ): Promise<void> {
-    try {
-        // Get notification tokens using production service with fallback
-        let userTokens: string[] = [];
+    return SimpleNotificationService.sendEventInviteNotification(
+        invitedUserIds,
+        eventTitle,
+        inviterName,
+        eventId
+    );
+}
 
-        try {
-            // Use production service to get tokens for multiple users
-            userTokens = await NotificationTokenService.getMultipleUserTokens(invitedUserIds);
-            console.log('✅ Got tokens from production service for event invite:', userTokens.length);
-        } catch (error) {
-            console.log('⚠️ Production service failed, using temporary fallback:', error);
-            // Fallback to temporary storage
-            userTokens = invitedUserIds
-                .map(userId => notificationTokenManager.getUserToken(userId))
-                .filter(tokenData => tokenData?.token && tokenData.enabled)
-                .map(tokenData => tokenData!.token);
-        }
+/**
+ * Send notification when a user receives a friend request
+ */
+export async function sendFriendRequestNotification(
+    recipientUserId: string,
+    senderName: string,
+    senderId: string
+): Promise<void> {
+    return SimpleNotificationService.sendFriendRequestNotification(
+        recipientUserId,
+        senderName,
+        senderId
+    );
+}
 
-        if (userTokens.length === 0) {
-            console.log('No users with notifications enabled for event invite');
-            return;
-        }
+/**
+ * Send notification when a friend request is accepted
+ */
+export async function sendFriendRequestAcceptedNotification(
+    recipientUserId: string,
+    accepterName: string,
+    accepterId: string
+): Promise<void> {
+    return SimpleNotificationService.sendFriendRequestAcceptedNotification(
+        recipientUserId,
+        accepterName,
+        accepterId
+    );
+}
 
-        await notificationService.sendPushNotification(
-            userTokens,
-            '🎉 Event Invitation',
-            `${inviterName} invited you to "${eventTitle}"`,
-            {
-                type: 'event_invite',
-                eventId,
-                inviterName,
-                eventTitle,
-            }
-        );
-
-        console.log(`Event invite notification sent to ${userTokens.length} users`);
-    } catch (error) {
-        console.error('Error sending event invite notification:', error);
-    }
+/**
+ * Send notification when a user receives a group invite
+ */
+export async function sendGroupInviteNotification(
+    invitedUserIds: string[],
+    groupName: string,
+    inviterName: string,
+    groupId: string
+): Promise<void> {
+    return SimpleNotificationService.sendGroupInviteNotification(
+        invitedUserIds,
+        groupName,
+        inviterName,
+        groupId
+    );
 }
 
 /**
@@ -71,12 +83,8 @@ export async function sendChatMessageNotification(
             return;
         }
 
-        // Get user profiles to get notification tokens
-        const users = await getUsersByIds(recipientIds);
-
-        const userTokens = users
-            .filter(user => user.notificationsEnabled && user.notificationToken)
-            .map(user => user.notificationToken!);
+        // Use simple service to get tokens from user profiles
+        const userTokens = await SimpleNotificationService.getUserTokens(recipientIds);
 
         if (userTokens.length === 0) {
             console.log('No users with notifications enabled for chat message');
@@ -90,7 +98,7 @@ export async function sendChatMessageNotification(
 
         await notificationService.sendPushNotification(
             userTokens,
-            `💬 ${senderName}`,
+            `� ${senderName}`,
             truncatedMessage,
             {
                 type: 'chat_message',
@@ -107,131 +115,6 @@ export async function sendChatMessageNotification(
 }
 
 /**
- * Send notification when a user receives a friend request
- */
-export async function sendFriendRequestNotification(
-    recipientUserId: string,
-    senderName: string,
-    senderId: string
-): Promise<void> {
-    try {
-        console.log('🔔 Sending friend request notification:', { recipientUserId, senderName });
-
-        // Use the production token service with fallback to temp manager
-        let userTokens: string[] = [];
-
-        try {
-            // Use production NotificationTokenService
-            userTokens = await NotificationTokenService.getUserTokens(recipientUserId);
-            console.log('✅ Got tokens from production service:', userTokens.length);
-        } catch (error) {
-            console.log('⚠️ Production service failed, using temporary fallback:', error);
-            // Fallback to temporary token manager
-            const tokenData = notificationTokenManager.getUserToken(recipientUserId);
-            if (tokenData?.token && tokenData.enabled) {
-                userTokens = [tokenData.token];
-                console.log('✅ Got token from temporary manager');
-            }
-        }
-
-        console.log('👤 Found notification tokens:', userTokens.length);
-
-        if (userTokens.length === 0) {
-            console.log('❌ No notification tokens found for user');
-            return;
-        }
-
-        await notificationService.sendPushNotification(
-            userTokens,
-            '👥 Friend Request',
-            `${senderName} sent you a friend request`,
-            {
-                type: 'friend_request',
-                senderId,
-                senderName,
-            }
-        );
-
-        console.log('✅ Friend request notification sent');
-    } catch (error) {
-        console.error('❌ Error sending friend request notification:', error);
-    }
-}
-
-/**
- * Send notification when a friend request is accepted
- */
-export async function sendFriendRequestAcceptedNotification(
-    recipientUserId: string,
-    accepterName: string,
-    accepterId: string
-): Promise<void> {
-    try {
-        // Get recipient's notification token from temporary storage
-        const tokenData = notificationTokenManager.getUserToken(recipientUserId);
-
-        if (!tokenData?.token || !tokenData.enabled) {
-            console.log('Recipient does not have notifications enabled or no token');
-            return;
-        }
-
-        await notificationService.sendPushNotification(
-            [tokenData.token],
-            '✅ Friend Request Accepted',
-            `${accepterName} accepted your friend request`,
-            {
-                type: 'friend_request_accepted',
-                accepterId,
-                accepterName,
-            }
-        );
-
-        console.log('Friend request accepted notification sent');
-    } catch (error) {
-        console.error('Error sending friend request accepted notification:', error);
-    }
-}
-
-/**
- * Send notification when a user receives a group invite
- */
-export async function sendGroupInviteNotification(
-    invitedUserIds: string[],
-    groupName: string,
-    inviterName: string,
-    groupId: string
-): Promise<void> {
-    try {
-        // Get notification tokens from temporary storage
-        const userTokens = invitedUserIds
-            .map(userId => notificationTokenManager.getUserToken(userId))
-            .filter(tokenData => tokenData?.token && tokenData.enabled)
-            .map(tokenData => tokenData!.token);
-
-        if (userTokens.length === 0) {
-            console.log('No users with notifications enabled for group invite');
-            return;
-        }
-
-        await notificationService.sendPushNotification(
-            userTokens,
-            '👥 Group Invitation',
-            `${inviterName} invited you to join "${groupName}"`,
-            {
-                type: 'group_invite',
-                groupId,
-                inviterName,
-                groupName,
-            }
-        );
-
-        console.log(`Group invite notification sent to ${userTokens.length} users`);
-    } catch (error) {
-        console.error('Error sending group invite notification:', error);
-    }
-}
-
-/**
  * Send notification when a group owner receives a join request
  */
 export async function sendGroupJoinRequestNotification(
@@ -242,15 +125,16 @@ export async function sendGroupJoinRequestNotification(
     groupId: string
 ): Promise<void> {
     try {
-        // Use temporary token manager for owner notifications
-        const tokenData = notificationTokenManager.getUserToken(ownerUserId);
-        if (!tokenData?.token || !tokenData.enabled) {
+        // Use simple service to get owner's token
+        const userTokens = await SimpleNotificationService.getUserTokens([ownerUserId]);
+
+        if (userTokens.length === 0) {
             console.log('Owner does not have notifications enabled or no token');
             return;
         }
 
         await notificationService.sendPushNotification(
-            [tokenData.token],
+            userTokens,
             '🔔 Group Join Request',
             `${requesterName} requested to join "${groupName}"`,
             {

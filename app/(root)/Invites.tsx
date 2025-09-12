@@ -1,3 +1,4 @@
+import { Background } from '@/components/Background';
 import { addEventAttendee, getEventInvitees, removeEventInvitation } from '@/lib/api/event';
 import { acceptFriendRequest, declineFriendRequest } from '@/lib/api/friendship';
 import { acceptGroupInvite, declineGroupInvite, getGroupById, getUserGroupInvites } from '@/lib/api/group';
@@ -11,9 +12,8 @@ import { sendFriendRequestAcceptedNotification } from '@/lib/notifications/notif
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Query } from 'react-native-appwrite';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -334,238 +334,233 @@ export default function Invites() {
   }, [eventsStableRef.length, userId]); // Use stable reference
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.content}>
-        {/* Enhanced Header with Black Gradient */}
-        <View style={styles.header}>
-          <LinearGradient
-            colors={['#000000', '#1a1a1a', '#2d2d2d']}
-            start={[0, 0]}
-            end={[1, 1]}
-            style={styles.headerGradient}
-          >
+    <Background>
+      <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
+        <View style={styles.content}>
+          {/* Modern Header */}
+          <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
             <View style={styles.headerContent}>
               <TouchableOpacity
                 onPress={() => router.back()}
                 style={styles.backButton}
               >
-                <MaterialIcons name="arrow-back" size={20} color="white" />
+                <MaterialIcons name="arrow-back" size={24} color={colors.text} />
               </TouchableOpacity>
-              <Text style={styles.headerTitle}>Invites</Text>
+              <Text style={[styles.headerTitle, { color: colors.text }]}>Notifications</Text>
               {__DEV__ && (
                 <TouchableOpacity
                   onPress={() => router.push('/(root)/debug/InviteDebugger')}
                   style={styles.debugButton}
                 >
-                  <MaterialIcons name="bug-report" size={18} color="white" />
+                  <MaterialIcons name="bug-report" size={18} color={colors.text} />
                 </TouchableOpacity>
               )}
               {!__DEV__ && <View style={styles.headerSpacer} />}
             </View>
-          </LinearGradient>
-        </View>
-
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ) : (
-          <ScrollView
-            style={styles.scrollContainer}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* Friend Requests Card */}
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.cardHeader}>
-                <View style={styles.cardTitleContainer}>
-                  <MaterialIcons name="person-add" size={20} color={colors.primary} />
-                  <Text style={[styles.cardTitle, { color: colors.text }]}>Friend Requests</Text>
-                </View>
-              </View>
 
-              {friendRequests.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <MaterialIcons name="people-outline" size={48} color={colors.textSecondary} />
-                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
-                    No friend requests
-                  </Text>
-                </View>
-              ) : (
-                friendRequests.map((req) => (
-                  <View key={req.$id} style={[styles.requestItem, { borderColor: colors.border }]}>
-                    <View style={styles.requestInfo}>
-                      <UserAvatar
-                        photoUrl={senderPhotoUrls[req.from]}
-                        name={req.senderName}
-                        size={56}
-                      />
-                      <View style={styles.requestDetails}>
-                        <Text style={[styles.requestName, { color: colors.text }]}>
-                          {req.senderName}
-                        </Text>
-                        <Text style={[styles.requestLabel, { color: colors.textSecondary }]}>
-                          Wants to be friends
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.requestActions}>
-                      <TouchableOpacity
-                        onPress={() => handleAcceptFriendRequest(req)}
-                        style={[styles.acceptButton, { backgroundColor: colors.primary }]}
-                      >
-                        <MaterialIcons name="check" size={16} color={colors.buttonText} />
-                        <Text style={[styles.acceptButtonText, { color: colors.buttonText }]}>Accept</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => handleDeclineFriendRequest(req)}
-                        style={[styles.declineButton, { backgroundColor: colors.background, borderColor: colors.border }]}
-                      >
-                        <MaterialIcons name="close" size={16} color={colors.text} />
-                        <Text style={[styles.declineButtonText, { color: colors.text }]}>Decline</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))
-              )}
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
             </View>
-
-            {/* Event Invites Card */}
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.cardHeader}>
-                <View style={styles.cardTitleContainer}>
-                  <MaterialIcons name="event" size={20} color={colors.primary} />
-                  <Text style={[styles.cardTitle, { color: colors.text }]}>Event Invites</Text>
+          ) : (
+            <ScrollView
+              style={styles.scrollContainer}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Friend Requests Card */}
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardTitleContainer}>
+                    <MaterialIcons name="person-add" size={20} color={colors.primary} />
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>Friend Requests</Text>
+                  </View>
                 </View>
+
+                {friendRequests.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <MaterialIcons name="people-outline" size={48} color={colors.textSecondary} />
+                    <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
+                      No friend requests
+                    </Text>
+                  </View>
+                ) : (
+                  friendRequests.map((req) => (
+                    <View key={req.$id} style={[styles.requestItem, { borderColor: colors.border }]}>
+                      <View style={styles.requestInfo}>
+                        <UserAvatar
+                          photoUrl={senderPhotoUrls[req.from]}
+                          name={req.senderName}
+                          size={56}
+                        />
+                        <View style={styles.requestDetails}>
+                          <Text style={[styles.requestName, { color: colors.text }]}>
+                            {req.senderName}
+                          </Text>
+                          <Text style={[styles.requestLabel, { color: colors.textSecondary }]}>
+                            Wants to be friends
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.requestActions}>
+                        <TouchableOpacity
+                          onPress={() => handleAcceptFriendRequest(req)}
+                          style={[styles.acceptButton, { backgroundColor: colors.primary }]}
+                        >
+                          <MaterialIcons name="check" size={16} color={colors.buttonText} />
+                          <Text style={[styles.acceptButtonText, { color: colors.buttonText }]}>Accept</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => handleDeclineFriendRequest(req)}
+                          style={[styles.declineButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+                        >
+                          <MaterialIcons name="close" size={16} color={colors.text} />
+                          <Text style={[styles.declineButtonText, { color: colors.text }]}>Decline</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                )}
               </View>
 
-              {invitesWithCreatorNames.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <MaterialIcons name="event-available" size={48} color={colors.textSecondary} />
-                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
-                    No event invites yet
-                  </Text>
+              {/* Event Invites Card */}
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardTitleContainer}>
+                    <MaterialIcons name="event" size={20} color={colors.primary} />
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>Event Invites</Text>
+                  </View>
                 </View>
-              ) : (
-                invitesWithCreatorNames.map((event) => (
-                  <View key={event.$id} style={[styles.eventItem, { borderColor: colors.border }]}>
-                    <View style={styles.eventHeader}>
-                      <Text style={[styles.eventTitle, { color: colors.text }]}>
-                        {event.title}
-                      </Text>
-                      <Text style={[styles.eventCreator, { color: colors.textSecondary }]}>
-                        by {event.creatorName}
-                      </Text>
-                    </View>
 
-                    <View style={styles.eventDetails}>
-                      <View style={styles.eventDetailRow}>
-                        <MaterialIcons name="location-on" size={16} color={colors.primary} />
-                        <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
-                          {event.location}
+                {invitesWithCreatorNames.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <MaterialIcons name="event-available" size={48} color={colors.textSecondary} />
+                    <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
+                      No event invites yet
+                    </Text>
+                  </View>
+                ) : (
+                  invitesWithCreatorNames.map((event) => (
+                    <View key={event.$id} style={[styles.eventItem, { borderColor: colors.border }]}>
+                      <View style={styles.eventHeader}>
+                        <Text style={[styles.eventTitle, { color: colors.text }]}>
+                          {event.title}
+                        </Text>
+                        <Text style={[styles.eventCreator, { color: colors.textSecondary }]}>
+                          by {event.creatorName}
                         </Text>
                       </View>
-                      <View style={styles.eventDetailRow}>
-                        <MaterialIcons name="access-time" size={16} color={colors.primary} />
-                        <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
-                          {new Date(event.startTime).toLocaleDateString()} at {new Date(event.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </Text>
+
+                      <View style={styles.eventDetails}>
+                        <View style={styles.eventDetailRow}>
+                          <MaterialIcons name="location-on" size={16} color={colors.primary} />
+                          <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
+                            {event.location}
+                          </Text>
+                        </View>
+                        <View style={styles.eventDetailRow}>
+                          <MaterialIcons name="access-time" size={16} color={colors.primary} />
+                          <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
+                            {new Date(event.startTime).toLocaleDateString()} at {new Date(event.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </Text>
+                        </View>
                       </View>
-                    </View>
 
-                    <TouchableOpacity
-                      style={[styles.acceptButton, { backgroundColor: colors.primary, alignSelf: 'flex-start' }]}
-                      onPress={async () => {
-                        try {
-                          // Use junction table helpers to accept invite
-                          await addEventAttendee(event.$id, userId);
-                          await removeEventInvitation(event.$id, userId);
+                      <TouchableOpacity
+                        style={[styles.acceptButton, { backgroundColor: colors.primary, alignSelf: 'flex-start' }]}
+                        onPress={async () => {
+                          try {
+                            // Use junction table helpers to accept invite
+                            await addEventAttendee(event.$id, userId);
+                            await removeEventInvitation(event.$id, userId);
 
-                          // Clear all screen caches to ensure Home, Feed, and Explore update
-                          clearScreenEvents(); // Clear all screen caches
+                            // Clear all screen caches to ensure Home, Feed, and Explore update
+                            clearScreenEvents(); // Clear all screen caches
 
-                          // Refetch events to update the global context
-                          if (typeof refetchEvents === 'function') {
-                            await refetchEvents();
+                            // Refetch events to update the global context
+                            if (typeof refetchEvents === 'function') {
+                              await refetchEvents();
+                            }
+
+                            // Remove from local state
+                            setInvitesWithCreatorNames(prev => prev.filter(e => e.$id !== event.$id));
+
+                            showSuccess('Success', 'Event invite accepted! You are now attending this event.');
+                          } catch (err) {
+                            console.error("Error accepting event invite:", err);
+                            showError('Error', 'Failed to accept event invite. Please try again.');
                           }
-
-                          // Remove from local state
-                          setInvitesWithCreatorNames(prev => prev.filter(e => e.$id !== event.$id));
-
-                          showSuccess('Success', 'Event invite accepted! You are now attending this event.');
-                        } catch (err) {
-                          console.error("Error accepting event invite:", err);
-                          showError('Error', 'Failed to accept event invite. Please try again.');
-                        }
-                      }}
-                    >
-                      <MaterialIcons name="check" size={16} color={colors.buttonText} />
-                      <Text style={[styles.acceptButtonText, { color: colors.buttonText }]}>Accept</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))
-              )}
-            </View>
-
-            {/* Group Invites Card */}
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.cardHeader}>
-                <View style={styles.cardTitleContainer}>
-                  <MaterialIcons name="group" size={20} color={colors.primary} />
-                  <Text style={[styles.cardTitle, { color: colors.text }]}>Group Invites</Text>
-                </View>
-              </View>
-
-              {groupInvites.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <MaterialIcons name="group-add" size={48} color={colors.textSecondary} />
-                  <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
-                    No group invites yet
-                  </Text>
-                </View>
-              ) : (
-                groupInvites.map((invite) => (
-                  <View key={invite.$id} style={[styles.requestItem, { borderColor: colors.border }]}>
-                    <View style={styles.requestInfo}>
-                      <View style={[styles.groupIcon, { backgroundColor: colors.primary }]}>
-                        <MaterialIcons name="group" size={24} color="white" />
-                      </View>
-                      <View style={styles.requestDetails}>
-                        <Text style={[styles.requestName, { color: colors.text }]}>
-                          {invite.groupTitle}
-                        </Text>
-                        <Text style={[styles.requestLabel, { color: colors.textSecondary }]}>
-                          Invited by {invite.senderName}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.groupInviteActions}>
-                      <TouchableOpacity
-                        onPress={() => handleAcceptGroupInvite(invite)}
-                        style={[styles.acceptButton, { backgroundColor: colors.primary }]}
+                        }}
                       >
                         <MaterialIcons name="check" size={16} color={colors.buttonText} />
                         <Text style={[styles.acceptButtonText, { color: colors.buttonText }]}>Accept</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => handleDeclineGroupInvite(invite)}
-                        style={[styles.declineButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                      >
-                        <MaterialIcons name="close" size={16} color={colors.textSecondary} />
-                        <Text style={[styles.declineButtonText, { color: colors.textSecondary }]}>Decline</Text>
-                      </TouchableOpacity>
                     </View>
+                  ))
+                )}
+              </View>
+
+              {/* Group Invites Card */}
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardTitleContainer}>
+                    <MaterialIcons name="group" size={20} color={colors.primary} />
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>Group Invites</Text>
                   </View>
-                ))
-              )}
-            </View>
-          </ScrollView>
-        )}
-      </View>
-    </SafeAreaView>
+                </View>
+
+                {groupInvites.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <MaterialIcons name="group-add" size={48} color={colors.textSecondary} />
+                    <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
+                      No group invites yet
+                    </Text>
+                  </View>
+                ) : (
+                  groupInvites.map((invite) => (
+                    <View key={invite.$id} style={[styles.requestItem, { borderColor: colors.border }]}>
+                      <View style={styles.requestInfo}>
+                        <View style={[styles.groupIcon, { backgroundColor: colors.primary }]}>
+                          <MaterialIcons name="group" size={24} color="white" />
+                        </View>
+                        <View style={styles.requestDetails}>
+                          <Text style={[styles.requestName, { color: colors.text }]}>
+                            {invite.groupTitle}
+                          </Text>
+                          <Text style={[styles.requestLabel, { color: colors.textSecondary }]}>
+                            Invited by {invite.senderName}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.groupInviteActions}>
+                        <TouchableOpacity
+                          onPress={() => handleAcceptGroupInvite(invite)}
+                          style={[styles.acceptButton, { backgroundColor: colors.primary }]}
+                        >
+                          <MaterialIcons name="check" size={16} color={colors.buttonText} />
+                          <Text style={[styles.acceptButtonText, { color: colors.buttonText }]}>Accept</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleDeclineGroupInvite(invite)}
+                          style={[styles.declineButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                        >
+                          <MaterialIcons name="close" size={16} color={colors.textSecondary} />
+                          <Text style={[styles.declineButtonText, { color: colors.textSecondary }]}>Decline</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
+            </ScrollView>
+          )}
+        </View>
+      </SafeAreaView>
+    </Background>
   );
 }
 
@@ -599,8 +594,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 24,
+    fontWeight: '700',
     color: '#ffffff',
   },
   headerSpacer: {

@@ -1,5 +1,5 @@
 import { Background } from '@/components/Background';
-import { cancelFriendRequest, getPendingFriendRequests, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
+import { blockUser, cancelFriendRequest, getPendingFriendRequests, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
 import { getUserGroups } from '@/lib/api/group';
 import { getProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
@@ -185,6 +185,19 @@ const UserProfile = () => {
             console.error('Error unfriending user:', error);
         }
     };
+
+    const handleBlockUser = async () => {
+        if (!currentUser?.$id) return;
+        try {
+            const res = await blockUser(currentUser.$id, userId as string);
+            if (res?.success) {
+                // Navigate back after blocking
+                router.back();
+            }
+        } catch (error) {
+            console.error('Error blocking user:', error);
+        }
+    };
     if (loading) {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -295,6 +308,19 @@ const UserProfile = () => {
                                     </>
                                 )}
                             </View>
+
+                            {/* Block Button - separate row for destructive action */}
+                            {currentUser && currentUser.$id !== userId && (
+                                <View style={styles.blockButtonContainer}>
+                                    <TouchableOpacity
+                                        style={[styles.modernButton, styles.blockButton]}
+                                        onPress={handleBlockUser}
+                                    >
+                                        <MaterialIcons name="block" size={18} color="#dc3545" />
+                                        <Text style={[styles.modernButtonText, { color: "#dc3545" }]}>Block User</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
                         </View>
                     </View>
 
@@ -448,9 +474,8 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
-        flex: 1,
         paddingHorizontal: 20,
-        paddingVertical: 50,
+        paddingVertical: 16,
     },
     profileHeader: {
         borderBottomWidth: 1,
@@ -566,6 +591,15 @@ const styles = StyleSheet.create({
     },
     dangerButton: {
         backgroundColor: '#ef4444',
+    },
+    blockButton: {
+        borderWidth: 1,
+        borderColor: '#dc3545',
+        backgroundColor: 'transparent',
+    },
+    blockButtonContainer: {
+        marginTop: 12,
+        alignItems: 'center',
     },
     modernButtonText: {
         fontSize: 15,

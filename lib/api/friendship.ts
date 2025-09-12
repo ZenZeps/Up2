@@ -374,3 +374,93 @@ export async function fixUserFriendCount(userId: string): Promise<{ success: boo
         return { success: false, oldCount: 0, newCount: 0 };
     }
 }
+
+/**
+ * Block a user - prevents future friend requests and interactions
+ */
+export async function blockUser(blockerId: string, blockedUserId: string): Promise<{ success: boolean; message: string }> {
+    try {
+        if (blockerId === blockedUserId) {
+            return { success: false, message: 'Cannot block yourself' };
+        }
+
+        // Check if there's an existing friendship
+        const existingFriendship = await getFriendship(blockerId, blockedUserId);
+
+        const userId1 = blockerId < blockedUserId ? blockerId : blockedUserId;
+        const userId2 = blockerId < blockedUserId ? blockedUserId : blockerId;
+
+        if (existingFriendship) {
+            // Update existing relationship to blocked
+            await databases.updateDocument(
+                config.databaseID!,
+                config.userFriendshipsCollectionID!,
+                existingFriendship.$id,
+                {
+                    status: 'blocked',
+                    requesterId: blockerId, // Track who initiated the block
+                    $updatedAt: new Date().toISOString()
+                }
+            );
+        } else {
+            // Create new blocked relationship
+            const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+            const blockId = ID.unique();
+            await createDocumentSafe(
+                config.databaseID!,
+                config.userFriendshipsCollectionID!,
+                blockId,
+                {
+                    userId1,
+                    userId2,
+                    requesterId: blockerId,
+                    status: 'blocked',
+                }
+            );
+        }
+
+        // Update friend counts for both users if they were friends
+        if (existingFriendship?.status === 'accepted') {
+            await updateUserFriendCount(blockerId);
+            await updateUserFriendCount(blockedUserId);
+        }
+
+        authDebug.info(`User ${blockerId} blocked user ${blockedUserId}`);
+        return { success: true, message: 'User blocked successfully' };
+
+    } catch (error) {
+        authDebug.error(`Error blocking user:`, error);
+        return { success: false, message: 'Failed to block user' };
+    }
+}
+
+/**
+ * Unblock a user - removes the block and allows normal interactions
+ */
+export async function unblockUser(blockerId: string, blockedUserId: string): Promise<{ success: boolean; message: string }> {
+    try {
+        if (blockerId === blockedUserId) {
+            return { success: false, message: 'Cannot unblock yourself' };
+        }
+
+        const existingFriendship = await getFriendship(blockerId, blockedUserId);
+
+        if (!existingFriendship || existingFriendship.status !== 'blocked') {
+            return { success: false, message: 'User is not blocked' };
+        }
+
+        // Remove the blocked relationship
+        await databases.deleteDocument(
+            config.databaseID!,
+            config.userFriendshipsCollectionID!,
+            existingFriendship.$id
+        );
+
+        authDebug.info(`User ${blockerId} unblocked user ${blockedUserId}`);
+        return { success: true, message: 'User unblocked successfully' };
+
+    } catch (error) {
+        authDebug.error(`Error unblocking user:`, error);
+        return { success: false, message: 'Failed to unblock user' };
+    }
+}

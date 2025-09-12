@@ -437,7 +437,7 @@ export async function addEventInvitation(eventId: string, userId: string, invite
     const collectionId = config.eventAttendancesCollectionID;
 
     // Check config
-    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id' || collectionId === 'event_attendances') {
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
       authDebug.info('Event attendances junction table not configured (placeholder detected), skipping invitation creation');
       return false;
     }
@@ -524,7 +524,7 @@ export async function getEventAttendees(eventId: string): Promise<string[]> {
     const collectionId = config.eventAttendancesCollectionID;
     authDebug.debug(`Checking attendees collection config: ${collectionId}`);
 
-    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id' || collectionId === 'event_attendances') {
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
       authDebug.info('Junction table not configured (placeholder detected), skipping attendees lookup');
       cacheManager.set<string[]>(cacheKey, [], 60 * 1000);
       return [];
@@ -565,7 +565,7 @@ export async function getEventAttendeesFor(eventIds: string[]): Promise<Record<s
     const collectionId = config.eventAttendancesCollectionID;
     authDebug.debug(`Batch fetching attendees for ${eventIds.length} events from: ${collectionId}`);
 
-    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id' || collectionId === 'event_attendances') {
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
       authDebug.info('Junction table not configured (placeholder detected), skipping batched attendees lookup');
       return {};
     }
