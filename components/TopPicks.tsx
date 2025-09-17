@@ -2,11 +2,10 @@
  * TopPicks Component
  * 
  * Displays personalized event recommendations in a horizontal scrollable row
- * Similar to Instagram stories format with round avatars, event names, and dates
+ * Using the original working algorithm with enhanced fallback support
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useTheme } from '@react-navigation/native';
 import dayjs from 'dayjs';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -14,6 +13,7 @@ import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { getEventEmoji } from '@/constants/categories';
+import { useTheme } from '@/lib/context/ThemeContext';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TopPickEvent, generateFallbackTopPicks, generateTopPicks as generateTopPicksAlgorithm, getUserLocation } from '@/lib/utils/topPicks';
 
@@ -23,18 +23,6 @@ interface TopPicksProps {
   currentUserId?: string;
   maxPicks?: number;
 }
-
-// Simple hash function for arrays (removed complex caching for now)
-// const hashArray = (arr: any[]): string => {
-//   if (!arr || arr.length === 0) return 'empty';
-//   try {
-//     const sorted = arr.map(item => item.$id || item).sort();
-//     return btoa(JSON.stringify(sorted)).slice(0, 16);
-//   } catch (error) {
-//     console.warn('TopPicks: Hash generation failed:', error);
-//     return `fallback_${arr.length}_${Date.now()}`;
-//   }
-// };
 
 const TopPicks: React.FC<TopPicksProps> = ({
   allEvents,
@@ -49,12 +37,18 @@ const TopPicks: React.FC<TopPicksProps> = ({
   console.log('🎯 TopPicks: Render', {
     allEventsCount: allEvents?.length || 0,
     userFriendsCount: userFriends?.length || 0,
-    topPicksCount: topPicks.length,
-    isLoading
+    currentUserId,
+    maxPicks
   });
 
-  // Try to load from simple cache on mount
+  // Load from cache initially
   useEffect(() => {
+    // Early return if no current user - but inside useEffect to maintain hook order
+    if (!currentUserId) {
+      console.log('🎯 TopPicks: No current user, skipping cache load');
+      return;
+    }
+
     const loadFromCache = async () => {
       try {
         const cached = await AsyncStorage.getItem('simple_top_picks');
@@ -74,26 +68,16 @@ const TopPicks: React.FC<TopPicksProps> = ({
     loadFromCache();
   }, []);
 
-  // Clear stale picks if no events for too long
+  // Generate TopPicks when data changes
   useEffect(() => {
-    if (!allEvents || allEvents.length === 0) {
-      const timeout = setTimeout(() => {
-        // Use functional update to check current state without dependency
-        setTopPicks(currentPicks => {
-          if (currentPicks.length > 0 && (!allEvents || allEvents.length === 0)) {
-            console.log('🎯 TopPicks: Clearing stale picks after timeout');
-            return [];
-          }
-          return currentPicks;
-        });
-      }, 5000); // 5 second timeout for stale data
-
-      return () => clearTimeout(timeout);
+    // Early return if no current user
+    if (!currentUserId) {
+      console.log('🎯 TopPicks: No current user, skipping generation');
+      setIsLoading(false);
+      setTopPicks([]);
+      return;
     }
-  }, [allEvents]); // Removed topPicks.length dependency
 
-  // Simplified generation - always generate when data changes
-  useEffect(() => {
     const generateTopPicks = async () => {
       console.log('🎯 TopPicks: Starting generation...', {
         allEventsCount: allEvents?.length || 0,
@@ -101,11 +85,8 @@ const TopPicks: React.FC<TopPicksProps> = ({
       });
 
       // If we have no events, only clear if we're not currently showing picks
-      // This prevents flashing when Feed is reloading data
       if (!allEvents || allEvents.length === 0) {
         console.log('🎯 TopPicks: No events available');
-
-        // Use functional update to avoid dependency on topPicks
         setTopPicks(currentPicks => {
           if (currentPicks.length === 0) {
             console.log('🎯 TopPicks: No existing picks, setting loading false');
@@ -119,7 +100,6 @@ const TopPicks: React.FC<TopPicksProps> = ({
         return;
       }
 
-      // We have events, proceed with generation
       setIsLoading(true);
 
       try {
@@ -163,7 +143,7 @@ const TopPicks: React.FC<TopPicksProps> = ({
     };
 
     generateTopPicks();
-  }, [allEvents, userFriends, currentUserId, maxPicks]); // Added currentUserId dependency
+  }, [allEvents, userFriends, currentUserId, maxPicks]);
 
   // Handle event press
   const handleEventPress = (eventId: string) => {
@@ -176,18 +156,23 @@ const TopPicks: React.FC<TopPicksProps> = ({
     return (
       <View style={[styles.container, { backgroundColor: 'transparent' }]}>
         <View style={styles.header}>
-          <Text style={[styles.title, { color: '#FFFFFF' }]}>Top Picks</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Top Picks</Text>
         </View>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContainer}
+          contentContainerStyle={styles.scrollContent}
+          style={styles.scrollView}
         >
           {Array.from({ length: 4 }).map((_, index) => (
-            <View key={`loading-${index}`} style={styles.pickItem}>
-              <View style={[styles.pickAvatar, styles.loadingPlaceholder]} />
-              <View style={[styles.loadingTextPlaceholder, styles.loadingPlaceholder]} />
-              <View style={[styles.loadingTextPlaceholder, styles.loadingPlaceholder]} />
+            <View key={`placeholder-${index}`} style={styles.pickItem}>
+              <LinearGradient
+                colors={[colors.primary + '30', colors.primary + '10']}
+                style={styles.pickCircle}
+              >
+                <Text style={styles.placeholderEmoji}>⏳</Text>
+              </LinearGradient>
+              <Text style={[styles.pickName, { color: colors.textSecondary }]}>Loading...</Text>
             </View>
           ))}
         </ScrollView>
@@ -195,173 +180,143 @@ const TopPicks: React.FC<TopPicksProps> = ({
     );
   }
 
-  // Hide if no picks and not loading
-  if (!topPicks.length && !isLoading) {
-    console.log('🎯 TopPicks: No picks available, hiding component');
+  // Don't render if no current user
+  if (!currentUserId) {
+    console.log('🎯 TopPicks: No current user, not rendering');
     return null;
   }
 
-  // Show picks (even if loading in background)
-  if (topPicks.length > 0) {
-    console.log('🎯 TopPicks: Rendering', topPicks.length, 'actual picks');
+  // Don't render if no picks available
+  if (topPicks.length === 0) {
+    console.log('🎯 TopPicks: No picks to display');
+    return null;
   }
 
   return (
     <View style={[styles.container, { backgroundColor: 'transparent' }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: '#FFFFFF' }]}>Top Picks</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Top Picks</Text>
       </View>
-
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContainer}
+        contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
       >
-        {topPicks.map((pick, index) => (
-          <TouchableOpacity
-            key={pick.$id}
-            style={styles.pickItem}
-            onPress={() => handleEventPress(pick.$id)}
-            activeOpacity={0.7}
-          >
-            {/* Event Avatar with Gradient Background */}
-            <LinearGradient
-              colors={["#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]}
-              style={styles.pickAvatar}
-            >
-              <Text style={styles.pickEmoji}>{getEventEmoji(pick.tags)}</Text>
-            </LinearGradient>
+        {topPicks.filter(event => event && event.$id && event.title).map((event, index) => {
+          try {
+            const emoji = getEventEmoji(event.tags || ['other']) || '🎉';
+            const eventDate = dayjs(event.startTime).format('MMM D');
+            const eventTitle = event.title || 'Untitled Event';
 
-            {/* Event Title */}
-            <Text style={[styles.pickTitle, { color: '#FFFFFF' }]} numberOfLines={2}>
-              {pick.title}
-            </Text>
+            // Ensure all variables are strings and properly defined
+            if (!emoji || typeof emoji !== 'string' || !eventDate || typeof eventDate !== 'string' || !eventTitle || typeof eventTitle !== 'string') {
+              console.warn('TopPicks: Skipping event due to invalid data types', {
+                emoji: typeof emoji,
+                eventDate: typeof eventDate,
+                eventTitle: typeof eventTitle,
+                emojiValue: emoji,
+                eventDateValue: eventDate,
+                eventTitleValue: eventTitle
+              });
+              return null;
+            }
 
-            {/* Event Date */}
-            <Text style={[styles.pickDate, { color: '#FFFFFF' }]}>
-              {dayjs(pick.startTime).format('MMM D')}
-            </Text>
-
-            {/* Optional: Show metrics for debugging */}
-            {__DEV__ && (
-              <View style={styles.debugInfo}>
-                <Text style={styles.debugText}>
-                  {pick.totalScore.toFixed(0)}pt
+            return (
+              <TouchableOpacity
+                key={event.$id}
+                style={styles.pickItem}
+                onPress={() => handleEventPress(event.$id)}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={[(colors.primary || '#007AFF') + '30', (colors.primary || '#007AFF') + '10']}
+                  style={styles.pickCircle}
+                >
+                  <Text style={styles.pickEmoji}>{emoji}</Text>
+                </LinearGradient>
+                <Text
+                  style={[styles.pickName, { color: colors.text || '#000000' }]}
+                  numberOfLines={2}
+                >
+                  {eventTitle}
                 </Text>
-                {pick.friendsAttending > 0 && (
-                  <Text style={styles.debugText}>
-                    {pick.friendsAttending}👥
+                <Text style={[styles.pickDate, { color: colors.textSecondary || '#666666' }]}>
+                  {eventDate}
+                </Text>
+                {event.distance && typeof event.distance === 'number' && event.distance > 0 && (
+                  <Text style={[styles.pickDistance, { color: colors.textSecondary || '#666666' }]}>
+                    {event.distance.toFixed(1)}km
                   </Text>
                 )}
-                {pick.distance > 0 && (
-                  <Text style={styles.debugText}>
-                    {pick.distance.toFixed(1)}km
-                  </Text>
-                )}
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
+              </TouchableOpacity>
+            );
+          } catch (error) {
+            console.error('Error rendering TopPick item:', error);
+            return null;
+          }
+        })}
       </ScrollView>
     </View>
   );
 };
 
-// Utility function to clear top picks cache (simplified for now)
-export const clearTopPicksCache = async (): Promise<void> => {
-  try {
-    await AsyncStorage.removeItem('top_picks_cache');
-    console.log('🗑️ TopPicks: Cache cleared successfully');
-  } catch (error) {
-    console.warn('TopPicks: Failed to clear cache:', error);
-  }
-};
-
 const styles = StyleSheet.create({
   container: {
-    paddingTop: 0, // Removed top padding completely
-    paddingBottom: 8,
-    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
   header: {
-    marginBottom: 8, // Slightly increased to compensate for removed container padding
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
+    paddingHorizontal: 16,
+    marginBottom: 12,
   },
   title: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
-    marginRight: 8,
+    marginBottom: 4,
   },
-  subtitle: {
-    fontSize: 14,
-    opacity: 0.8,
+  scrollView: {
+    paddingLeft: 16,
   },
-  scrollContainer: {
-    paddingHorizontal: 4,
+  scrollContent: {
+    paddingRight: 16,
   },
   pickItem: {
     alignItems: 'center',
-    marginHorizontal: 8,
+    marginRight: 20,
     width: 80,
   },
-  pickAvatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  pickCircle: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
   },
   pickEmoji: {
-    fontSize: 24,
+    fontSize: 28,
   },
-  pickTitle: {
+  placeholderEmoji: {
+    fontSize: 24,
+    opacity: 0.5,
+  },
+  pickName: {
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
-    marginBottom: 2, // Reduced from 4 to bring date closer
-    lineHeight: 16,
-    minHeight: 32, // Ensure consistent spacing
+    marginBottom: 2,
+    lineHeight: 14,
   },
   pickDate: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '500',
     textAlign: 'center',
+    marginBottom: 2,
   },
-  loadingPlaceholder: {
-    backgroundColor: '#e0e0e0',
-    opacity: 0.3,
-  },
-  loadingTextPlaceholder: {
-    height: 12,
-    borderRadius: 6,
-    marginBottom: 4,
-  },
-  debugInfo: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-  },
-  debugText: {
-    color: '#fff',
-    fontSize: 8,
-    fontWeight: '500',
+  pickDistance: {
+    fontSize: 9,
+    fontWeight: '400',
+    textAlign: 'center',
   },
 });
 

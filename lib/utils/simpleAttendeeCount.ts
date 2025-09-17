@@ -1,5 +1,6 @@
 import { config, databases } from '@/lib/appwrite/appwrite';
 import { authDebug } from '@/lib/debug/authDebug';
+import { ID, Query } from 'appwrite';
 import { cacheManager } from '../debug/cacheManager';
 
 /**
@@ -19,17 +20,39 @@ export async function addAttendeeSimple(eventId: string, userId: string): Promis
             eventId
         );
 
-        // Get current attendees array (for UI compatibility)
-        const currentAttendees: string[] = Array.isArray(currentEvent.attendees) ? currentEvent.attendees : [];
+        // Check if user is already attending via junction table
+        try {
+            const existingAttendance = await databases.listDocuments(
+                config.databaseID!,
+                config.eventAttendancesCollectionID!,
+                [
+                    Query.equal('eventId', eventId),
+                    Query.equal('userId', userId),
+                    Query.limit(1)
+                ]
+            );
 
-        // Check if user is already attending
-        if (currentAttendees.includes(userId)) {
-            authDebug.info(`User ${userId} is already attending event ${eventId}`);
-            return true;
+            if (existingAttendance.documents.length > 0) {
+                authDebug.info(`User ${userId} is already attending event ${eventId}`);
+                return true;
+            }
+        } catch (error) {
+            authDebug.warn('Could not check existing attendance, proceeding with add', error);
         }
 
-        // Add user to attendees array and increment the count
-        const updatedAttendees = [...currentAttendees, userId];
+        // Add user to attendees and increment the count
+        const attendanceRecord = await databases.createDocument(
+            config.databaseID!,
+            config.eventAttendancesCollectionID!,
+            ID.unique(),
+            {
+                eventId: eventId,
+                userId: userId,
+                status: 'attending'
+            }
+        );
+
+        authDebug.info(`Created junction table record for user ${userId} attending event ${eventId}`, attendanceRecord);
         const newCount = (currentEvent.attendeeCount || 0) + 1;
 
         await databases.updateDocument(
@@ -37,13 +60,13 @@ export async function addAttendeeSimple(eventId: string, userId: string): Promis
             config.eventsCollectionID!,
             eventId,
             {
-                attendees: updatedAttendees, // Store IDs for UI avatar display
+                // Note: attendees array is handled via junction table (event_attendances)
                 attendeeCount: newCount,     // Keep counter for performance
                 lastActivityAt: new Date().toISOString(),
             }
         );
 
-        authDebug.info(`Simple: Added attendee ${userId} to event ${eventId}, new count: ${newCount}, total attendees: ${updatedAttendees.length}`);
+        authDebug.info(`Simple: Added attendee ${userId} to event ${eventId}, new count: ${newCount}, using junction table for attendees`);
 
         // Clear relevant caches
         try {
@@ -64,7 +87,7 @@ export async function addAttendeeSimple(eventId: string, userId: string): Promis
 }
 
 /**
- * Remove attendee (simple counter decrement + legacy attendees array)
+ * Remove attendee (simple counter decrement using junction table)
  */
 export async function removeAttendeeSimple(eventId: string, userId: string): Promise<boolean> {
     try {
@@ -75,17 +98,36 @@ export async function removeAttendeeSimple(eventId: string, userId: string): Pro
             eventId
         );
 
-        // Get current attendees array (for UI compatibility)
-        const currentAttendees: string[] = Array.isArray(currentEvent.attendees) ? currentEvent.attendees : [];
+        // Check if user is actually attending via junction table
+        try {
+            const existingAttendance = await databases.listDocuments(
+                config.databaseID!,
+                config.eventAttendancesCollectionID!,
+                [
+                    Query.equal('eventId', eventId),
+                    Query.equal('userId', userId),
+                    Query.limit(1)
+                ]
+            );
 
-        // Check if user is actually attending
-        if (!currentAttendees.includes(userId)) {
-            authDebug.info(`User ${userId} is not attending event ${eventId}`);
-            return true;
+            if (existingAttendance.documents.length === 0) {
+                authDebug.info(`User ${userId} is not attending event ${eventId}`);
+                return true;
+            }
+
+            // Remove the attendance record
+            await databases.deleteDocument(
+                config.databaseID!,
+                config.eventAttendancesCollectionID!,
+                existingAttendance.documents[0].$id
+            );
+
+            authDebug.info(`Removed junction table record for user ${userId} from event ${eventId}`);
+        } catch (error) {
+            authDebug.warn('Could not remove attendance record', error);
         }
 
-        // Remove user from attendees array and decrement the count
-        const updatedAttendees = currentAttendees.filter(id => id !== userId);
+        // Decrement the count
         const newCount = Math.max(0, (currentEvent.attendeeCount || 0) - 1);
 
         await databases.updateDocument(
@@ -93,13 +135,13 @@ export async function removeAttendeeSimple(eventId: string, userId: string): Pro
             config.eventsCollectionID!,
             eventId,
             {
-                attendees: updatedAttendees, // Update IDs for UI avatar display
+                // Note: attendees array is handled via junction table (event_attendances)
                 attendeeCount: newCount,     // Keep counter for performance
                 lastActivityAt: new Date().toISOString(),
             }
         );
 
-        authDebug.info(`Simple: Removed attendee ${userId} from event ${eventId}, new count: ${newCount}, total attendees: ${updatedAttendees.length}`);
+        authDebug.info(`Simple: Removed attendee ${userId} from event ${eventId}, new count: ${newCount}, using junction table for attendees`);
 
         // Clear relevant caches
         try {

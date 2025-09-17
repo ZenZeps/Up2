@@ -799,6 +799,7 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     marginTop: 20,
+    marginBottom: 40, // Increased bottom margin for better spacing
   },
   button: {
     padding: 15,

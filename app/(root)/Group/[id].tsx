@@ -8,7 +8,7 @@ import { useGlobalContext } from '@/lib/global-provider';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { Group } from '@/lib/types/Groups';
 import { UserProfile } from '@/lib/types/Users';
-import { recordAction } from '@/lib/utils/dataFetchingOptimizer';
+import { recordUserAction } from '@/lib/utils/dataFetchingOptimizer';
 import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -165,7 +165,7 @@ const GroupPage = () => {
             realTimeUI.clearAction(event.$id);
 
             // Record the action for cache invalidation
-            await recordAction('attend', 'group_event_attended');
+            await recordUserAction('attend', 'group_event_attended');
 
             // Update local state conservatively
             setEvents(prevEvents =>
@@ -195,7 +195,7 @@ const GroupPage = () => {
             await removeEventAttendee(event.$id, user.$id);
 
             // Record the action for cache invalidation
-            await recordAction('unattend', 'group_event_unattended');
+            await recordUserAction('unattend', 'group_event_unattended');
 
             // Update local state conservatively: decrement attendeeCount and mark not attending
             setEvents(prevEvents =>

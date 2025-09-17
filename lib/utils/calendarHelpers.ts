@@ -21,7 +21,7 @@ export const transformEventForCalendar = (
 ) => {
   const startDate = new Date(event.startTime);
   const endDate = new Date(event.endTime);
-  const eventColor = getEventColor((event as any).category || 'other');
+  const eventColor = getEventColor(event.tags || []); // Use event.tags instead of category
   const creatorName = getCreatorName(event.creatorId);
 
   // Check if the event occurs during a travel period

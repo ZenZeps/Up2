@@ -2,7 +2,7 @@ import { Background } from '@/components/Background';
 import { getEventColor, getEventEmoji } from '@/constants/categories';
 import { enrichEventsWithGroupNames, getEventInvitees, getUserAttendingEvents } from '@/lib/api/event';
 import { getUserGroupInvites } from '@/lib/api/group';
-import { getActiveTravelForUser } from '@/lib/api/travel';
+// Removed static import of getActiveTravelForUser - using dynamic import instead
 import { useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { authDebug } from '@/lib/debug/authDebug';
@@ -17,7 +17,7 @@ import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
 import { processCalendarEvents } from '@/lib/utils/calendarHelpers';
 import { useCreatorInfo } from '@/lib/utils/creatorInfoManager';
 import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
-import { createEventAttendanceHandlers, createEventPressHandler } from '@/lib/utils/eventHandlers';
+import { createEventAttendanceHandlers } from '@/lib/utils/eventHandlers';
 import {
   filterEventsByCreator,
   filterUpcomingEvents,
@@ -28,10 +28,11 @@ import {
 } from '@/lib/utils/homeHelpers';
 import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { MaterialIcons } from '@expo/vector-icons';
+import dayjs from 'dayjs';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
@@ -44,6 +45,12 @@ import { EventsContext } from '../context/EventContext';
 const viewModes: Mode[] = ['week', 'month'];
 
 type TabType = 'calendar' | 'agenda';
+
+// Helper function to open location in maps
+const openInMaps = (location: string) => {
+  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+  Linking.openURL(url);
+};
 
 export default function Home() {
   const { colors, isColorful } = useTheme();
@@ -197,7 +204,31 @@ export default function Home() {
   const { data: travelData } = useAppwrite({
     fn: async () => {
       if (!currentUser?.$id) return [];
-      return await getActiveTravelForUser(currentUser.$id);
+
+      console.log('Home: Starting travel data fetch for user:', currentUser.$id);
+
+      // Use dynamic import from index.ts with detailed debugging
+      try {
+        const apiModule = await import('@/lib/api');
+        console.log('Home: Successfully imported API module');
+        console.log('Home: Available exports from API module:', Object.keys(apiModule));
+        console.log('Home: getActiveTravelForUser type:', typeof apiModule.getActiveTravelForUser);
+        console.log('Home: All function types:', Object.entries(apiModule).map(([key, value]) => `${key}: ${typeof value}`));
+
+        const { getActiveTravelForUser } = apiModule;
+
+        if (typeof getActiveTravelForUser !== 'function') {
+          throw new Error('getActiveTravelForUser is not a function after dynamic import');
+        }
+
+        const result = await getActiveTravelForUser(currentUser.$id);
+        console.log('Home: Successfully fetched travel data, count:', result?.length || 0);
+        return result;
+      } catch (err) {
+        console.error('Home: Error fetching travel data:', err);
+        // Return empty array instead of throwing to prevent UI crashes
+        return [];
+      }
     },
     cacheKey: currentUser?.$id ? `user-travel-${currentUser.$id}` : undefined,
     dependencies: [currentUser?.$id],
@@ -208,6 +239,13 @@ export default function Home() {
   useEffect(() => {
     setCurrentUserId(currentUser?.$id || null);
   }, [currentUser]);
+
+  // Update userTravelData when travelData changes
+  useEffect(() => {
+    if (travelData) {
+      setUserTravelData(travelData);
+    }
+  }, [travelData]);
 
   // Sync displayedMonth with date changes (for better month display tracking)
   useEffect(() => {
@@ -521,11 +559,49 @@ export default function Home() {
   }, [enrichedEvents, getCreatorName, userTravelData]);
 
   // Memoize event handlers (declare before renderEvent to avoid dependency issues)
-  // Event press handler using utility function
-  const handlePressEvent = useMemo(() =>
-    createEventPressHandler(setSelectedEvent, setDetailsModalVisible),
-    []
-  );
+  // Event press handler using utility function with travel support
+  const handlePressEvent = useMemo(() => {
+    return (event: any) => {
+      try {
+        if (!event) {
+          console.warn('handlePressEvent: event is null or undefined');
+          return;
+        }
+
+        // Check if this is a travel event
+        if (event.isTravel && event.rawTravel) {
+          // Show travel details in an alert
+          Alert.alert(
+            `✈️ Travel: ${event.rawTravel.destination}`,
+            `📅 ${dayjs(event.rawTravel.startDate).format('MMM D')} - ${dayjs(event.rawTravel.endDate).format('MMM D, YYYY')}\n${event.rawTravel.description ? `\n📝 ${event.rawTravel.description}` : ''}`,
+            [
+              { text: 'Close', style: 'cancel' },
+              { text: 'View on Map', onPress: () => openInMaps(event.rawTravel.destination) }
+            ]
+          );
+          return;
+        }
+
+        // Handle regular events
+        if (!event.rawEvent) {
+          console.warn('handlePressEvent: event.rawEvent is null or undefined');
+          return;
+        }
+
+        // Validate that the raw event has required properties
+        if (!event.rawEvent.$id) {
+          console.warn('handlePressEvent: event.rawEvent.$id is missing');
+          return;
+        }
+
+        setSelectedEvent(event.rawEvent as AppEvent);
+        setDetailsModalVisible(true);
+      } catch (error) {
+        console.error('Error in handlePressEvent:', error);
+        // Don't crash the app, just log the error
+      }
+    };
+  }, []);
 
   // Custom render function for events with comprehensive error handling
   const renderEvent = useCallback((event: any, touchableOpacityProps: any) => {
@@ -832,6 +908,15 @@ export default function Home() {
       smartRefetchEvents('viewModeChange');
     }
   }, [viewMode, smartRefetchEvents, eventsContext?.events]);
+
+  // Ensure calendar shows current date when switching to week view
+  useEffect(() => {
+    if (viewMode === 'week') {
+      const today = new Date();
+      console.log('📅 Switching to week view, ensuring current date:', today.toDateString());
+      setDate(today);
+    }
+  }, [viewMode]);
 
   return (
     <Background>

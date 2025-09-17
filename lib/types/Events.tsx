@@ -23,6 +23,11 @@ export interface Event {
   popularityScore?: number; // Computed popularity score (0.0-1.0)
   responseRate?: boolean; // Whether responses are being tracked
   lastActivityAt?: string; // ISO timestamp of last activity
+  // LOCATION-BASED RECOMMENDATION FIELDS
+  locationLat?: number; // Latitude for geospatial queries (performance critical)
+  locationLng?: number; // Longitude for geospatial queries (performance critical)
+  locationRadius?: number; // Event area radius in meters (for venue events)
+  distanceFromUser?: number; // Computed field - distance from current user (not stored)
 }
 
 export interface EventWithDetails extends Event {

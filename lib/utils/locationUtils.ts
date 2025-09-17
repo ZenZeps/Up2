@@ -20,18 +20,43 @@ export const calculateDistance = (
     return R * c;
 };
 
-// Get user's current location
-export const getCurrentUserLocation = async (): Promise<Location.LocationObject | null> => {
+import { locationService } from '../services/locationService';
+
+export interface UserLocation {
+    latitude: number;
+    longitude: number;
+}
+
+/**
+ * Get the current user's location with enhanced permission handling
+ * @param context - The context where location is being requested (for better UX)
+ * @returns Promise<UserLocation | null>
+ */
+export const getCurrentUserLocation = async (
+    context: 'startup' | 'toppicks' | 'travel' | 'settings' = 'startup'
+): Promise<UserLocation | null> => {
     try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== Location.PermissionStatus.GRANTED) {
+        // Check if permission is already granted
+        const isGranted = await locationService.isLocationPermissionGranted();
+
+        if (isGranted) {
+            // Permission already granted, get location directly
+            return await locationService.getCurrentLocation();
+        }
+
+        // Check if we should ask for permission (respects user preferences and cooldowns)
+        const canAsk = await locationService.canAskForLocationAgain();
+
+        if (!canAsk) {
+            // User recently denied, respect their choice
+            console.warn('Location permission recently denied, respecting user choice');
             return null;
         }
 
-        const location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-        });
-        return location;
+        // Request permission with enhanced UX
+        const result = await locationService.requestLocationPermission(context);
+
+        return result.location || null;
     } catch (error) {
         console.error('Error getting user location:', error);
         return null;

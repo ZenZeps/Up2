@@ -1,16 +1,18 @@
 import { getEventColor } from '@/constants/categories';
+import { getTravelDaysInMonth, getUserTravelAnnouncements } from '@/lib/api';
 import { addEventAttendee, getAllEvents, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { account } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { Event as AppEvent } from '@/lib/types/Events';
+import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
-import { recordAction } from '@/lib/utils/dataFetchingOptimizer';
+import { recordUserAction } from '@/lib/utils/dataFetchingOptimizer';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
@@ -88,6 +90,10 @@ export default function UserCalendar() {
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [calendarHeight, setCalendarHeight] = useState(0);
 
+    // Travel state
+    const [userTravel, setUserTravel] = useState<TravelAnnouncement[]>([]);
+    const [travelDays, setTravelDays] = useState<Set<string>>(new Set());
+
     // Fetch user's profile and events
     useEffect(() => {
         const fetchUserData = async () => {
@@ -157,6 +163,19 @@ export default function UserCalendar() {
                 );
 
                 setEvents(eventsWithAttendance);
+
+                // Fetch user's travel data
+                const travel = await getUserTravelAnnouncements(userId);
+                setUserTravel(travel);
+
+                // Get travel days for the current month (for highlighting)
+                const currentDate = new Date();
+                const travelDaysInMonth = await getTravelDaysInMonth(
+                    userId,
+                    currentDate.getFullYear(),
+                    currentDate.getMonth() + 1
+                );
+                setTravelDays(new Set(travelDaysInMonth));
             } catch (error) {
                 console.error('Error fetching user data:', error);
             }
@@ -166,6 +185,24 @@ export default function UserCalendar() {
             fetchUserData();
         }
     }, [userId]);
+
+    // Update travel days when date changes (for month view highlighting)
+    useEffect(() => {
+        const updateTravelDays = async () => {
+            if (!userId) return;
+
+            try {
+                const year = date.getFullYear();
+                const month = date.getMonth() + 1;
+                const travelDaysInMonth = await getTravelDaysInMonth(userId, year, month);
+                setTravelDays(new Set(travelDaysInMonth));
+            } catch (error) {
+                console.error('Error updating travel days:', error);
+            }
+        };
+
+        updateTravelDays();
+    }, [date, userId]);
 
     const handleAttend = async (event: AppEvent) => {
         if (!currentUserId) return;
@@ -182,7 +219,7 @@ export default function UserCalendar() {
             await addEventAttendee(event.$id, currentUserId);
 
             // Record the action for cache invalidation
-            await recordAction('attend', 'user_calendar_event_attended');
+            await recordUserAction('attend', 'user_calendar_event_attended');
 
             // Update local state
             setEvents(prevEvents =>
@@ -210,7 +247,7 @@ export default function UserCalendar() {
             await removeEventAttendee(event.$id, currentUserId);
 
             // Record the action for cache invalidation
-            await recordAction('unattend', 'user_calendar_event_unattended');
+            await recordUserAction('unattend', 'user_calendar_event_unattended');
 
             // Update local state
             setEvents(prevEvents =>
@@ -374,74 +411,133 @@ export default function UserCalendar() {
             {/* Content */}
             <View style={styles.content}>
                 {activeTab === 'agenda' ? (
-                    /* Modern Agenda View with Day Groupings */
-                    <FlatList
-                        style={[styles.agendaList, { backgroundColor: colors.background }]}
-                        data={groupEventsByDay(agendaEvents)}
-                        keyExtractor={(item) => item.date.toDateString()}
-                        renderItem={({ item: dayGroup }) => (
-                            <View style={styles.dayGroup}>
-                                {/* Day Header */}
-                                <View style={[styles.dayHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-                                    <Text style={[styles.dayHeaderText, { color: colors.text }]}>
-                                        {formatDateHeader(dayGroup.date)}
+                    <ScrollView style={[styles.agendaList, { backgroundColor: colors.background }]}>
+                        {/* Travel Status Section */}
+                        {userTravel.length > 0 && (
+                            <View style={[styles.travelSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                                <View style={styles.travelHeader}>
+                                    <MaterialIcons name="flight" size={20} color={colors.primary} />
+                                    <Text style={[styles.travelHeaderText, { color: colors.text }]}>
+                                        Travel Plans
                                     </Text>
                                 </View>
 
-                                {/* Events for this day */}
-                                {dayGroup.events.map(item => (
-                                    <TouchableOpacity
-                                        key={item.$id}
-                                        onPress={() => handlePressEvent({
-                                            id: item.$id,
-                                            title: item.title,
-                                            start: new Date(item.startTime),
-                                            end: new Date(item.endTime),
-                                            location: item.location,
-                                            color: getEventColor(item.tags || []),
-                                            rawEvent: item
-                                        })}
-                                    >
-                                        <View style={[styles.agendaCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                                            <View style={styles.agendaHeader}>
-                                                <Text style={[styles.agendaTitle, { color: colors.text }]} numberOfLines={2}>
-                                                    {item.title}
+                                {userTravel.slice(0, 3).map((travel) => {
+                                    const startDate = new Date(travel.startDate);
+                                    const endDate = new Date(travel.endDate);
+                                    const now = new Date();
+                                    const isCurrentlyTraveling = startDate <= now && now <= endDate;
+                                    const isUpcoming = startDate > now;
+
+                                    return (
+                                        <View key={travel.$id} style={styles.travelItem}>
+                                            <View style={styles.travelItemHeader}>
+                                                <Text style={[styles.travelDestination, { color: colors.text }]}>
+                                                    ✈️ {travel.destination}
                                                 </Text>
-                                                <View style={[styles.eventColorDot, { backgroundColor: getEventColor(item.tags || []) || colors.primary }]} />
-                                            </View>
-
-                                            <View style={styles.agendaMeta}>
-                                                <View style={styles.agendaMetaRow}>
-                                                    <MaterialIcons name="access-time" size={16} color={colors.primary} />
-                                                    <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                                                        {new Date(item.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(item.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                    </Text>
-                                                </View>
-
-                                                {(item as any).creatorName && (
-                                                    <View style={styles.agendaMetaRow}>
-                                                        <MaterialIcons name="person" size={16} color={colors.primary} />
-                                                        <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                                                            By {(item as any).creatorName}
-                                                        </Text>
+                                                {isCurrentlyTraveling && (
+                                                    <View style={[styles.travelStatusBadge, { backgroundColor: colors.primary }]}>
+                                                        <Text style={styles.travelStatusText}>TRAVELING NOW</Text>
                                                     </View>
                                                 )}
-
-                                                {item.location && item.location !== 'No location' && (
-                                                    <View style={styles.agendaMetaRow}>
-                                                        <MaterialIcons name="location-on" size={16} color={colors.primary} />
-                                                        <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                                                            {item.location}
-                                                        </Text>
+                                                {isUpcoming && (
+                                                    <View style={[styles.travelStatusBadge, { backgroundColor: '#FFA500' }]}>
+                                                        <Text style={styles.travelStatusText}>UPCOMING</Text>
                                                     </View>
                                                 )}
                                             </View>
+                                            <Text style={[styles.travelDates, { color: colors.textSecondary }]}>
+                                                {startDate.toLocaleDateString('en-US', {
+                                                    month: 'short',
+                                                    day: 'numeric'
+                                                })} - {endDate.toLocaleDateString('en-US', {
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    year: 'numeric'
+                                                })}
+                                            </Text>
+                                            {travel.description && (
+                                                <Text style={[styles.travelDescription, { color: colors.textSecondary }]}>
+                                                    {travel.description}
+                                                </Text>
+                                            )}
                                         </View>
-                                    </TouchableOpacity>
-                                ))}
+                                    );
+                                })}
+
+                                {userTravel.length > 3 && (
+                                    <Text style={[styles.travelMoreText, { color: colors.textSecondary }]}>
+                                        +{userTravel.length - 3} more travel plans
+                                    </Text>
+                                )}
                             </View>
                         )}
-                        ListEmptyComponent={
+
+                        {/* Events List */}
+                        {groupEventsByDay(agendaEvents).length > 0 ? (
+                            groupEventsByDay(agendaEvents).map((dayGroup) => (
+                                <View key={dayGroup.date.toDateString()} style={styles.dayGroup}>
+                                    {/* Day Header */}
+                                    <View style={[styles.dayHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+                                        <Text style={[styles.dayHeaderText, { color: colors.text }]}>
+                                            {formatDateHeader(dayGroup.date)}
+                                        </Text>
+                                    </View>
+
+                                    {/* Events for this day */}
+                                    {dayGroup.events.map(item => (
+                                        <TouchableOpacity
+                                            key={item.$id}
+                                            onPress={() => handlePressEvent({
+                                                id: item.$id,
+                                                title: item.title,
+                                                start: new Date(item.startTime),
+                                                end: new Date(item.endTime),
+                                                location: item.location,
+                                                color: getEventColor(item.tags || []),
+                                                rawEvent: item
+                                            })}
+                                        >
+                                            <View style={[styles.agendaCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                                                <View style={styles.agendaHeader}>
+                                                    <Text style={[styles.agendaTitle, { color: colors.text }]} numberOfLines={2}>
+                                                        {item.title}
+                                                    </Text>
+                                                    <View style={[styles.eventColorDot, { backgroundColor: getEventColor(item.tags || []) || colors.primary }]} />
+                                                </View>
+
+                                                <View style={styles.agendaMeta}>
+                                                    <View style={styles.agendaMetaRow}>
+                                                        <MaterialIcons name="access-time" size={16} color={colors.primary} />
+                                                        <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
+                                                            {new Date(item.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(item.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </Text>
+                                                    </View>
+
+                                                    {(item as any).creatorName && (
+                                                        <View style={styles.agendaMetaRow}>
+                                                            <MaterialIcons name="person" size={16} color={colors.primary} />
+                                                            <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
+                                                                By {(item as any).creatorName}
+                                                            </Text>
+                                                        </View>
+                                                    )}
+
+                                                    {item.location && item.location !== 'No location' && (
+                                                        <View style={styles.agendaMetaRow}>
+                                                            <MaterialIcons name="location-on" size={16} color={colors.primary} />
+                                                            <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
+                                                                {item.location}
+                                                            </Text>
+                                                        </View>
+                                                    )}
+                                                </View>
+                                            </View>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            ))
+                        ) : (
                             <View style={styles.emptyState}>
                                 <MaterialIcons name="event" size={64} color={colors.textSecondary} />
                                 <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
@@ -451,10 +547,8 @@ export default function UserCalendar() {
                                     {userName} doesn't have any upcoming events.
                                 </Text>
                             </View>
-                        }
-                        showsVerticalScrollIndicator={false}
-                        contentContainerStyle={[styles.agendaContent, { paddingBottom: 70 + insets.bottom }]}
-                    />
+                        )}
+                    </ScrollView>
                 ) : (
                     /* Calendar View */
                     <>
@@ -710,5 +804,65 @@ const styles = StyleSheet.create({
     },
     calendarWrapper: {
         flex: 1,
+    },
+    // Travel styles
+    travelSection: {
+        margin: 16,
+        padding: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+        marginBottom: 8,
+    },
+    travelHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    travelHeaderText: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginLeft: 8,
+    },
+    travelItem: {
+        marginBottom: 12,
+        paddingBottom: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E5E5E5',
+    },
+    travelItemHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 4,
+    },
+    travelDestination: {
+        fontSize: 15,
+        fontWeight: '600',
+        flex: 1,
+    },
+    travelStatusBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 12,
+        marginLeft: 8,
+    },
+    travelStatusText: {
+        color: '#fff',
+        fontSize: 10,
+        fontWeight: '600',
+    },
+    travelDates: {
+        fontSize: 13,
+        marginBottom: 2,
+    },
+    travelDescription: {
+        fontSize: 13,
+        fontStyle: 'italic',
+    },
+    travelMoreText: {
+        fontSize: 12,
+        textAlign: 'center',
+        fontStyle: 'italic',
+        marginTop: 8,
     },
 });

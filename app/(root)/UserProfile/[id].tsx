@@ -32,6 +32,9 @@ const UserProfile = () => {
     const insets = useSafeAreaInsets();
     const userId = Array.isArray(id) ? id[0] : id;
 
+    // Track where user came from for better navigation
+    const [previousRoute, setPreviousRoute] = useState<string | null>(null);
+
     const [userProfile, setUserProfile] = useState<UserProfileType | null>(null);
     const [friends, setFriends] = useState<any[]>([]);
     const [groups, setGroups] = useState<Group[]>([]);
@@ -198,6 +201,11 @@ const UserProfile = () => {
             console.error('Error blocking user:', error);
         }
     };
+
+    // Custom back handler that respects navigation history
+    const handleBack = () => {
+        router.back();
+    };
     if (loading) {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -230,11 +238,41 @@ const UserProfile = () => {
                     <View style={[styles.profileHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
                         {/* Header Actions */}
                         <View style={styles.headerActions}>
-                            <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+                            <TouchableOpacity style={styles.backButton} onPress={handleBack}>
                                 <MaterialIcons name="arrow-back" size={24} color={colors.text} />
                             </TouchableOpacity>
                             <Text style={[styles.headerTitle, { color: colors.text }]}>Profile</Text>
-                            <View style={styles.headerSpacer} />
+
+                            {/* Action buttons moved to top right */}
+                            {currentUser && currentUser.$id !== userId && (
+                                <View style={styles.topRightActions}>
+                                    {friendshipState === 'friends' && (
+                                        <>
+                                            <TouchableOpacity
+                                                style={[styles.topRightButton, { backgroundColor: colors.error }]}
+                                                onPress={handleUnfriend}
+                                            >
+                                                <MaterialIcons name="person-remove" size={18} color="white" />
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[styles.topRightButton, { backgroundColor: '#dc3545', marginLeft: 8 }]}
+                                                onPress={handleBlockUser}
+                                            >
+                                                <MaterialIcons name="block" size={18} color="white" />
+                                            </TouchableOpacity>
+                                        </>
+                                    )}
+                                    {friendshipState !== 'friends' && (
+                                        <TouchableOpacity
+                                            style={[styles.topRightButton, { backgroundColor: '#dc3545' }]}
+                                            onPress={handleBlockUser}
+                                        >
+                                            <MaterialIcons name="block" size={18} color="white" />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                            )}
+                            {(!currentUser || currentUser.$id === userId) && <View style={styles.headerSpacer} />}
                         </View>
 
                         {/* Profile Content */}
@@ -266,7 +304,7 @@ const UserProfile = () => {
                                 </TouchableOpacity>
                             </View>
 
-                            {/* Modern Action Buttons */}
+                            {/* Action Buttons - simplified, removed duplicate remove/block buttons */}
                             <View style={styles.actionButtons}>
                                 <TouchableOpacity
                                     style={[styles.modernButton, styles.primaryButton, { backgroundColor: colors.primary }]}
@@ -298,29 +336,16 @@ const UserProfile = () => {
                                         )}
                                         {friendshipState === 'friends' && (
                                             <TouchableOpacity
-                                                style={[styles.modernButton, styles.dangerButton]}
-                                                onPress={handleUnfriend}
+                                                style={[styles.modernButton, styles.secondaryButton, { borderColor: colors.border, backgroundColor: colors.card }]}
+                                                onPress={handleMessageUser}
                                             >
-                                                <MaterialIcons name="person-remove" size={18} color="white" />
-                                                <Text style={[styles.modernButtonText, { color: 'white' }]}>Remove</Text>
+                                                <MaterialIcons name="message" size={18} color={colors.primary} />
+                                                <Text style={[styles.modernButtonText, { color: colors.primary }]}>Message</Text>
                                             </TouchableOpacity>
                                         )}
                                     </>
                                 )}
                             </View>
-
-                            {/* Block Button - separate row for destructive action */}
-                            {currentUser && currentUser.$id !== userId && (
-                                <View style={styles.blockButtonContainer}>
-                                    <TouchableOpacity
-                                        style={[styles.modernButton, styles.blockButton]}
-                                        onPress={handleBlockUser}
-                                    >
-                                        <MaterialIcons name="block" size={18} color="#dc3545" />
-                                        <Text style={[styles.modernButtonText, { color: "#dc3545" }]}>Block User</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            )}
                         </View>
                     </View>
 
@@ -334,10 +359,7 @@ const UserProfile = () => {
                         </View>
 
                         <View style={[styles.contentContainer, { backgroundColor: colors.background }]}>
-                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>About</Text>
-                            <Text style={[styles.detailValue, { color: colors.text, marginTop: 6 }]}>{userProfile?.about || 'No about information set'}</Text>
-
-                            <View style={[styles.detailsContainer, { marginTop: 12 }]}>
+                            <View style={styles.detailsContainer}>
                                 <View style={styles.detailRow}>
                                     <MaterialIcons name="flag" size={18} color={colors.textSecondary} />
                                     <View style={styles.detailContent}>
@@ -473,6 +495,20 @@ const styles = StyleSheet.create({
     scrollContainer: {
         flex: 1,
     },
+    headerSpacer: {
+        width: 24,
+    },
+    topRightActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    topRightButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     scrollContent: {
         paddingHorizontal: 20,
         paddingVertical: 16,
@@ -496,9 +532,6 @@ const styles = StyleSheet.create({
     },
     backButton: {
         padding: 8,
-    },
-    headerSpacer: {
-        width: 40,
     },
     profileContent: {
         alignItems: 'center',
@@ -630,8 +663,8 @@ const styles = StyleSheet.create({
     friendButtonText: {
         fontSize: 14,
         fontWeight: '600',
+        paddingVertical: 14,
     },
-    paddingVertical: 14,
     emptyContainer: {
         flex: 1,
         alignItems: 'center',
@@ -745,7 +778,7 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginTop: 2,
     },
-    emptyText: {
+    emptyTextSecondary: {
         fontSize: 16,
         marginTop: 8,
         textAlign: 'center',

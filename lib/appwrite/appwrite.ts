@@ -50,6 +50,7 @@ export const config = {
   groupMembershipsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_GROUPMEMBERSHIPS_COLLECTION_ID || "68a1bee20031a75f55e6",
 
   travelCollectionID: process.env.EXPO_PUBLIC_APPWRITE_TRAVEL_COLLECTION_ID || "68594f4d0034f9a3bb1b",
+  travelInteractionsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_TRAVEL_INTERACTIONS_ID || "travel_interactions",
   profilePhotosBucketID: process.env.EXPO_PUBLIC_APPWRITE_PROFILE_PHOTOS_BUCKET_ID || "68594f610012a2c5c4d7",
   groupsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_GROUPS_COLLECTION_ID || "687ef8b7003cc206308f",
   // DEPRECATED: Group invites now handled through groupMemberships collection

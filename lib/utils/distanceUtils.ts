@@ -2,7 +2,7 @@
  * Distance calculation utilities for displaying event distances
  */
 
-import * as Location from 'expo-location';
+import { getCurrentUserLocation } from './locationUtils';
 
 export interface UserLocation {
   latitude: number;
@@ -31,28 +31,15 @@ export const calculateDistance = (
 };
 
 /**
- * Get user's current location
+ * Get user's current location with enhanced permission handling
  */
 export const getUserLocation = async (): Promise<UserLocation | null> => {
   try {
-    // Request location permissions
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      console.warn('Location permission not granted');
-      return null;
-    }
-
-    // Get current location
-    const location = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    });
-
-    return {
-      latitude: location.coords.latitude,
-      longitude: location.coords.longitude,
-    };
+    // Use the enhanced location utilities for better UX
+    const location = await getCurrentUserLocation('travel');
+    return location;
   } catch (error) {
-    console.warn('Failed to get user location:', error);
+    console.warn('Failed to get user location for distance calculation:', error);
     return null;
   }
 };

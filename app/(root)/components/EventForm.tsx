@@ -71,6 +71,9 @@ interface Props {
 }
 
 export default function EventForm({ visible, onClose, event, selectedDateTime, currentUserId, friends, groupId }: Props) {
+  // Debug: Log component render
+  console.log('🔥 EventForm render:', { visible, currentUserId, hasEvent: !!event });
+
   // Basic state initialization
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
@@ -402,11 +405,11 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
               {/* Event Name */}
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>{t('eventForm.eventName')}</Text>
+                <Text style={styles.inputLabel}>{t('eventForm.eventName') || 'Event Name'}</Text>
                 <View style={styles.inputWrapper}>
                   <MaterialIcons name="event" size={20} color="rgba(255,255,255,0.7)" style={styles.inputIcon} />
                   <TextInput
-                    placeholder={t('eventForm.whatsHappening')}
+                    placeholder={t('eventForm.whatsHappening') || "What's happening?"}
                     value={title}
                     onChangeText={setTitle}
                     style={styles.textInput}
@@ -891,7 +894,406 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       ) : (
         <Background>
           <SafeAreaView style={styles.safeArea}>
-            {/* Non-colorful main content would go here */}
+            {/* Header */}
+            <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+              <TouchableOpacity onPress={() => onClose(false)} style={styles.headerButton}>
+                <MaterialIcons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={[styles.headerTitle, { color: colors.text }]}>
+                {event ? t('eventForm.updateEvent') : t('eventForm.createEvent')}
+              </Text>
+              {editable && (
+                <TouchableOpacity
+                  onPress={handleSave}
+                  style={styles.headerButton}
+                  disabled={isProcessing}
+                >
+                  <Text style={[
+                    styles.headerButtonText,
+                    { color: colors.text },
+                    isProcessing && { color: colors.textSecondary }
+                  ]}>
+                    {isProcessing ? t('common.loading') : t('common.save')}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {!editable && <View style={{ width: 48 }} />}
+            </View>
+
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
+              {/* Production error indicator */}
+              {!DateTimePickerModal && (
+                <View style={[styles.warningContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <MaterialIcons name="warning" size={20} color={colors.text} style={{ marginRight: 8 }} />
+                  <Text style={[styles.warningText, { color: colors.text }]}>
+                    Using fallback components for better compatibility
+                  </Text>
+                </View>
+              )}
+
+              {/* Event Name */}
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>{t('eventForm.eventName') || 'Event Name'}</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <MaterialIcons name="event" size={20} color={colors.textSecondary} style={styles.inputIcon} />
+                  <TextInput
+                    placeholder={t('eventForm.whatsHappening') || "What's happening?"}
+                    value={title}
+                    onChangeText={setTitle}
+                    style={[styles.textInput, { color: colors.text }]}
+                    placeholderTextColor={colors.textSecondary}
+                    editable={editable}
+                  />
+                </View>
+              </View>
+
+              {/* Location */}
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>{t('eventForm.location')}</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <MaterialIcons name="location-on" size={20} color={colors.textSecondary} style={styles.inputIcon} />
+                  <View style={{ flex: 1 }}>
+                    {USE_BUDGET_MODE ? (
+                      <BudgetPlaceAutocomplete
+                        value={location}
+                        onChangeText={(v: string) => {
+                          setLocation(v);
+                          setLocationLat(null);
+                          setLocationLng(null);
+                        }}
+                        onSelect={(address: string, lat?: number, lng?: number) => {
+                          setLocation(address);
+                          if (typeof lat === 'number' && typeof lng === 'number') {
+                            setLocationLat(lat);
+                            setLocationLng(lng);
+                          }
+                        }}
+                        placeholder={t('eventForm.searchLocationFree')}
+                      />
+                    ) : (
+                      <PlaceAutocomplete
+                        value={location}
+                        onChangeText={(v: string) => {
+                          setLocation(v);
+                          setLocationLat(null);
+                          setLocationLng(null);
+                        }}
+                        onSelect={(address: string, lat?: number, lng?: number) => {
+                          setLocation(address);
+                          if (typeof lat === 'number' && typeof lng === 'number') {
+                            setLocationLat(lat);
+                            setLocationLng(lng);
+                          }
+                        }}
+                        placeholder={t('eventForm.searchLocation')}
+                      />
+                    )}
+                  </View>
+                </View>
+              </View>
+
+              {/* Description */}
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>{t('eventForm.description')}</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: colors.card, borderColor: colors.border, alignItems: 'flex-start' }]}>
+                  <MaterialIcons name="description" size={20} color={colors.textSecondary} style={[styles.inputIcon, { marginTop: 12 }]} />
+                  <TextInput
+                    placeholder={t('eventForm.tellMoreAboutEvent')}
+                    value={description}
+                    onChangeText={setDescription}
+                    style={[styles.textInput, { color: colors.text, minHeight: 80, textAlignVertical: 'top' }]}
+                    placeholderTextColor={colors.textSecondary}
+                    multiline
+                    editable={editable}
+                  />
+                </View>
+              </View>
+
+              {/* Date & Time */}
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>{t('eventForm.dateTime')}</Text>
+                <TouchableOpacity
+                  onPress={() => setShowGoogleDatePicker(true)}
+                  style={[styles.inputWrapper, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  disabled={!editable}
+                >
+                  <MaterialIcons name="schedule" size={20} color={colors.textSecondary} style={styles.inputIcon} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.dateTimeText, { color: colors.text }]}>
+                      {dayjs(startDate).format('MMM DD, YYYY • h:mm A')}
+                      {!isAllDay && ` - ${dayjs(endDate).format('h:mm A')}`}
+                    </Text>
+                    {isAllDay && (
+                      <View style={styles.allDayContainer}>
+                        <MaterialIcons name="wb-sunny" size={16} color={colors.textSecondary} />
+                        <Text style={[styles.allDayText, { color: colors.textSecondary }]}>{t('eventForm.allDay')}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Event Tags */}
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>{t('eventForm.eventTags')}</Text>
+                <View style={styles.tagScrollContainer}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tagContainer}>
+                    {CATEGORIES.map((category) => {
+                      const isSelected = tags.includes(category.value);
+                      return (
+                        <TouchableOpacity
+                          key={category.value}
+                          onPress={() => {
+                            if (!editable) return;
+                            if (isSelected) {
+                              setTags(tags.filter(t => t !== category.value));
+                            } else {
+                              setTags([...tags, category.value]);
+                            }
+                          }}
+                          style={[
+                            styles.tagChip,
+                            {
+                              backgroundColor: isSelected ? colors.primary : colors.card,
+                              borderColor: isSelected ? colors.primary : colors.border,
+                            }
+                          ]}
+                        >
+                          <Text style={[
+                            styles.tagText,
+                            { color: isSelected ? '#fff' : colors.text }
+                          ]}>
+                            {category.emoji} {category.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              </View>
+
+              {/* Privacy */}
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>{t('eventForm.privacy')}</Text>
+                <TouchableOpacity
+                  onPress={() => editable && setIsPrivate(!isPrivate)}
+                  style={[styles.privacyToggle, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  disabled={!editable}
+                >
+                  <View style={styles.privacyToggleContent}>
+                    <MaterialIcons
+                      name={isPrivate ? "lock" : "public"}
+                      size={20}
+                      color={colors.text}
+                    />
+                    <View style={styles.privacyToggleText}>
+                      <Text style={[styles.privacyTitle, { color: colors.text }]}>{t('eventForm.privateEvent')}</Text>
+                      <Text style={[styles.privacyDescription, { color: colors.textSecondary }]}>
+                        {isPrivate ? 'Only invited friends can see this event' : 'Anyone can see this event'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={[styles.switch, { backgroundColor: isPrivate ? colors.primary : colors.border }]}>
+                    <View style={[styles.switchThumb, {
+                      backgroundColor: '#fff',
+                      transform: [{ translateX: isPrivate ? 16 : 2 }]
+                    }]} />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* Invite Friends */}
+              {isPrivate && (
+                <View style={styles.inputContainer}>
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>{t('eventForm.inviteFriends')}</Text>
+                  <TouchableOpacity onPress={() => setShowFriendPicker(true)} style={[styles.inviteButton, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Text style={[styles.inviteButtonText, { color: colors.text }]}>{t('eventForm.addFriends')}</Text>
+                    <MaterialIcons name="person-add" size={20} color={colors.text} />
+                  </TouchableOpacity>
+
+                  {inviteeIds.length > 0 && (
+                    <View style={styles.invitedFriendsContainer}>
+                      {inviteeIds.slice(0, 3).map((friendId) => {
+                        const friend = friendProfiles.find(f => f.$id === friendId);
+                        if (!friend) return null;
+
+                        return (
+                          <View key={friendId} style={styles.invitedFriendItem}>
+                            <UserAvatar
+                              photoUrl={friendPhotoUrls[friendId]}
+                              firstName={friend.firstName}
+                              lastName={friend.lastName}
+                              name={friend.name}
+                              size={32}
+                            />
+                            <Text style={[styles.invitedFriendName, { color: colors.text }]}>
+                              {userDisplayUtils.getFullName(friend) || friend.name}
+                            </Text>
+                            <TouchableOpacity
+                              onPress={() => setInviteeIds(inviteeIds.filter(id => id !== friendId))}
+                              style={styles.removeInviteButton}
+                            >
+                              <MaterialIcons name="close" size={16} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                      {inviteeIds.length > 3 && (
+                        <Text style={[styles.privacyDescription, { color: colors.textSecondary }]}>
+                          +{inviteeIds.length - 3} more invited
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Diagnostic Test Button for Development */}
+              {__DEV__ && (
+                <TouchableOpacity
+                  onPress={runDiagnosticTest}
+                  style={[styles.actionButton, { backgroundColor: colors.primary }]}
+                >
+                  <MaterialIcons name="bug-report" size={20} color="#fff" />
+                  <Text style={styles.actionButtonText}>{t('eventForm.runDiagnosticTest')}</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Google Calendar Style Date Picker */}
+              <GoogleCalendarDatePicker
+                visible={showGoogleDatePicker}
+                onClose={() => setShowGoogleDatePicker(false)}
+                onSave={(newStartDate, newEndDate, newIsAllDay) => {
+                  setStartDate(newStartDate);
+                  setEndDate(newEndDate);
+                  setIsAllDay(newIsAllDay);
+                }}
+                initialStartDate={startDate}
+                initialEndDate={endDate}
+                initialIsAllDay={isAllDay}
+                title={title}
+              />
+
+              {/* Fallback Date Time Pickers */}
+              {DateTimePickerModal ? (
+                <>
+                  <DateTimePickerModal
+                    isVisible={showStartPicker}
+                    mode="datetime"
+                    date={startDate}
+                    onConfirm={handleStartDateConfirm}
+                    onCancel={() => setShowStartPicker(false)}
+                  />
+                  <DateTimePickerModal
+                    isVisible={showEndPicker}
+                    mode="datetime"
+                    date={endDate}
+                    onConfirm={handleEndDateConfirm}
+                    onCancel={() => setShowEndPicker(false)}
+                  />
+                </>
+              ) : (
+                <>
+                  <FallbackDateTimePicker
+                    isVisible={showStartPicker}
+                    mode="datetime"
+                    date={startDate}
+                    onConfirm={handleStartDateConfirm}
+                    onCancel={() => setShowStartPicker(false)}
+                  />
+                  <FallbackDateTimePicker
+                    isVisible={showEndPicker}
+                    mode="datetime"
+                    date={endDate}
+                    onConfirm={handleEndDateConfirm}
+                    onCancel={() => setShowEndPicker(false)}
+                  />
+                </>
+              )}
+
+              {/* Delete Event Button - Only for creators */}
+              {event && isCreator && (
+                <TouchableOpacity
+                  onPress={async () => {
+                    Alert.alert(
+                      'Delete Event',
+                      'Are you sure you want to delete this event? This action cannot be undone.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              await databases.deleteDocument(
+                                config.databaseID!,
+                                config.eventsCollectionID!,
+                                event.$id
+                              );
+                              await refetchEvents();
+                              onClose(true);
+                            } catch (err) {
+                              console.error("Error deleting event:", err);
+                              Alert.alert("Error", "Failed to delete event.");
+                            }
+                          }
+                        }
+                      ]
+                    );
+                  }}
+                  style={[styles.actionButton, styles.deleteButton]}
+                >
+                  <MaterialIcons name="delete" size={20} color="#fff" />
+                  <Text style={styles.actionButtonText}>{t('eventForm.deleteEvent')}</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Join/Leave Event - Only for non-creators */}
+              {event && !isCreator && (
+                <View>
+                  {(inviteeIds.includes(currentUserId) || isAttending) ? (
+                    <TouchableOpacity
+                      onPress={async () => {
+                        try {
+                          await removeEventAttendee(event.$id, currentUserId);
+                          setInviteeIds(inviteeIds.filter((id) => id !== currentUserId));
+                          setIsAttending(false);
+                          await refetchEvents();
+                          onClose(true);
+                        } catch (err) {
+                          console.error("Error leaving event:", err);
+                          Alert.alert("Error", "Failed to leave event.");
+                        }
+                      }}
+                      style={[styles.actionButton, styles.leaveButton]}
+                    >
+                      <MaterialIcons name="exit-to-app" size={20} color="#fff" />
+                      <Text style={styles.actionButtonText}>{t('eventForm.leaveEvent')}</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={async () => {
+                        try {
+                          await addEventAttendee(event.$id, currentUserId);
+                          setInviteeIds([...inviteeIds, currentUserId]);
+                          setIsAttending(true);
+                          await refetchEvents();
+                          onClose(true);
+                        } catch (err) {
+                          console.error("Error joining event:", err);
+                          Alert.alert("Error", "Failed to join event.");
+                        }
+                      }}
+                      style={[styles.actionButton, styles.joinButton]}
+                    >
+                      <MaterialIcons name="check" size={20} color="#fff" />
+                      <Text style={styles.actionButtonText}>{t('eventForm.joinEvent')}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </ScrollView>
           </SafeAreaView>
         </Background>
       )}
@@ -1382,5 +1784,78 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.6)',
     textAlign: 'center',
     marginTop: 16,
+  },
+
+  // Missing styles for non-colorful mode
+  dateTimeText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  allDayContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  tagScrollContainer: {
+    marginTop: 8,
+  },
+  tagContainer: {
+    paddingHorizontal: 4,
+  },
+  tagChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    marginRight: 8,
+    borderWidth: 1,
+  },
+  privacyToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  privacyToggleContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  privacyToggleText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  switch: {
+    width: 40,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  switchThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+  },
+  invitedFriendsContainer: {
+    marginTop: 12,
+  },
+  invitedFriendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 6,
+  },
+  invitedFriendName: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 8,
+    flex: 1,
+  },
+  removeInviteButton: {
+    padding: 4,
   },
 });

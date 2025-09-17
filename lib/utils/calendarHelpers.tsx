@@ -49,10 +49,33 @@ export const processCalendarEvents = (
 ): any[] => {
     if (!events || !Array.isArray(events)) return [];
 
-    return events
+    // Process regular events
+    const processedEvents = events
         .filter(isValidCalendarEvent)
         .map(event => transformEventForCalendar(event, getCreatorName, userTravelData))
         .filter(Boolean); // Remove any null/undefined results
+
+    // Add travel periods as all-day calendar events for visual indication
+    const travelEvents = userTravelData.map(travel => {
+        const travelStart = new Date(travel.startDate);
+        const travelEnd = new Date(travel.endDate);
+
+        // Set to beginning and end of day for all-day events
+        travelStart.setHours(0, 0, 0, 0);
+        travelEnd.setHours(23, 59, 59, 999);
+
+        return {
+            title: `✈️ ${travel.destination}`,
+            start: travelStart,
+            end: travelEnd,
+            color: '#9CA3AF', // Grey color for travel indication
+            isTravel: true,
+            rawTravel: travel,
+            allDay: true
+        };
+    });
+
+    return [...processedEvents, ...travelEvents];
 };
 
 // Custom date renderer for travel periods

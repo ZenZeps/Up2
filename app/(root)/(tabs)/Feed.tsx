@@ -5,7 +5,7 @@ import { addEventAttendee, getEventAttendeesFor, getUserAttendingEvents, removeE
 import { getUserFriends } from '@/lib/api/friendship';
 import { getUserGroups } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
-import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
+// Removed static import of getFriendsTravelAnnouncements - using dynamic import instead
 import { getUsersByIds } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
@@ -24,18 +24,24 @@ import { LinearGradient } from 'expo-linear-gradient';
 // header will be plain white
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import UserAvatar from '../components/UserAvatar';
 
 import { Event as AppEvent } from '@/lib/types/Events';
-import { TravelAnnouncementWithUserInfo } from '@/lib/types/Travel';
+import { TravelAnnouncement } from '@/lib/types/Travel';
 import EventForm from '../components/EventForm';
 import TravelForm from '../components/TravelForm';
 import { useEvents } from '../context/EventContext';
 
 dayjs.extend(relativeTime);
+
+// Extended types for Feed
+interface TravelAnnouncementWithUserInfo extends TravelAnnouncement {
+  userName?: string;
+  userPhotoUrl?: string;
+}
 
 // Combined feed item type
 // Local extended event type used in the UI layer during migration. This keeps the runtime shape
@@ -563,76 +569,96 @@ export default function Feed() {
 
   const fetchTravelAnnouncements = async (friendIds: string[]) => {
     try {
-      // SCALABILITY FIX: Use the now-optimized getFriendsTravelAnnouncements with limits
-      const travelData = await getFriendsTravelAnnouncements(friendIds, 30); // Limit to 30 travel announcements
+      console.log('Feed: Starting travel announcements fetch for friends:', friendIds.length);
 
-      // Filter for upcoming/current travel only (not past travel)
-      const now = new Date();
-      const upcomingTravelData = travelData.filter(travel => new Date(travel.endDate) > now);
+      // Use dynamic import from index.ts with detailed debugging
+      try {
+        const apiModule = await import('@/lib/api');
+        console.log('Feed: Successfully imported API module');
+        console.log('Feed: Available exports from API module:', Object.keys(apiModule));
+        console.log('Feed: getFriendsTravelAnnouncements type:', typeof apiModule.getFriendsTravelAnnouncements);
+        console.log('Feed: All function types:', Object.entries(apiModule).map(([key, value]) => `${key}: ${typeof value}`));
 
-      if (upcomingTravelData.length === 0) {
-        setTravelAnnouncements([]);
-        return;
-      }
+        const { getFriendsTravelAnnouncements } = apiModule;
 
-      // SCALABILITY FIX: Batch process user profiles instead of sequential calls
-      const uniqueUserIds = [...new Set(upcomingTravelData.map(travel => travel.userId))];
-
-      // Batch fetch user profiles (max 25 at once)
-      const BATCH_SIZE = 25;
-      const userProfileBatches: any[][] = [];
-      const photoUrlBatches: (string | null)[][] = [];
-
-      for (let i = 0; i < uniqueUserIds.length; i += BATCH_SIZE) {
-        const batch = uniqueUserIds.slice(i, i + BATCH_SIZE);
-
-        // Process profiles and photos in parallel batches
-        const [profiles, photoUrls] = await Promise.all([
-          getUsersByIds(batch),
-          Promise.all(batch.map(async (userId) => {
-            try {
-              return await getUserProfilePhotoUrl(userId);
-            } catch {
-              return null;
-            }
-          }))
-        ]);
-
-        userProfileBatches.push(profiles);
-        photoUrlBatches.push(photoUrls);
-      }
-
-      // Create lookup maps for O(1) access
-      const profileMap = new Map();
-      const photoMap = new Map();
-
-      userProfileBatches.flat().forEach((profile, index) => {
-        if (profile) {
-          profileMap.set(profile.$id, profile);
+        if (typeof getFriendsTravelAnnouncements !== 'function') {
+          throw new Error('getFriendsTravelAnnouncements is not a function after dynamic import');
         }
-      });
 
-      uniqueUserIds.forEach((userId, index) => {
-        const batchIndex = Math.floor(index / BATCH_SIZE);
-        const indexInBatch = index % BATCH_SIZE;
-        const photoUrl = photoUrlBatches[batchIndex]?.[indexInBatch] || null;
-        photoMap.set(userId, photoUrl);
-      });
+        const travelData = await getFriendsTravelAnnouncements(friendIds, 30);
+        console.log('Feed: Successfully fetched travel announcements, count:', travelData?.length || 0);
 
-      // Map travel announcements with cached user data
-      const travelWithUserInfo = upcomingTravelData.map((travel) => {
-        const userProfile = profileMap.get(travel.userId);
-        const userPhotoUrl = photoMap.get(travel.userId);
+        // Filter for upcoming/current travel only (not past travel)
+        const now = new Date();
+        const upcomingTravelData = travelData.filter((travel: TravelAnnouncement) => new Date(travel.endDate) > now);
 
-        return {
-          ...travel,
-          userName: userDisplayUtils.getFullName(userProfile || {}, 'Unknown User'),
-          userPhotoUrl,
-        } as TravelAnnouncementWithUserInfo;
-      });
+        if (upcomingTravelData.length === 0) {
+          setTravelAnnouncements([]);
+          return;
+        }
 
-      setTravelAnnouncements(travelWithUserInfo);
-      console.log(`Feed: Loaded ${travelWithUserInfo.length} travel announcements with batched user data`);
+        // SCALABILITY FIX: Batch process user profiles instead of sequential calls
+        const uniqueUserIds: string[] = Array.from(new Set(upcomingTravelData.map((travel: TravelAnnouncement) => travel.userId)));
+
+        // Batch fetch user profiles (max 25 at once)
+        const BATCH_SIZE = 25;
+        const userProfileBatches: any[][] = [];
+        const photoUrlBatches: (string | null)[][] = [];
+
+        for (let i = 0; i < uniqueUserIds.length; i += BATCH_SIZE) {
+          const batch: string[] = uniqueUserIds.slice(i, i + BATCH_SIZE);
+
+          // Process profiles and photos in parallel batches
+          const [profiles, photoUrls] = await Promise.all([
+            getUsersByIds(batch),
+            Promise.all(batch.map(async (userId: string) => {
+              try {
+                return await getUserProfilePhotoUrl(userId);
+              } catch {
+                return null;
+              }
+            }))
+          ]);
+
+          userProfileBatches.push(profiles);
+          photoUrlBatches.push(photoUrls);
+        }
+
+        // Create lookup maps for O(1) access
+        const profileMap = new Map();
+        const photoMap = new Map();
+
+        userProfileBatches.flat().forEach((profile, index) => {
+          if (profile) {
+            profileMap.set(profile.$id, profile);
+          }
+        });
+
+        uniqueUserIds.forEach((userId, index) => {
+          const batchIndex = Math.floor(index / BATCH_SIZE);
+          const indexInBatch = index % BATCH_SIZE;
+          const photoUrl = photoUrlBatches[batchIndex]?.[indexInBatch] || null;
+          photoMap.set(userId, photoUrl);
+        });
+
+        // Map travel announcements with cached user data
+        const travelWithUserInfo = upcomingTravelData.map((travel: TravelAnnouncement) => {
+          const userProfile = profileMap.get(travel.userId);
+          const userPhotoUrl = photoMap.get(travel.userId);
+
+          return {
+            ...travel,
+            userName: userDisplayUtils.getFullName(userProfile || {}, 'Unknown User'),
+            userPhotoUrl,
+          } as TravelAnnouncementWithUserInfo;
+        });
+
+        setTravelAnnouncements(travelWithUserInfo);
+        console.log(`Feed: Loaded ${travelWithUserInfo.length} travel announcements with batched user data`);
+      } catch (err) {
+        console.error('Feed: Error fetching travel announcements:', err);
+        setTravelAnnouncements([]); // Ensure UI doesn't break
+      }
     } catch (error) {
       console.error('Error fetching travel announcements:', error);
       setTravelAnnouncements([]); // Ensure UI doesn't break
@@ -951,6 +977,52 @@ export default function Feed() {
             maxPicks={8}
           />
 
+          {/* Travel announcements (positioned directly under TopPicks) */}
+          {travelAnnouncements.length > 0 && (
+            <View style={styles.travelSection}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionHeaderTitle, { color: colors.text }]}>Travel Updates</Text>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.travelScrollContent}
+                style={styles.travelScrollView}
+              >
+                {travelAnnouncements.map((item) => (
+                  <TouchableOpacity
+                    key={item.$id}
+                    style={styles.travelItem}
+                    onPress={() => {
+                      Alert.alert(
+                        `${item.userName}'s Travel`,
+                        `📍 Destination: ${item.destination}\n📅 ${dayjs(item.startDate).format('MMM D')} - ${dayjs(item.endDate).format('MMM D, YYYY')}\n${item.description ? `\n📝 ${item.description}` : ''}`,
+                        [
+                          { text: 'Close', style: 'cancel' },
+                          { text: 'View on Map', onPress: () => openInMaps(item.destination) }
+                        ]
+                      );
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.travelCircle, { backgroundColor: colors.primary + '20', borderColor: colors.primary }]}>
+                      <Text style={styles.travelEmoji}>✈️</Text>
+                    </View>
+                    <Text style={[styles.travelName, { color: colors.text }]} numberOfLines={2}>
+                      {item.userName}
+                    </Text>
+                    <Text style={[styles.travelDestination, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {item.destination}
+                    </Text>
+                    <Text style={[styles.travelDate, { color: colors.textSecondary }]}>
+                      {dayjs(item.startDate).format('MMM D')}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
           {/* Main events FlatList (condensed chronological list) */}
           <FlatList
             data={eventsWithCreatorNames}
@@ -966,32 +1038,6 @@ export default function Feed() {
             contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 70 + insets.bottom }}
           />
 
-          {/* Travel announcements (kept below the main feed) */}
-          {travelAnnouncements.length > 0 && (
-            <View style={{ marginTop: 12 }}>
-              <Text style={[styles.sectionHeaderTitle, { color: colors.text, marginLeft: 16 }]}>Travel Announcements</Text>
-              <FlatList
-                data={travelAnnouncements}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                keyExtractor={(t) => t.$id}
-                renderItem={({ item }) => (
-                  <View style={[styles.feedCard, { width: 300, marginHorizontal: 12, backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <View style={styles.cardHeader}>
-                      <UserAvatar photoUrl={item.userPhotoUrl || null} name={item.userName} size={40} />
-                      <View style={styles.headerText}>
-                        <Text style={[styles.creatorName, { color: colors.text }]}>{item.userName}</Text>
-                        <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>{dayjs(item.startDate).fromNow()}</Text>
-                      </View>
-                      <TouchableOpacity style={styles.moreButton} onPress={() => router.push(`/event/${item.$id}?from=feed` as any)}>
-                        <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-              />
-            </View>
-          )}
         </View>
 
         {/* Event Form Modal */}
@@ -1000,12 +1046,14 @@ export default function Feed() {
             visible={formVisible}
             onClose={async (eventWasModified?: boolean) => {
               setFormVisible(false);
-              // If an event was created or updated, record the action
+              // If an event was created or updated, record the action and refresh data
               if (eventWasModified) {
                 await recordAction('create', 'feed_event_created');
+                // Refresh the feed data to show updated attendance
+                setRefreshTrigger(prev => prev + 1);
               }
             }}
-            currentUserId={currentUserId ?? ''}
+            currentUserId={currentUserId || globalUser?.$id || ''}
             friends={friends}
             selectedDateTime={new Date().toISOString()}
           />
@@ -1022,7 +1070,8 @@ export default function Feed() {
                 fetchTravelAnnouncements(friends);
               }
             }}
-            currentUserId={currentUserId ?? ''}
+            currentUserId={currentUserId || globalUser?.$id || ''}
+            userFriends={friends}
           />
         )}
       </SafeAreaView>
@@ -1414,5 +1463,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.12)'
+  },
+  // Travel section styles (matching TopPicks format)
+  travelSection: {
+    paddingVertical: 16,
+  },
+  sectionHeader: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  travelScrollView: {
+    paddingLeft: 16,
+  },
+  travelScrollContent: {
+    paddingRight: 16,
+  },
+  travelItem: {
+    alignItems: 'center',
+    marginRight: 20,
+    width: 80,
+  },
+  travelCircle: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+    borderWidth: 2,
+  },
+  travelEmoji: {
+    fontSize: 28,
+  },
+  travelName: {
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 2,
+    lineHeight: 14,
+  },
+  travelDestination: {
+    fontSize: 10,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  travelDate: {
+    fontSize: 9,
+    fontWeight: '400',
+    textAlign: 'center',
   },
 });

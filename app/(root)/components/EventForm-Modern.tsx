@@ -414,8 +414,6 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                                             }
                                         }}
                                         placeholder="Where is it happening?"
-                                        style={styles.textInput}
-                                        placeholderTextColor="rgba(255,255,255,0.6)"
                                     />
                                 </View>
                             </View>

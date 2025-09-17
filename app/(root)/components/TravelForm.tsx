@@ -1,18 +1,20 @@
-import { createTravelAnnouncement, updateTravelAnnouncement } from '@/lib/api/travel';
+import { createTravelAnnouncementWithFriendNotifications } from '@/lib/api/travelFriendNotifications';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import React, { useState } from 'react';
 import {
+    ActivityIndicator,
     Alert,
     Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     Switch,
     Text,
     TextInput,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -21,16 +23,19 @@ interface TravelFormProps {
     onClose: () => void;
     onSuccess: () => void;
     currentUserId: string;
+    userFriends: string[];
     editingTravel?: TravelAnnouncement | null;
 }
 
-export default function TravelForm({
+const TravelForm: React.FC<TravelFormProps> = ({
     visible,
     onClose,
     onSuccess,
     currentUserId,
+    userFriends,
     editingTravel
-}: TravelFormProps) {
+}) => {
+    // Form state
     const [destination, setDestination] = useState(editingTravel?.destination || '');
     const [description, setDescription] = useState(editingTravel?.description || '');
     const [startDate, setStartDate] = useState(
@@ -40,11 +45,57 @@ export default function TravelForm({
         editingTravel ? new Date(editingTravel.endDate) : new Date()
     );
     const [isPublic, setIsPublic] = useState(editingTravel?.isPublic ?? true);
+    const [isLoading, setIsLoading] = useState(false);
+
+    // Date picker state
     const [showStartDatePicker, setShowStartDatePicker] = useState(false);
     const [showEndDatePicker, setShowEndDatePicker] = useState(false);
-    const [loading, setLoading] = useState(false);
+
+    // Location coordinates (for friend matching)
+    const [destinationLat, setDestinationLat] = useState<number | undefined>(
+        editingTravel?.destinationLat
+    );
+    const [destinationLng, setDestinationLng] = useState<number | undefined>(
+        editingTravel?.destinationLng
+    );
+
+    // Simple location search (you can enhance with Google Places later)
+    const searchLocation = (query: string) => {
+        setDestination(query);
+
+        // Mock coordinates for demo (replace with actual location service)
+        const locationMocks: Record<string, { lat: number; lng: number }> = {
+            'sydney': { lat: -33.8688, lng: 151.2093 },
+            'melbourne': { lat: -37.8136, lng: 144.9631 },
+            'brisbane': { lat: -27.4698, lng: 153.0251 },
+            'perth': { lat: -31.9505, lng: 115.8605 },
+            'adelaide': { lat: -34.9285, lng: 138.6007 },
+            'new york': { lat: 40.7128, lng: -74.0060 },
+            'london': { lat: 51.5074, lng: -0.1278 },
+            'tokyo': { lat: 35.6762, lng: 139.6503 },
+            'paris': { lat: 48.8566, lng: 2.3522 },
+            'bali': { lat: -8.3405, lng: 115.0920 },
+            'bangkok': { lat: 13.7563, lng: 100.5018 },
+            'singapore': { lat: 1.3521, lng: 103.8198 },
+            'hong kong': { lat: 22.3193, lng: 114.1694 },
+            'los angeles': { lat: 34.0522, lng: -118.2437 },
+            'san francisco': { lat: 37.7749, lng: -122.4194 },
+        };
+
+        const normalizedQuery = query.toLowerCase();
+        const location = locationMocks[normalizedQuery];
+        if (location) {
+            setDestinationLat(location.lat);
+            setDestinationLng(location.lng);
+        }
+    };
 
     const handleSave = async () => {
+        if (!currentUserId || currentUserId.trim() === '') {
+            Alert.alert('Error', 'Please log in to create travel announcements');
+            return;
+        }
+
         if (!destination.trim()) {
             Alert.alert('Error', 'Please enter a destination');
             return;
@@ -55,290 +106,396 @@ export default function TravelForm({
             return;
         }
 
-        setLoading(true);
+        setIsLoading(true);
         try {
             if (editingTravel) {
-                // Update existing travel
-                await updateTravelAnnouncement(editingTravel.$id, {
-                    destination: destination.trim(),
-                    description: description.trim(),
-                    startDate: startDate.toISOString(),
-                    endDate: endDate.toISOString(),
-                    isPublic,
-                });
-                Alert.alert('Success', 'Travel announcement updated!');
+                // TODO: Implement update functionality
+                Alert.alert('Info', 'Editing travel announcements will be available soon');
+                return;
             } else {
-                // Create new travel
-                await createTravelAnnouncement({
-                    userId: currentUserId,
-                    destination: destination.trim(),
-                    description: description.trim(),
-                    startDate: startDate.toISOString(),
-                    endDate: endDate.toISOString(),
-                    isPublic,
-                });
-                Alert.alert('Success', 'Travel announcement created!');
+                // Create new travel with friend notifications
+                await createTravelAnnouncementWithFriendNotifications(
+                    {
+                        userId: currentUserId,
+                        destination: destination.trim(),
+                        startDate: startDate.toISOString(),
+                        endDate: endDate.toISOString(),
+                        description: description.trim(),
+                        isPublic,
+                        destinationLat,
+                        destinationLng,
+                        locationName: destination.trim(),
+                    },
+                    userFriends
+                );
+
+                Alert.alert(
+                    'Travel Created! 🌍',
+                    `Your travel to ${destination} has been created and friends have been notified!`
+                );
             }
 
             onSuccess();
             onClose();
+
+            // Reset form
+            setDestination('');
+            setDescription('');
+            setStartDate(new Date());
+            setEndDate(new Date());
+            setDestinationLat(undefined);
+            setDestinationLng(undefined);
         } catch (error) {
             console.error('Error saving travel:', error);
             Alert.alert('Error', 'Failed to save travel announcement');
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
     };
 
-    const onStartDateChange = (event: any, selectedDate?: Date) => {
-        setShowStartDatePicker(false);
-        if (selectedDate) {
-            setStartDate(selectedDate);
-            // If end date is before new start date, update it
-            if (endDate < selectedDate) {
-                setEndDate(selectedDate);
-            }
-        }
-    };
-
-    const onEndDateChange = (event: any, selectedDate?: Date) => {
-        setShowEndDatePicker(false);
-        if (selectedDate) {
-            setEndDate(selectedDate);
+    const handleClose = () => {
+        if (!isLoading) {
+            onClose();
         }
     };
 
     return (
         <Modal
-            animationType="slide"
-            transparent={true}
             visible={visible}
-            onRequestClose={onClose}
+            animationType="slide"
+            presentationStyle="pageSheet"
+            onRequestClose={handleClose}
         >
-            <View style={styles.centeredView}>
-                <SafeAreaView style={styles.modalView}>
-                    <ScrollView showsVerticalScrollIndicator={false}>
-                        {/* Header */}
-                        <View style={styles.header}>
-                            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                                <MaterialIcons name="close" size={24} color="#666" />
-                            </TouchableOpacity>
-                            <Text style={styles.title}>
-                                {editingTravel ? 'Edit Travel' : 'Announce Travel'}
+            <SafeAreaView style={styles.container}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={handleClose} disabled={isLoading}>
+                        <MaterialIcons name="close" size={24} color="#007AFF" />
+                    </TouchableOpacity>
+
+                    <Text style={styles.headerTitle}>
+                        {editingTravel ? 'Edit Travel' : 'New Travel'}
+                    </Text>
+
+                    <TouchableOpacity
+                        onPress={handleSave}
+                        disabled={isLoading || !destination.trim()}
+                    >
+                        {isLoading ? (
+                            <ActivityIndicator color="#007AFF" />
+                        ) : (
+                            <Text style={[
+                                styles.saveButton,
+                                { color: (!destination.trim() || isLoading) ? '#999' : '#007AFF' }
+                            ]}>
+                                Save
                             </Text>
+                        )}
+                    </TouchableOpacity>
+                </View>
+
+                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                    {/* Destination */}
+                    <View style={styles.section}>
+                        <Text style={styles.label}>Where are you traveling? ✈️</Text>
+                        <TextInput
+                            style={styles.textInput}
+                            placeholder="e.g., Sydney, New York, Tokyo"
+                            value={destination}
+                            onChangeText={searchLocation}
+                            editable={!isLoading}
+                        />
+                        {destinationLat && destinationLng && (
+                            <Text style={styles.coordinatesText}>
+                                📍 Location found: {destinationLat.toFixed(4)}, {destinationLng.toFixed(4)}
+                            </Text>
+                        )}
+                    </View>
+
+                    {/* Dates */}
+                    <View style={styles.section}>
+                        <Text style={styles.label}>Travel Dates 📅</Text>
+
+                        {/* Start Date */}
+                        <View style={styles.dateRow}>
+                            <Text style={styles.dateLabel}>From:</Text>
                             <TouchableOpacity
-                                onPress={handleSave}
-                                disabled={loading}
-                                style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+                                style={styles.dateButton}
+                                onPress={() => setShowStartDatePicker(true)}
+                                disabled={isLoading}
                             >
-                                <Text style={styles.saveButtonText}>
-                                    {loading ? 'Saving...' : 'Save'}
+                                <Text style={styles.dateText}>
+                                    {startDate.toLocaleDateString('en-US', {
+                                        weekday: 'short',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        year: 'numeric'
+                                    })}
                                 </Text>
+                                <MaterialIcons name="date-range" size={20} color="#666" />
                             </TouchableOpacity>
                         </View>
 
-                        {/* Form Fields */}
-                        <View style={styles.form}>
-                            {/* Destination */}
-                            <View style={styles.fieldContainer}>
-                                <Text style={styles.label}>Destination *</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={destination}
-                                    onChangeText={setDestination}
-                                    placeholder="Where are you traveling to?"
-                                    placeholderTextColor="#999"
-                                />
-                            </View>
-
-                            {/* Start Date */}
-                            <View style={styles.fieldContainer}>
-                                <Text style={styles.label}>Start Date *</Text>
-                                <TouchableOpacity
-                                    style={styles.dateButton}
-                                    onPress={() => setShowStartDatePicker(true)}
-                                >
-                                    <Text style={styles.dateButtonText}>
-                                        {startDate.toLocaleDateString()}
-                                    </Text>
-                                    <MaterialIcons name="date-range" size={20} color="#666" />
-                                </TouchableOpacity>
-                            </View>
-
-                            {/* End Date */}
-                            <View style={styles.fieldContainer}>
-                                <Text style={styles.label}>End Date *</Text>
-                                <TouchableOpacity
-                                    style={styles.dateButton}
-                                    onPress={() => setShowEndDatePicker(true)}
-                                >
-                                    <Text style={styles.dateButtonText}>
-                                        {endDate.toLocaleDateString()}
-                                    </Text>
-                                    <MaterialIcons name="date-range" size={20} color="#666" />
-                                </TouchableOpacity>
-                            </View>
-
-                            {/* Description */}
-                            <View style={styles.fieldContainer}>
-                                <Text style={styles.label}>Description</Text>
-                                <TextInput
-                                    style={[styles.input, styles.textArea]}
-                                    value={description}
-                                    onChangeText={setDescription}
-                                    placeholder="Tell your friends about your trip..."
-                                    placeholderTextColor="#999"
-                                    multiline
-                                    numberOfLines={3}
-                                    textAlignVertical="top"
-                                />
-                            </View>
-
-                            {/* Public Switch */}
-                            <View style={styles.switchContainer}>
-                                <View style={styles.switchLabelContainer}>
-                                    <Text style={styles.label}>Share with friends</Text>
-                                    <Text style={styles.switchDescription}>
-                                        Let your friends see this travel announcement
-                                    </Text>
-                                </View>
-                                <Switch
-                                    value={isPublic}
-                                    onValueChange={setIsPublic}
-                                    trackColor={{ false: '#ccc', true: '#4A90E2' }}
-                                    thumbColor={isPublic ? '#fff' : '#f4f3f4'}
-                                />
-                            </View>
+                        {/* End Date */}
+                        <View style={styles.dateRow}>
+                            <Text style={styles.dateLabel}>To:</Text>
+                            <TouchableOpacity
+                                style={styles.dateButton}
+                                onPress={() => setShowEndDatePicker(true)}
+                                disabled={isLoading}
+                            >
+                                <Text style={styles.dateText}>
+                                    {endDate.toLocaleDateString('en-US', {
+                                        weekday: 'short',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        year: 'numeric'
+                                    })}
+                                </Text>
+                                <MaterialIcons name="date-range" size={20} color="#666" />
+                            </TouchableOpacity>
                         </View>
-                    </ScrollView>
+                    </View>
 
-                    {/* Date Pickers */}
-                    {showStartDatePicker && (
-                        <DateTimePicker
-                            value={startDate}
-                            mode="date"
-                            display="default"
-                            onChange={onStartDateChange}
-                            minimumDate={new Date()}
+                    {/* Description */}
+                    <View style={styles.section}>
+                        <Text style={styles.label}>What are you doing there? ✨</Text>
+                        <TextInput
+                            style={[styles.textInput, styles.textArea]}
+                            placeholder="Business trip, vacation, visiting friends..."
+                            value={description}
+                            onChangeText={setDescription}
+                            multiline
+                            numberOfLines={4}
+                            textAlignVertical="top"
+                            editable={!isLoading}
                         />
-                    )}
+                    </View>
 
-                    {showEndDatePicker && (
-                        <DateTimePicker
-                            value={endDate}
-                            mode="date"
-                            display="default"
-                            onChange={onEndDateChange}
-                            minimumDate={startDate}
-                        />
-                    )}
-                </SafeAreaView>
-            </View>
+                    {/* Privacy */}
+                    <View style={styles.section}>
+                        <View style={styles.switchRow}>
+                            <View style={styles.switchInfo}>
+                                <Text style={styles.label}>Public Travel 🌍</Text>
+                                <Text style={styles.switchDescription}>
+                                    Allow friends to see your travel plans
+                                </Text>
+                            </View>
+                            <Switch
+                                value={isPublic}
+                                onValueChange={setIsPublic}
+                                disabled={isLoading}
+                                trackColor={{ false: '#E5E5E5', true: '#007AFF' }}
+                                thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                            />
+                        </View>
+                    </View>
+
+                    {/* Friend Notification Info */}
+                    <View style={styles.infoSection}>
+                        <View style={styles.infoRow}>
+                            <MaterialIcons name="people" size={20} color="#007AFF" />
+                            <Text style={styles.infoText}>
+                                Friends in {destination || 'your destination'} will be automatically notified
+                            </Text>
+                        </View>
+                        <View style={styles.infoRow}>
+                            <MaterialIcons name="location-on" size={20} color="#007AFF" />
+                            <Text style={styles.infoText}>
+                                Friends traveling there at the same time will see your overlap
+                            </Text>
+                        </View>
+                    </View>
+
+                    {/* Quick location suggestions */}
+                    <View style={styles.section}>
+                        <Text style={styles.label}>Popular Destinations</Text>
+                        <View style={styles.chipContainer}>
+                            {['Sydney', 'Melbourne', 'New York', 'Tokyo', 'London', 'Bali'].map((city) => (
+                                <TouchableOpacity
+                                    key={city}
+                                    style={styles.chip}
+                                    onPress={() => searchLocation(city)}
+                                    disabled={isLoading}
+                                >
+                                    <Text style={styles.chipText}>{city}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                </ScrollView>
+
+                {/* Date Pickers */}
+                {showStartDatePicker && (
+                    <DateTimePicker
+                        value={startDate}
+                        mode="date"
+                        display="default"
+                        onChange={(event, selectedDate) => {
+                            setShowStartDatePicker(false);
+                            if (selectedDate) {
+                                setStartDate(selectedDate);
+                                // Auto-adjust end date if it's before start date
+                                if (selectedDate > endDate) {
+                                    setEndDate(selectedDate);
+                                }
+                            }
+                        }}
+                    />
+                )}
+
+                {showEndDatePicker && (
+                    <DateTimePicker
+                        value={endDate}
+                        mode="date"
+                        display="default"
+                        minimumDate={startDate}
+                        onChange={(event, selectedDate) => {
+                            setShowEndDatePicker(false);
+                            if (selectedDate) {
+                                setEndDate(selectedDate);
+                            }
+                        }}
+                    />
+                )}
+            </SafeAreaView>
         </Modal>
     );
-}
+};
 
 const styles = StyleSheet.create({
-    centeredView: {
+    container: {
         flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    },
-    modalView: {
-        width: '90%',
-        maxHeight: '80%',
-        backgroundColor: 'white',
-        borderRadius: 20,
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-        elevation: 5,
+        backgroundColor: '#fff',
     },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: 20,
+        paddingHorizontal: 20,
+        paddingVertical: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: '#E5E5E5',
     },
-    title: {
+    headerTitle: {
         fontSize: 18,
-        fontWeight: 'bold',
-        color: '#333',
-    },
-    closeButton: {
-        padding: 5,
+        fontWeight: '600',
+        color: '#000',
     },
     saveButton: {
-        backgroundColor: '#4A90E2',
-        paddingHorizontal: 15,
-        paddingVertical: 8,
-        borderRadius: 20,
-    },
-    saveButtonDisabled: {
-        backgroundColor: '#ccc',
-    },
-    saveButtonText: {
-        color: 'white',
+        fontSize: 16,
         fontWeight: '600',
     },
-    form: {
-        padding: 20,
+    content: {
+        flex: 1,
+        paddingHorizontal: 20,
     },
-    fieldContainer: {
-        marginBottom: 20,
+    section: {
+        marginTop: 24,
     },
     label: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#333',
+        color: '#000',
         marginBottom: 8,
     },
-    input: {
+    textInput: {
         borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 10,
-        padding: 12,
+        borderColor: '#E5E5E5',
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
         fontSize: 16,
-        color: '#333',
-        backgroundColor: '#f9f9f9',
+        backgroundColor: '#FAFAFA',
     },
     textArea: {
-        height: 80,
+        height: 100,
+        paddingTop: 12,
+    },
+    coordinatesText: {
+        fontSize: 12,
+        color: '#007AFF',
+        marginTop: 4,
+    },
+    dateRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    dateLabel: {
+        fontSize: 16,
+        color: '#666',
+        width: 50,
+        marginRight: 12,
     },
     dateButton: {
+        flex: 1,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 10,
-        padding: 12,
-        backgroundColor: '#f9f9f9',
+        borderColor: '#E5E5E5',
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        backgroundColor: '#FAFAFA',
     },
-    dateButtonText: {
+    dateText: {
         fontSize: 16,
-        color: '#333',
+        color: '#000',
     },
-    switchContainer: {
+    switchRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: 10,
     },
-    switchLabelContainer: {
+    switchInfo: {
         flex: 1,
-        marginRight: 15,
+        marginRight: 16,
     },
     switchDescription: {
         fontSize: 14,
         color: '#666',
         marginTop: 2,
     },
+    infoSection: {
+        marginTop: 24,
+        padding: 16,
+        backgroundColor: '#F0F8FF',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#E1F3FF',
+    },
+    infoRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginBottom: 8,
+    },
+    infoText: {
+        fontSize: 14,
+        color: '#333',
+        marginLeft: 8,
+        flex: 1,
+        lineHeight: 20,
+    },
+    chipContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginTop: 8,
+    },
+    chip: {
+        backgroundColor: '#007AFF',
+        borderRadius: 16,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        marginRight: 8,
+        marginBottom: 8,
+    },
+    chipText: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '500',
+    },
 });
+
+export default TravelForm;

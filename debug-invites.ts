@@ -1,5 +1,4 @@
-import { Query } from 'react-native-appwrite';
-import { config, databases, getCurrentUser } from '../lib/appwrite/appwrite';
+import { config, databases, getCurrentUser, Query } from './lib/appwrite/appwrite';
 
 async function debugInvites() {
     try {
@@ -30,7 +29,7 @@ async function debugInvites() {
 
             if (allAttendances.documents.length > 0) {
                 console.log('Sample records:');
-                allAttendances.documents.forEach((doc, index) => {
+                allAttendances.documents.forEach((doc: any, index: number) => {
                     console.log(`  ${index + 1}. Event: ${doc.eventId}, User: ${doc.userId}, Status: ${doc.status}`);
                 });
             }
@@ -52,7 +51,7 @@ async function debugInvites() {
             );
 
             console.log(`🎉 User invites found: ${userInvites.documents.length}`);
-            userInvites.documents.forEach((invite, index) => {
+            userInvites.documents.forEach((invite: any, index: number) => {
                 console.log(`  ${index + 1}. Invited to event: ${invite.eventId}`);
             });
 
@@ -69,7 +68,7 @@ async function debugInvites() {
             );
 
             console.log(`📅 Sample events (${events.documents.length}):`);
-            events.documents.forEach((event, index) => {
+            events.documents.forEach((event: any, index: number) => {
                 const hasLegacyInvites = Array.isArray(event.inviteeIds) && event.inviteeIds.length > 0;
                 console.log(`  ${index + 1}. ${event.title} - Legacy invites: ${hasLegacyInvites ? event.inviteeIds.length : 0}`);
                 if (hasLegacyInvites && event.inviteeIds.includes(user.$id)) {
