@@ -1,7 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import DeepLinkTester from '../../components/DeepLinkTester';
+import DeepLinkTester from '../../components/debug/DeepLinkTester';
 // Removed debug components that were deleted during cleanup
 
 /**

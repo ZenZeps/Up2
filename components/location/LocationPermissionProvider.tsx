@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLocationPermission } from '../hooks/useLocationPermission';
+import { useLocationPermission } from '../../lib/hooks/useLocationPermission';
 import LocationPermissionModal from './LocationPermissionModal';
 
 interface LocationPermissionProviderProps {

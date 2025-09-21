@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { locationService } from '../lib/services/locationService';
+import { locationService } from '../services/locationService';
 
 export function useLocationPermission() {
     const [isModalVisible, setIsModalVisible] = useState(false);

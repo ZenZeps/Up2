@@ -1,5 +1,5 @@
-import { Background } from '@/components/Background';
-import TopPicks from '@/components/TopPicks';
+import TopPicks from '@/components/feed/TopPicks';
+import { Background } from '@/components/ui/Background';
 import { getCategoriesByValues, getEventEmoji } from '@/constants/categories';
 import { addEventAttendee, getEventAttendeesFor, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
@@ -7,7 +7,6 @@ import { getUserGroups } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
 import { getUsersByIds } from '@/lib/api/user';
-import { config } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { useActionTracker } from '@/lib/hooks/useOptimizedData';
@@ -33,7 +32,6 @@ import UserAvatar from '../components/UserAvatar';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import EventForm from '../components/EventForm';
-import TravelDebugComponent from '../components/TravelDebugComponent';
 import TravelForm from '../components/TravelForm';
 import { useEvents } from '../context/EventContext';
 
@@ -52,10 +50,6 @@ type ExtendedEvent = AppEvent & { attendees?: string[]; inviteeIds?: string[]; i
 
 type FeedItem = (ExtendedEvent & { type: 'event' }) | (TravelAnnouncementWithUserInfo & { type: 'travel' });
 export default function Feed() {
-  // DEBUG: Check what collection ID is being used
-  console.log('🔍 FEED DEBUG: Travel Collection ID from config:', config.travelCollectionID);
-  console.log('🔍 FEED DEBUG: Environment var:', process.env.EXPO_PUBLIC_APPWRITE_TRAVEL_COLLECTION_ID);
-
   const { colors, isColorful } = useTheme();
   const insets = useSafeAreaInsets();
   const { events, refetchEvents, hasInitialLoad, getScreenEvents, setScreenEvents, markScreenLoadedFromDb, getScreenLoadedFromDb } = useEvents();
@@ -579,7 +573,7 @@ export default function Feed() {
 
       // SCALABILITY FIX: Use the now-optimized getFriendsTravelAnnouncements with limits
       // Include current user's travel announcements as well
-      const travelData = await getFriendsTravelAnnouncements(friendIds, 30, true, currentUserId); // Limit to 30 travel announcements
+      const travelData = await getFriendsTravelAnnouncements(friendIds, 30, true, currentUserId || undefined); // Limit to 30 travel announcements
       console.log('🧳 Feed: Raw travel data received:', travelData.length, 'announcements');
 
       if (travelData.length === 0) {
@@ -972,23 +966,33 @@ export default function Feed() {
         )}
 
         {/* Event Feed as a single vertical FlatList with pull-to-refresh */}
-        <View style={[styles.feedContent, { paddingBottom: 70 + insets.bottom }]}>
-          {/* Top Picks Section - personalized event recommendations */}
-          <TopPicks
-            allEvents={allEventsForTopPicks}
-            userFriends={friends}
-            currentUserId={currentUserId || undefined}
-            maxPicks={8}
-          />
-
-          {/* TEMPORARY: Travel Debug Component */}
-          <TravelDebugComponent />
-
+        <View style={[styles.feedContent, { flex: 1 }]}>
           {/* Main events FlatList (condensed chronological list) */}
           <FlatList
             data={eventsWithCreatorNames}
             keyExtractor={(item) => item.$id}
             renderItem={renderEventItem}
+            ListHeaderComponent={() => {
+              try {
+                return (
+                  <TopPicks
+                    allEvents={allEventsForTopPicks}
+                    userFriends={friends}
+                    currentUserId={currentUserId || undefined}
+                    maxPicks={8}
+                  />
+                );
+              } catch (error) {
+                console.error('Error rendering TopPicks in Feed:', error);
+                return (
+                  <View style={{ padding: 16 }}>
+                    <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>
+                      Top Picks temporarily unavailable
+                    </Text>
+                  </View>
+                );
+              }
+            }}
             ListEmptyComponent={() => (
               <View style={{ padding: 24, alignItems: 'center' }}>
                 <Text style={{ color: colors.textSecondary }}>No events yet. Pull to refresh.</Text>
@@ -996,6 +1000,7 @@ export default function Feed() {
             )}
             refreshing={refreshing}
             onRefresh={onRefresh}
+            style={{ flex: 1 }}
             contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 70 + insets.bottom }}
           />
 

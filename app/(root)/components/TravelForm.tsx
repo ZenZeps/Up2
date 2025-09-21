@@ -1,3 +1,4 @@
+import { createTravelAnnouncementWithFriendNotifications } from '@/lib/api/travelFriendNotifications';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -167,7 +168,9 @@ const TravelForm: React.FC<TravelFormProps> = ({
             // Check for specific Appwrite errors
             if (error && typeof error === 'object' && 'type' in error) {
                 console.error('🧳 TravelForm: Appwrite error type:', error.type);
-                console.error('🧳 TravelForm: Appwrite error code:', error.code);
+                if ('code' in error) {
+                    console.error('🧳 TravelForm: Appwrite error code:', error.code);
+                }
             }
 
             Alert.alert('Error', `Failed to save travel announcement: ${error instanceof Error ? error.message : 'Unknown error'}`);

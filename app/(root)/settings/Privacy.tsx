@@ -56,6 +56,7 @@ const PrivacySettings = () => {
                 $id: userId,
                 firstName: currentProfile?.firstName || '',
                 lastName: currentProfile?.lastName || '',
+                name: `${currentProfile?.firstName || ''} ${currentProfile?.lastName || ''}`.trim(),
                 email: currentProfile?.email || user?.email || '',
                 isPublic: !value, // Invert because isPrivate is opposite of isPublic
                 preferences: currentProfile?.preferences || [],

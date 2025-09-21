@@ -7,7 +7,7 @@ import {
     shareToInstagram,
     shareToMessenger,
     shareToWhatsApp
-} from '../lib/utils/invites';
+} from '@/lib/utils/invites';
 
 interface QuickShareButtonProps {
     eventId: string;

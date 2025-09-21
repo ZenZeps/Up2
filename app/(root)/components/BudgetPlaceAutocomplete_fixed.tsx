@@ -1,6 +1,6 @@
 import { budgetLocationService, FreeLocationSuggestion } from '@/lib/services/budgetLocationService';
 import { MaterialIcons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 interface Props {

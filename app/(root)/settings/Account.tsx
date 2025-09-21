@@ -1,5 +1,5 @@
-import { Background } from '@/components/Background';
-import { DeleteAccountButton } from '@/components/DeleteAccountButton';
+import { DeleteAccountButton } from '@/components/modals/DeleteAccountButton';
+import { Background } from '@/components/ui/Background';
 import { getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';

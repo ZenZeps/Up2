@@ -1,7 +1,7 @@
 import { getUserProfile } from '@/lib/api/user';
 import { config, databases } from '@/lib/appwrite/appwrite';
+import { getUserFriends } from '@/lib/api/friendship';
 import { useGlobalContext } from '@/lib/global-provider';
-import { getUserFriends } from '@/lib/utils/databaseMigration';
 import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 

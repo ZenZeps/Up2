@@ -1,13 +1,13 @@
 // DEBUG: Temporary simple version
-import React from 'react';
-import { View, Text, SafeAreaView } from 'react-native';
-import { Background } from '@/components/Background';
+import { Background } from '@/components/ui/Background';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
+import React from 'react';
+import { SafeAreaView, Text, View } from 'react-native';
 
 export default function Feed() {
   console.log('🍽️ Feed: Component rendering (SIMPLE VERSION)');
-  
+
   const { colors } = useTheme();
   const { user: globalUser } = useGlobalContext();
 

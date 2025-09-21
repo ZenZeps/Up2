@@ -120,9 +120,39 @@ const GroupPage = () => {
                         setMembers(memberProfiles);
                     }
                 }
+            } else {
+                // Group not found - show error and redirect
+                Alert.alert(
+                    'Group Not Found',
+                    'The group you are trying to access does not exist or you do not have permission to view it.',
+                    [{ text: 'OK', onPress: () => router.back() }]
+                );
             }
         } catch (error) {
             console.error('Error loading group data:', error);
+
+            // Check if it's a specific "document not found" error
+            if (error && typeof error === 'object' && 'message' in error) {
+                const errorMessage = (error as any).message || '';
+                if (errorMessage.includes('requested ID could not be found')) {
+                    Alert.alert(
+                        'Group Not Found',
+                        'The group you are trying to access does not exist.',
+                        [{ text: 'OK', onPress: () => router.back() }]
+                    );
+                    return;
+                }
+            }
+
+            // Generic error handling
+            Alert.alert(
+                'Error Loading Group',
+                'There was an error loading the group. Please check your connection and try again.',
+                [
+                    { text: 'Retry', onPress: reloadGroupData },
+                    { text: 'Go Back', onPress: () => router.back() }
+                ]
+            );
         } finally {
             setLoading(false);
         }
@@ -140,9 +170,19 @@ const GroupPage = () => {
     }, []);
 
     const handleCreateEvent = useCallback(() => {
+        // Ensure group is loaded before allowing event creation
+        if (!group || !group.$id) {
+            Alert.alert(
+                'Group Not Ready',
+                'Please wait for the group to load before creating an event.',
+                [{ text: 'OK' }]
+            );
+            return;
+        }
+
         setEditingEvent(null);
         setFormVisible(true);
-    }, []);
+    }, [group]);
 
     const handleAttendEvent = useCallback(async (event: AppEvent) => {
         if (!user?.$id) return;

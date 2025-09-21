@@ -241,6 +241,7 @@ const SignUp = () => {
                     $id: user.$id,
                     firstName: signUpData.firstName.trim(),
                     lastName: signUpData.lastName.trim(),
+                    name: `${signUpData.firstName.trim()} ${signUpData.lastName.trim()}`,
                     email: user.email,
                     isPublic: true,
                     preferences: signUpData.preferences,

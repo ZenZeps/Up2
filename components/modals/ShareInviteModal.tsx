@@ -19,7 +19,7 @@ import {
     shareToInstagram,
     shareToMessenger,
     shareToWhatsApp
-} from '../lib/utils/invites';
+} from '../../lib/utils/invites';
 
 interface ShareInviteModalProps {
     visible: boolean;

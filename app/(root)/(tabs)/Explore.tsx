@@ -1,4 +1,4 @@
-import { Background } from '@/components/Background';
+import { Background } from '@/components/ui/Background';
 import { CATEGORIES, getCategoriesByValues, getEventEmoji } from '@/constants/categories';
 import { enrichEventsWithGroupNames, fetchEventsWithGroupNames, isUserAttendingEvent } from '@/lib/api/event';
 import { cancelFriendRequest, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';

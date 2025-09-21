@@ -1,4 +1,4 @@
-import { Background } from '@/components/Background';
+import { Background } from '@/components/ui/Background';
 import { getEventColor, getEventEmoji } from '@/constants/categories';
 import { enrichEventsWithGroupNames, getEventInvitees, getUserAttendingEvents } from '@/lib/api/event';
 import { getUserGroupInvites } from '@/lib/api/group';
@@ -639,16 +639,14 @@ export default function Home() {
               // For month view ONLY, completely override positioning to eliminate gaps
               ...(isMonthView && {
                 position: 'absolute',
-                bottom: 0, // Stick to bottom
-                left: 0, // Full width
-                right: 0, // Full width
-                height: 14, // Slightly increased height for better readability
-                minHeight: 14,
-                maxHeight: 14,
-                // Calculate top position based on event index to stack tightly
-                top: touchableOpacityProps.style?.top || 24,
-                // Override any spacing from the library
-                transform: [{ translateY: -2 }], // Move up slightly to eliminate gaps
+                left: 2, // Small margin from left edge
+                right: 2, // Small margin from right edge
+                height: 12, // Compact height for events
+                minHeight: 12,
+                maxHeight: 12,
+                // Position events at the top of the day cell and stack them
+                top: 20 + (touchableOpacityProps.style?.eventIndex || 0) * 14, // Start below day number, stack with 14px spacing
+                // Remove transform that was causing positioning issues
               }),
             }
           ]}
@@ -660,11 +658,11 @@ export default function Home() {
             numberOfLines={1}
             style={{
               textAlign: 'center',
-              fontSize: isMonthView ? 10 : 12, // Slightly increased from 9 to 10 for better readability
+              fontSize: isMonthView ? 9 : 12, // Smaller font for compact month view
               color: isMonthView ? colors.background : colors.background, // Use background color (white in dark mode)
               margin: 0, // Remove all margins
-              padding: isMonthView ? 1 : 0, // Minimal padding for month view text
-              lineHeight: isMonthView ? 10 : 12, // Match font size for tight fit
+              padding: 0, // No padding needed for compact view
+              lineHeight: isMonthView ? 9 : 12, // Match font size for tight fit
             }}
           >
             {event.title || 'Untitled'}

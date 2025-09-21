@@ -2,7 +2,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import QuickShareButton from './QuickShareButton';
-import ShareInviteModal from './ShareInviteModal';
+import ShareInviteModal from '../modals/ShareInviteModal';
 
 interface EventCardWithShareProps {
     event: {

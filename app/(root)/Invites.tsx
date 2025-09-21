@@ -1,4 +1,4 @@
-import { Background } from '@/components/Background';
+import { Background } from '@/components/ui/Background';
 import { addEventAttendee, getEventInvitees, removeEventInvitation } from '@/lib/api/event';
 import { acceptFriendRequest, declineFriendRequest } from '@/lib/api/friendship';
 import { acceptGroupInvite, declineGroupInvite, getGroupById, getUserGroupInvites } from '@/lib/api/group';

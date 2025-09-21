@@ -349,7 +349,7 @@ export default function PlaceAutocomplete({ value, onChangeText, onSelect, place
                                 <MaterialIcons
                                     name={getLocationIcon(item.types)}
                                     size={18}
-                                    color="rgba(255,255,255,0.7)"
+                                    color="#6b7280"
                                     style={styles.suggestionIcon}
                                 />
                                 <View style={styles.suggestionTextContainer}>
@@ -365,7 +365,7 @@ export default function PlaceAutocomplete({ value, onChangeText, onSelect, place
                                 <MaterialIcons
                                     name="arrow-forward-ios"
                                     size={12}
-                                    color="rgba(255,255,255,0.4)"
+                                    color="#9ca3af"
                                 />
                             </TouchableOpacity>
                         )}
@@ -404,7 +404,7 @@ const styles = StyleSheet.create({
     textInput: {
         flex: 1,
         fontSize: 16,
-        color: '#fff',
+        color: '#000',
         paddingVertical: 12,
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(255,255,255,0.3)',
@@ -438,15 +438,15 @@ const styles = StyleSheet.create({
         top: '100%',
         left: 0,
         right: 0,
-        backgroundColor: 'rgba(0,0,0,0.9)',
+        backgroundColor: '#ffffff',
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: 'rgba(0,0,0,0.1)',
         maxHeight: 200,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
         elevation: 8,
         zIndex: 1000,
     },
@@ -473,19 +473,19 @@ const styles = StyleSheet.create({
         marginRight: 8,
     },
     suggestionMainText: {
-        color: '#fff',
+        color: '#1f2937',
         fontSize: 16,
-        fontWeight: '500',
+        fontWeight: '600',
         marginBottom: 2,
     },
     suggestionSecondaryText: {
-        color: 'rgba(255,255,255,0.6)',
+        color: '#6b7280',
         fontSize: 14,
         fontWeight: '400',
     },
     separator: {
         height: 1,
-        backgroundColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(0,0,0,0.08)',
         marginHorizontal: 16,
     },
     debugButton: {

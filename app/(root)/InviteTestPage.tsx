@@ -9,8 +9,8 @@ import {
     View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import QuickShareButton from '../../components/QuickShareButton';
-import ShareInviteModal from '../../components/ShareInviteModal';
+import ShareInviteModal from '../../components/modals/ShareInviteModal';
+import QuickShareButton from '../../components/ui/QuickShareButton';
 import { generateAppDeepLink, generateInviteLink, testDeepLink } from '../../lib/utils/invites';
 
 export default function InviteTestingPage() {

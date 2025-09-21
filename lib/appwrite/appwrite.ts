@@ -1,7 +1,7 @@
-import { Account, Avatars, Client, Databases, ID, Query, Storage } from "react-native-appwrite";
+import { Account, Avatars, Client, Databases, ID, Permission, Query, Role, Storage } from "react-native-appwrite";
 import { authDebug } from "../debug/authDebug";
 
-export { ID, Query };
+export { ID, Permission, Query, Role };
 
 // Validate environment variables and provide fallbacks
 const validateConfig = () => {

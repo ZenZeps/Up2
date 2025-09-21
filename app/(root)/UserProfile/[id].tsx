@@ -1,9 +1,9 @@
-import { Background } from '@/components/Background';
+import { Background } from '@/components/ui/Background';
 import { blockUser, cancelFriendRequest, getPendingFriendRequests, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
 import { getUserGroups } from '@/lib/api/group';
 import { getProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
-import { cacheManager } from '@/lib/appwrite/appwrite';
+import { cacheManager } from '@/lib/debug/cacheManager';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';

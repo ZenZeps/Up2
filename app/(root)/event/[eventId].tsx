@@ -17,7 +17,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Dimensions, FlatList, Linking, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import ShareInviteModal from '../../../components/ShareInviteModal';
+import ShareInviteModal from '../../../components/modals/ShareInviteModal';
 import UserAvatar from '../components/UserAvatar';
 import { useEvents } from '../context/EventContext';
 

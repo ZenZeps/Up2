@@ -1,4 +1,4 @@
-import { Background } from '@/components/Background';
+import { Background } from '@/components/ui/Background';
 import { CATEGORIES } from '@/constants/categories';
 import { addEventAttendee, addEventInvitation, cleanupOrphanedAttendanceRecords, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
@@ -72,7 +72,7 @@ interface Props {
 
 export default function EventForm({ visible, onClose, event, selectedDateTime, currentUserId, friends, groupId }: Props) {
   // Debug: Log component render
-  console.log('🔥 EventForm render:', { visible, currentUserId, hasEvent: !!event });
+  console.log('🔥 EventForm render:', { visible, currentUserId, hasEvent: !!event, groupId });
 
   // Basic state initialization
   const [title, setTitle] = useState('');
@@ -312,11 +312,16 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       }
 
       if (groupId && savedEvent) {
+        console.log('🔥 EventForm: Adding event to group:', { eventId: savedEvent.$id, groupId });
         try {
           await addEventToGroup(savedEvent.$id, groupId);
+          console.log('🔥 EventForm: Successfully added event to group');
         } catch (error) {
-          console.error('Error adding event to group:', error);
+          console.error('🔥 EventForm: Error adding event to group:', error);
+          // Don't fail the entire operation if group assignment fails
         }
+      } else {
+        console.log('🔥 EventForm: Not adding to group:', { hasGroupId: !!groupId, hasSavedEvent: !!savedEvent });
       }
 
       await refetchEvents();
@@ -759,6 +764,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   <DateTimePickerModal
                     isVisible={showStartPicker}
                     mode="datetime"
+                    display="compact"
                     date={startDate}
                     onConfirm={handleStartDateConfirm}
                     onCancel={() => setShowStartPicker(false)}
@@ -766,6 +772,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   <DateTimePickerModal
                     isVisible={showEndPicker}
                     mode="datetime"
+                    display="compact"
                     date={endDate}
                     onConfirm={handleEndDateConfirm}
                     onCancel={() => setShowEndPicker(false)}
@@ -1255,6 +1262,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   <DateTimePickerModal
                     isVisible={showStartPicker}
                     mode="datetime"
+                    display="compact"
                     date={startDate}
                     onConfirm={handleStartDateConfirm}
                     onCancel={() => setShowStartPicker(false)}
@@ -1262,6 +1270,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   <DateTimePickerModal
                     isVisible={showEndPicker}
                     mode="datetime"
+                    display="compact"
                     date={endDate}
                     onConfirm={handleEndDateConfirm}
                     onCancel={() => setShowEndPicker(false)}

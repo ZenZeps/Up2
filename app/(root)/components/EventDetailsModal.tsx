@@ -1,4 +1,4 @@
-import { Background } from '@/components/Background';
+import { Background } from '@/components/ui/Background';
 import { getEventEmoji } from '@/constants/categories';
 import icons from '@/constants/icons';
 import { addEventAttendee, addEventInvitation, getEventAttendees, getEventInvitees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
@@ -15,7 +15,7 @@ import dayjs from 'dayjs';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Image, Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import ShareInviteModal from '../../../components/ShareInviteModal';
+import ShareInviteModal from '../../../components/modals/ShareInviteModal';
 import { useEvents } from '../context/EventContext';
 import UserAvatar from './UserAvatar';
 

@@ -1094,19 +1094,36 @@ export async function deleteEvent(id: string) {
   try {
     authDebug.info(`Deleting event: ${id}`);
 
-    // If you've created a relationship attribute in Appwrite between `events` and `eventAttendances`
-    // with "On deleting a document -> Cascade", Appwrite will automatically remove the related
-    // attendance/invitation documents when the event is deleted. In that case we skip manual
-    // cascade deletion here and rely on the DB to maintain referential integrity.
+    // Manually cascade delete event attendance records
     const collectionId = config.eventAttendancesCollectionID;
     if (collectionId && !collectionId.includes('temp_') && collectionId !== 'temp_attendances_id') {
-      authDebug.info(`Assuming DB-level relationship cascade for eventAttendances collection (${collectionId}). Skipping manual cascade delete.`);
+      try {
+        // Find all attendance records for this event
+        const attendanceRecords = await databases.listDocuments(
+          config.databaseID!,
+          collectionId,
+          [Query.equal('eventId', id)]
+        );
+
+        // Delete all attendance records
+        for (const record of attendanceRecords.documents) {
+          await databases.deleteDocument(
+            config.databaseID!,
+            collectionId,
+            record.$id
+          );
+        }
+
+        authDebug.info(`Deleted ${attendanceRecords.documents.length} attendance records for event ${id}`);
+      } catch (attendanceError) {
+        authDebug.warn(`Error deleting attendance records for event ${id}:`, attendanceError);
+        // Continue with event deletion even if attendance cleanup fails
+      }
     } else {
-      authDebug.info('Event attendances junction table not configured; no DB-level cascade available. No manual cascade performed here.');
+      authDebug.info('Event attendances junction table not configured; no attendance records to clean up.');
     }
 
-    // Delete the event document itself. If DB-level cascade is configured, related attendance
-    // records will be removed automatically by Appwrite.
+    // Delete the event document itself
     await databases.deleteDocument(
       config.databaseID!,
       config.eventsCollectionID!,

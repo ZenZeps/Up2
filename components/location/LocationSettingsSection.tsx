@@ -8,7 +8,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { useLocationPermission } from '../hooks/useLocationPermission';
+import { useLocationPermission } from '@/lib/hooks/useLocationPermission';
 
 export default function LocationSettingsSection() {
     const {

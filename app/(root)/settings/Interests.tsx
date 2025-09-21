@@ -63,6 +63,7 @@ const InterestsSettings = () => {
                 $id: userId,
                 firstName: currentProfile?.firstName || '',
                 lastName: currentProfile?.lastName || '',
+                name: `${currentProfile?.firstName || ''} ${currentProfile?.lastName || ''}`.trim(),
                 email: currentProfile?.email || user?.email || '',
                 isPublic: currentProfile?.isPublic ?? true,
                 preferences: selectedEventTypes,
