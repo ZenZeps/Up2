@@ -1,6 +1,6 @@
 import { Background } from '@/components/Background';
 import { CATEGORIES, getCategoriesByValues, getEventEmoji } from '@/constants/categories';
-import { addEventAttendee, enrichEventsWithGroupNames, fetchEventsWithGroupNames, isUserAttendingEvent, removeEventInvitation } from '@/lib/api/event';
+import { enrichEventsWithGroupNames, fetchEventsWithGroupNames, isUserAttendingEvent } from '@/lib/api/event';
 import { cancelFriendRequest, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
 import { getDiscoverableGroups, getPublicGroups, getUserGroups, joinGroup, searchPublicGroups } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
@@ -25,7 +25,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Query } from 'react-native-appwrite';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserAvatar from '../components/UserAvatar';
@@ -35,7 +35,7 @@ dayjs.extend(relativeTime);
 
 const Explore = () => {
   const router = useRouter();
-  const { colors, isDark, isColorful } = useTheme();
+  const { colors, isColorful } = useTheme();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const { events, refetchEvents, hasInitialLoad, getScreenEvents, setScreenEvents, markScreenLoadedFromDb } = useEvents();
@@ -65,7 +65,7 @@ const Explore = () => {
   const [userId, setUserId] = useState(''); // Current user ID
   const [friends, setFriends] = useState<string[]>([]); // Current user's friends
   const [profile, setProfile] = useState<any>(null); // Current user's profile
-  const [currentUserPhotoUrl, setCurrentUserPhotoUrl] = useState<string | null>(null); // Current user's profile photo
+
   const [userPhotoUrls, setUserPhotoUrls] = useState<Record<string, string | null>>({}); // All users' profile photos
   const [requestedUsers, setRequestedUsers] = useState<string[]>([]); // Users who have sent friend requests
   const [baseEventsWithCreatorNames, setBaseEventsWithCreatorNames] = useState<any[]>([]);
@@ -91,7 +91,8 @@ const Explore = () => {
     // Add back events with pending unattend if any (from global context)
     if (pendingUnattendIds.size > 0) {
       try {
-        const { events: globalEvents } = require('../context/EventContext');
+        // Using events from hook instead of requiring context
+        const globalEvents = events;
         if (Array.isArray(globalEvents)) {
           const additionalEvents = globalEvents.filter((ev: any) => pendingUnattendIds.has(ev.$id));
           const eventsMap = new Map(filteredEvents.map((e: any) => [e.$id, e]));
@@ -102,7 +103,7 @@ const Explore = () => {
           });
           filteredEvents = Array.from(eventsMap.values());
         }
-      } catch (e) {
+      } catch (_e) {
         // Context not available, continue with filtered events
       }
     }
@@ -135,9 +136,7 @@ const Explore = () => {
         const userFriendIds = await getUserFriends(globalUser.$id);
         setFriends(userFriendIds); // Sets the friends state to the users friend IDs from junction table
 
-        // Get current user's profile photo
-        const currentUserPhoto = await getUserProfilePhotoUrl(globalUser.$id);
-        setCurrentUserPhotoUrl(currentUserPhoto);
+        // Get current user's profile photo - removed since state variable was removed
 
         // Get paginated users instead of ALL users - CRITICAL FIX
         const USER_PAGE_SIZE = 50; // Only load 50 users at a time
@@ -202,7 +201,7 @@ const Explore = () => {
         refetchEvents();
       }
     }
-  }, [globalUser]);
+  }, [globalUser, hasInitialLoad, refetchEvents]);
 
   // Refresh friends list when screen comes into focus
   const refreshFriends = useCallback(async () => {
@@ -347,7 +346,7 @@ const Explore = () => {
       await Promise.all(uniqueCreatorIds.map(async (cid) => {
         try {
           photoMap[cid] = await getUserProfilePhotoUrl(cid);
-        } catch (err) {
+        } catch (_err) {
           photoMap[cid] = null;
         }
       }));
@@ -513,7 +512,7 @@ const Explore = () => {
         await Promise.all(uniqueCreatorIds.map(async (cid) => {
           try {
             photoMap[cid] = await getUserProfilePhotoUrl(cid);
-          } catch (err) {
+          } catch (_err) {
             photoMap[cid] = null;
           }
         }));
@@ -544,7 +543,7 @@ const Explore = () => {
     };
 
     fetchExploreData();
-  }, [events, userId, isInitialMount, refreshTrigger]);
+  }, [events, userId, isInitialMount, refreshTrigger, getScreenEvents, markScreenLoadedFromDb, setScreenEvents]);
 
   // Load public groups when entering groups mode (or on mount)
   useEffect(() => {
@@ -641,7 +640,7 @@ const Explore = () => {
         return false;
       });
     });
-  }, [groups, userId]);
+  }, [groups, userId, joinedGroupIds]);
 
   // Load more users for pagination - SCALABILITY FIX
   const loadMoreUsers = useCallback(async () => {
@@ -699,10 +698,10 @@ const Explore = () => {
     }
   }, [loadingMoreUsers, hasMoreUsers, userOffset, userId, userPhotoUrls]);
 
-  const openInMaps = (location: string) => {
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
-    Linking.openURL(url);
-  };
+  // const openInMaps = (location: string) => {
+  //   const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+  //   Linking.openURL(url);
+  // };
 
   // Render user item for FlatList - SCALABILITY FIX
   const renderUserItem = ({ item: user }: { item: any }) => {
@@ -878,7 +877,7 @@ const Explore = () => {
       console.error('❌ Friend request error:', err);
       showAlert('Error', 'Failed to send friend request', [{ text: 'OK' }], 'error');
     }
-  }, [userId, profile]);
+  }, [userId, profile, recordAction, showAlert]);
 
   const handleDeleteFriend = async (friendId: string) => {
     showAlert(
@@ -1092,7 +1091,7 @@ const Explore = () => {
     const debugSectionsCount = groupedSections.length;
     const debugFilteredCount = filteredEvents.length;
     console.log('Explore Debug: filteredEvents length', debugFilteredCount, 'groupedSections length', debugSectionsCount, groupedSections.map(s => ({ key: s.key, events: s.events.length })));
-  } catch (e) {
+  } catch (_e) {
     // ignore logging errors in render
   }
 
@@ -1139,33 +1138,33 @@ const Explore = () => {
     );
   };
 
-  // Handler for attending an event (not used in UI here, but available)
-  const handleAttendEvent = async (event: any) => {
-    // Use inviteCount when available, otherwise fallback to legacy inviteeIds check
-    if (!(typeof event.inviteCount === 'number' ? (event.inviteCount > 0 && (Array.isArray(event.inviteeIds) ? event.inviteeIds.includes(userId) : true)) : isUserAttendingHeuristic(event, userId))) {
-      try {
-        // Apply immediate UI feedback
-        realTimeUI.applyAction(event.$id || event.id, 'attend');
-
-        // Create attendance record and remove any invitation records
-        await addEventAttendee(event.$id || event.id, userId);
-        await removeEventInvitation(event.$id || event.id, userId);
-
-        // Record the action to trigger cache refresh
-        recordAction('attend');
-        Alert.alert('Success', 'You are now attending this event!');
-
-        // Clear the pending action since it succeeded
-        realTimeUI.clearAction(event.$id || event.id);
-      } catch (err) {
-        console.error('Attend event error:', err);
-        Alert.alert('Error', 'Failed to attend event');
-
-        // Clear the pending action on failure
-        realTimeUI.clearAction(event.$id || event.id);
-      }
-    }
-  };
+  // Handler for attending an event (not used in UI here, but available) - COMMENTED OUT
+  // const handleAttendEvent = async (event: any) => {
+  //   // Use inviteCount when available, otherwise fallback to legacy inviteeIds check
+  //   if (!(typeof event.inviteCount === 'number' ? (event.inviteCount > 0 && (Array.isArray(event.inviteeIds) ? event.inviteeIds.includes(userId) : true)) : isUserAttendingHeuristic(event, userId))) {
+  //     try {
+  //       // Apply immediate UI feedback
+  //       realTimeUI.applyAction(event.$id || event.id, 'attend');
+  //
+  //       // Create attendance record and remove any invitation records
+  //       await addEventAttendee(event.$id || event.id, userId);
+  //       await removeEventInvitation(event.$id || event.id, userId);
+  //
+  //       // Record the action to trigger cache refresh
+  //       recordAction('attend');
+  //       Alert.alert('Success', 'You are now attending this event!');
+  //
+  //       // Clear the pending action since it succeeded
+  //       realTimeUI.clearAction(event.$id || event.id);
+  //     } catch (err) {
+  //       console.error('Attend event error:', err);
+  //       Alert.alert('Error', 'Failed to attend event');
+  //
+  //       // Clear the pending action on failure
+  //       realTimeUI.clearAction(event.$id || event.id);
+  //     }
+  //   }
+  // };
 
   return (
     <Background>

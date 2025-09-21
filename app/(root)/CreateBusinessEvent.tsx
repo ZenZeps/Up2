@@ -138,7 +138,7 @@ const CreateBusinessEvent: React.FC = () => {
                 organizerEarnings: Math.round(parseFloat(formData.ticketPrice) * 100 * 0.92), // Roughly 92% after fees
             };
 
-            const createdEvent = await ticketService.createBusinessEvent(eventData);
+            await ticketService.createBusinessEvent(eventData);
 
             Alert.alert(
                 'Success!',
@@ -263,7 +263,7 @@ const CreateBusinessEvent: React.FC = () => {
                     </View>
 
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>What's Included</Text>
+                        <Text style={styles.label}>What&apos;s Included</Text>
                         <TextInput
                             style={[styles.input, styles.textArea]}
                             placeholder="Describe what the ticket includes"

@@ -52,7 +52,7 @@ export default function DebugPage() {
                     4. Monitor database usage, cache hit rates, and performance metrics
                 </Text>
                 <Text style={styles.infoText}>
-                    5. Use the "Reset Counters" and "Clear Cache" buttons to test different scenarios
+                    5. Use the &quot;Reset Counters&quot; and &quot;Clear Cache&quot; buttons to test different scenarios
                 </Text>
             </View>
 

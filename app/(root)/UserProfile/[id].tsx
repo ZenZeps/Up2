@@ -3,6 +3,7 @@ import { blockUser, cancelFriendRequest, getPendingFriendRequests, getUserFriend
 import { getUserGroups } from '@/lib/api/group';
 import { getProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { cacheManager } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
@@ -194,8 +195,17 @@ const UserProfile = () => {
         try {
             const res = await blockUser(currentUser.$id, userId as string);
             if (res?.success) {
-                // Navigate back after blocking
-                router.back();
+                // Clear relevant caches to ensure UI updates
+                cacheManager.clearPattern(new RegExp(`^user-friends-${currentUser.$id}`));
+                cacheManager.clearPattern(new RegExp(`^user-${userId}`));
+                cacheManager.clearPattern(new RegExp(`^pending-friend-requests-`));
+
+                // Navigate back safely, or go to main tabs if no history
+                if (router.canGoBack()) {
+                    router.back();
+                } else {
+                    router.replace('/(root)/(tabs)/Profile');
+                }
             }
         } catch (error) {
             console.error('Error blocking user:', error);

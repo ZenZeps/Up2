@@ -30,7 +30,7 @@ import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
@@ -70,10 +70,6 @@ export default function Home() {
   const events = React.useMemo(() => {
     return eventsContext?.events || [];
   }, [eventsContext?.events]);
-
-  const eventsLoading = React.useMemo(() => {
-    return eventsContext?.loading || false;
-  }, [eventsContext?.loading]);
 
   // Create a stable refetch function
   const refetchEvents = React.useCallback(async () => {
@@ -123,8 +119,6 @@ export default function Home() {
   const [displayedMonth, setDisplayedMonth] = useState(() => new Date()); // Track the month being displayed separately
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<AppEvent | null>(null);
-  const [startHour] = useState(() => new Date().getHours() - 4); // Initialize once, no setter
-  const [endHour] = useState(() => new Date().getHours() + 4); // Initialize once, no setter
   const [calendarHeight, setCalendarHeight] = useState(0);
   const [userTravelData, setUserTravelData] = useState<TravelAnnouncement[]>([]);
   const [groupInvites, setGroupInvites] = useState<any[]>([]);
@@ -132,7 +126,6 @@ export default function Home() {
   const [enrichedEvents, setEnrichedEvents] = useState<AppEvent[]>([]);
   const [agendaEvents, setAgendaEvents] = useState<AppEvent[]>([]);
   const [messageModalVisible, setMessageModalVisible] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userAttendingEvents, setUserAttendingEvents] = useState<AppEvent[]>([]);
 
   // Get unique creator IDs from events
@@ -145,7 +138,7 @@ export default function Home() {
   }, [events]);
 
   // Use unified creator info management
-  const { getCreatorName, getCreatorPhotoUrl, creatorNames, creatorPhotos, isLoading: creatorInfoLoading } = useCreatorInfo(creatorIds, 20);
+  const { getCreatorName, getCreatorPhotoUrl } = useCreatorInfo(creatorIds, 20);
 
   // Get accurate attendee counts with junction table fallback
   const { getAttendeeCount } = useEventAttendeeCount(agendaEvents, true);
@@ -159,12 +152,12 @@ export default function Home() {
     const pendingAttend = new Set(realTimeUI.getEventIdsByAction('attend'));
 
     try {
-      const { events: globalEvents } = require('../context/EventContext');
+      // const { events: globalEvents } = require('../context/EventContext');
       const next = mergeEventsWithRealTimeFiltering(
         userAttendingEvents,
         pendingUnattend,
         pendingAttend,
-        globalEvents || []
+        events || []
       );
 
       setEnrichedEvents(next);
@@ -178,20 +171,16 @@ export default function Home() {
       setEnrichedEvents(next);
       setAgendaEvents(filterUpcomingEvents(next));
     }
-  }, [rtTick, userAttendingEvents]);
+  }, [rtTick, userAttendingEvents, events]);
 
   // Track when data was last fetched to prevent unnecessary refetches
   const lastFetchTime = useRef<number>(0);
-  const previousViewMode = useRef<Mode>(viewMode);
   const hasInitialLoad = useRef<boolean>(false);
   const isInitialMount = useRef<boolean>(true);
   const userAttendingFromJunction = useRef<boolean>(false);
 
   // Action tracker for optimized caching
   const recordAction = useActionTracker();
-
-  // Get route params (for user calendar view)
-  const params = useLocalSearchParams();
 
   // Get user from global context (already handles authentication and caching)
   const { user: globalUser } = useGlobalContext();
@@ -235,11 +224,6 @@ export default function Home() {
     skip: !currentUser?.$id,
   });
 
-  // Set currentUserId when currentUser changes
-  useEffect(() => {
-    setCurrentUserId(currentUser?.$id || null);
-  }, [currentUser]);
-
   // Update userTravelData when travelData changes
   useEffect(() => {
     if (travelData) {
@@ -247,10 +231,8 @@ export default function Home() {
     }
   }, [travelData]);
 
-  // Sync displayedMonth with date changes (for better month display tracking)
-  useEffect(() => {
-    setDisplayedMonth(date);
-  }, [date]);
+  // Remove problematic useEffect that caused infinite loops
+  // displayedMonth will be managed directly where needed
 
   // Get unique creator IDs from events
   // Filter events for the current user using optimized data fetching
@@ -282,9 +264,6 @@ export default function Home() {
             allUserEvents.push(createdEvent);
           }
         });
-
-        // Initialize real-time UI system with base attendance data
-        const attendingEventIds = attendingEvents.map(e => e.$id);
 
         setUserAttendingEvents(allUserEvents);
 
@@ -345,7 +324,7 @@ export default function Home() {
     }
 
     isInitialMount.current = false;
-  }, [currentUser, events, getScreenEvents, markScreenLoadedFromDb, eventsContext]);
+  }, [currentUser, events, getScreenEvents, markScreenLoadedFromDb, eventsContext, getScreenLoadedFromDb]);
 
   // Execute the fetch function when dependencies change
   useEffect(() => {
@@ -393,7 +372,7 @@ export default function Home() {
               hasEventInvites = true;
               break;
             }
-          } catch (err) {
+          } catch (_err) {
             // ignore and continue
           }
         }
@@ -408,7 +387,7 @@ export default function Home() {
 
     computeInvites();
     return () => { mounted = false; };
-  }, [events, currentUser, groupInvites]);
+  }, [events, currentUser, groupInvites, eventsContext, getScreenEvents]);
 
   // Fetch group invites
   useEffect(() => {
@@ -431,7 +410,7 @@ export default function Home() {
   useEffect(() => {
     try {
       authDebug.debug('Home: agendaEvents changed', { count: agendaEvents.length, ids: agendaEvents.map(e => e.$id).slice(0, 10) });
-    } catch (err) {
+    } catch (_err) {
       /* ignore */
     }
   }, [agendaEvents]);
@@ -469,8 +448,8 @@ export default function Home() {
 
             // Use utility function to merge events with real-time filtering
             try {
-              const { events: globalEvents } = require('../context/EventContext');
-              merged = mergeEventsWithRealTimeFiltering(merged, pendingUnattend, pendingAttend, globalEvents || []);
+              // const { events: globalEvents } = require('../context/EventContext');
+              merged = mergeEventsWithRealTimeFiltering(merged, pendingUnattend, pendingAttend, events || []);
             } catch {
               // Fallback to simple filtering if context import fails
               merged = merged.filter(event => !pendingUnattend.has(event.$id));
@@ -503,7 +482,7 @@ export default function Home() {
             } catch (err) {
               authDebug.debug('Home: failed to persist home cache', err);
             }
-          } catch (err) {
+          } catch (_err) {
             // Fallback to using newly enriched events if merge fails
             setEnrichedEvents(enrichedNew);
 
@@ -535,7 +514,7 @@ export default function Home() {
     };
 
     enrichEvents();
-  }, [userAttendingEvents, currentUser]);
+  }, [userAttendingEvents, currentUser, getScreenEvents, markScreenLoadedFromDb, setScreenEvents, events]);
 
   // Format events for the calendar with date validation using utility function
   const calendarEvents = useMemo(() => {
@@ -733,7 +712,7 @@ export default function Home() {
         </TouchableOpacity>
       );
     }
-  }, [viewMode, '#000000', colors.background, colors.error, handlePressEvent]);
+  }, [viewMode, colors.background, colors.error, handlePressEvent]);
 
   // Handler for pressing a calendar cell (to create a new event)
   const handleCellPress = useCallback((date: Date) => {
@@ -741,9 +720,6 @@ export default function Home() {
     setEditingEvent(null); // Clear any existing event to create a new one
     setFormVisible(true);
   }, []);
-
-  // Track the currently visible month more aggressively
-  const [visibleMonth, setVisibleMonth] = useState(() => new Date());
 
   // Simple and clean approach - track date changes and update display accordingly
   const handleDateChange = useCallback((range: any) => {
@@ -774,31 +750,8 @@ export default function Home() {
     setDisplayedMonth(monthToDisplay);
     console.log('🔄 Date changed, updated displayed month to:', monthToDisplay.toDateString());
     console.log('📅 Date state:', date.toDateString());
-    console.log('🗓️ DisplayedMonth state:', displayedMonth.toDateString());
-    console.log('👁️ Current view mode:', viewMode);
-  }, [date]);
-
-  // Simple polling approach - check every second if the calendar has been swiped
-  // This works for both month and week views since BigCalendar doesn't properly call onChangeDate for swipes
-  useEffect(() => {
-    if (viewMode !== 'month' && viewMode !== 'week') return;
-
-    const checkCalendarState = () => {
-      try {
-        // Force update display based on current date state
-        const currentMonth = new Date(date.getFullYear(), date.getMonth(), 1);
-        if (currentMonth.getTime() !== displayedMonth.getTime()) {
-          console.log('🔄 Forcing month display sync from polling for', viewMode, 'view');
-          setDisplayedMonth(currentMonth);
-        }
-      } catch (error) {
-        console.log('Calendar state check failed:', error);
-      }
-    };
-
-    const interval = setInterval(checkCalendarState, 1000); // Check every second
-    return () => clearInterval(interval);
-  }, [viewMode, date, displayedMonth]);
+    console.log('️ Current view mode:', viewMode);
+  }, [date, viewMode]);
 
   // Handler for editing event
   const handleEditEvent = useCallback((event: AppEvent) => {
@@ -829,9 +782,9 @@ export default function Home() {
     }
   }, [eventsContext, smartRefetchEvents, recordAction, editingEvent]);
 
-  const handleDetailsModalClose = useCallback(() => {
-    setDetailsModalVisible(false);
-  }, []);
+  // const handleDetailsModalClose = useCallback(() => {
+  // setDetailsModalVisible(false);
+  // }, []);
 
   // Event attendance handlers using utility functions
   const { handleEventAttend, handleEventNotAttend } = useMemo(() =>
@@ -846,15 +799,15 @@ export default function Home() {
   );
 
   // Update handlers to also close modal
-  const wrappedHandleEventAttend = useCallback(async () => {
-    await handleEventAttend();
-    setDetailsModalVisible(false);
-  }, [handleEventAttend]);
+  // const wrappedHandleEventAttend = useCallback(async () => {
+  // await handleEventAttend();
+  // setDetailsModalVisible(false);
+  // }, [handleEventAttend]);
 
-  const wrappedHandleEventNotAttend = useCallback(async () => {
-    await handleEventNotAttend();
-    setDetailsModalVisible(false);
-  }, [handleEventNotAttend]);
+  // const wrappedHandleEventNotAttend = useCallback(async () => {
+  // await handleEventNotAttend();
+  // setDetailsModalVisible(false);
+  // }, [handleEventNotAttend]);
 
   const handleEventChat = useCallback((event: AppEvent) => {
     setSelectedEvent(event);
@@ -899,7 +852,7 @@ export default function Home() {
           authDebug.debug('Skipping navigation-triggered refetch because initial load already completed');
         }
       }
-    }, [smartRefetchEvents, eventsContext?.events])
+    }, [smartRefetchEvents, eventsContext, getScreenEvents, getScreenLoadedFromDb])
   );
 
   // React to view mode changes only - fetch when user switches between day/week/month
@@ -1100,7 +1053,7 @@ export default function Home() {
                     No Upcoming Events
                   </Text>
                   <Text style={[styles.emptyStateDescription, { color: colors.textSecondary }]}>
-                    You're not attending any upcoming events. Join some events to see them here!
+                    You&apos;re not attending any upcoming events. Join some events to see them here!
                   </Text>
                 </View>
               }

@@ -321,9 +321,20 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 
       await refetchEvents();
       onClose(true);
-    } catch (error) {
-      console.error('Error saving event:', error);
-      Alert.alert('Error', 'Failed to save event');
+    } catch (error: any) {
+      console.error('🔥 EventForm: Error saving event:', error);
+      
+      // Log detailed error information for debugging
+      console.error('🔥 EventForm: Error details:', {
+        message: error?.message || 'Unknown error',
+        type: error?.type || 'unknown',
+        code: error?.code || 'unknown',
+        stack: error?.stack
+      });
+
+      // Show more specific error message
+      const errorMessage = error?.message || 'Failed to save event';
+      Alert.alert('Error', `Failed to save event: ${errorMessage}`);
     } finally {
       setIsProcessing(false);
     }
@@ -429,13 +440,17 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                       <BudgetPlaceAutocomplete
                         value={location}
                         onChangeText={(v: string) => {
-                          setLocation(v);
+                          // Limit location to 50 characters as per database constraint
+                          const truncatedLocation = v.length > 50 ? v.substring(0, 50) : v;
+                          setLocation(truncatedLocation);
                           // Clear coordinates when user types manually
                           setLocationLat(null);
                           setLocationLng(null);
                         }}
                         onSelect={(address: string, lat?: number, lng?: number) => {
-                          setLocation(address);
+                          // Limit location to 50 characters as per database constraint
+                          const truncatedAddress = address.length > 50 ? address.substring(0, 50) : address;
+                          setLocation(truncatedAddress);
                           if (typeof lat === 'number' && typeof lng === 'number') {
                             setLocationLat(lat);
                             setLocationLng(lng);
@@ -450,13 +465,17 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                       <PlaceAutocomplete
                         value={location}
                         onChangeText={(v: string) => {
-                          setLocation(v);
+                          // Limit location to 50 characters as per database constraint
+                          const truncatedLocation = v.length > 50 ? v.substring(0, 50) : v;
+                          setLocation(truncatedLocation);
                           // Clear coordinates when user types manually
                           setLocationLat(null);
                           setLocationLng(null);
                         }}
                         onSelect={(address: string, lat?: number, lng?: number) => {
-                          setLocation(address);
+                          // Limit location to 50 characters as per database constraint
+                          const truncatedAddress = address.length > 50 ? address.substring(0, 50) : address;
+                          setLocation(truncatedAddress);
                           if (typeof lat === 'number' && typeof lng === 'number') {
                             setLocationLat(lat);
                             setLocationLng(lng);
@@ -957,12 +976,16 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                       <BudgetPlaceAutocomplete
                         value={location}
                         onChangeText={(v: string) => {
-                          setLocation(v);
+                          // Limit location to 50 characters as per database constraint
+                          const truncatedLocation = v.length > 50 ? v.substring(0, 50) : v;
+                          setLocation(truncatedLocation);
                           setLocationLat(null);
                           setLocationLng(null);
                         }}
                         onSelect={(address: string, lat?: number, lng?: number) => {
-                          setLocation(address);
+                          // Limit location to 50 characters as per database constraint
+                          const truncatedAddress = address.length > 50 ? address.substring(0, 50) : address;
+                          setLocation(truncatedAddress);
                           if (typeof lat === 'number' && typeof lng === 'number') {
                             setLocationLat(lat);
                             setLocationLng(lng);
@@ -974,12 +997,16 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                       <PlaceAutocomplete
                         value={location}
                         onChangeText={(v: string) => {
-                          setLocation(v);
+                          // Limit location to 50 characters as per database constraint
+                          const truncatedLocation = v.length > 50 ? v.substring(0, 50) : v;
+                          setLocation(truncatedLocation);
                           setLocationLat(null);
                           setLocationLng(null);
                         }}
                         onSelect={(address: string, lat?: number, lng?: number) => {
-                          setLocation(address);
+                          // Limit location to 50 characters as per database constraint
+                          const truncatedAddress = address.length > 50 ? address.substring(0, 50) : address;
+                          setLocation(truncatedAddress);
                           if (typeof lat === 'number' && typeof lng === 'number') {
                             setLocationLat(lat);
                             setLocationLng(lng);

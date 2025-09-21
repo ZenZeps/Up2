@@ -1,6 +1,6 @@
 import { config, databases } from "@/lib/appwrite/appwrite";
 import { Event } from "@/lib/types/Events";
-import { ID, Query } from "react-native-appwrite";
+import { ID, Query, Permission, Role } from "react-native-appwrite";
 import { authDebug } from "../debug/authDebug";
 import { cacheManager } from "../debug/cacheManager";
 import { sendEventInviteNotification } from "../notifications/notificationUtils";
@@ -258,34 +258,40 @@ export async function createEvent(event: Event) {
     }
 
     // Sanitize and prepare data with new required fields
+    const locationTrimmed = event.location?.trim() || '';
+
+    // Validate location length after trimming
+    if (locationTrimmed.length > 50) {
+      throw new Error('Location must be no longer than 50 characters');
+    }
+
     const sanitizedEvent = {
       ...event,
       title: event.title.trim(),
-      location: event.location?.trim() || '',
+      location: locationTrimmed,
       description: event.description?.trim() || '',
       creatorId: event.creatorId,
       startTime: event.startTime,
       endTime: event.endTime,
       isPrivate: event.isPrivate || false,
 
-      // ✅ NEW: Required fields for optimized database
-      id: event.$id || ID.unique(), // Required id field
-      // Counters start at 0; relationships are managed via junction tables
+      // Required fields that exist in your database schema
+      id: event.$id || ID.unique(), // Required id field in your schema
       attendeeCount: 0,
       inviteCount: 0,
-      viewCount: 0, // Start with 0 views
-      popularityScore: 0.0, // Start with 0.0 popularity
-      responseRate: true, // Default to true
+      viewCount: 0,
+      popularityScore: 0.0,
+      responseRate: true,
+      lastActivityAt: new Date().toISOString(), // Missing field from your schema
 
-      // Optional fields - set defaults since they don't exist in Event type yet
-      // locationLat/locationLng are optional fields not declared on the Event type
-      locationLat: (event as any).locationLat ?? 0.0, // Default location coordinates
+      // Location coordinates (required fields in your schema)
+      locationLat: (event as any).locationLat ?? 0.0,
       locationLng: (event as any).locationLng ?? 0.0,
-      searchKeywords: [], // Default empty array
-      categoryTags: [], // Default empty array
 
-      // Array fields (keep these if they exist in schema, remove if they cause errors)
+      // Array fields that exist in your schema
       tags: event.tags?.filter(tag => tag && typeof tag === 'string') || [],
+      searchKeywords: [], // Required field in your schema
+      categoryTags: [], // Required field in your schema
     };
 
     // Remove any legacy fields if present in the incoming payload
@@ -316,27 +322,84 @@ export async function createEvent(event: Event) {
 
     // Create the event
     const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+    // Diagnostic logging: capture payload and params being sent to DB
+    authDebug.debug('EVENT WRITE: About to call createDocumentSafe with:', {
+      databaseId: config.databaseID,
+      collectionId: config.eventsCollectionID,
+      documentId: sanitizedEvent.$id || '<generated>',
+      dataKeys: Object.keys(sanitizedEvent),
+    });
+
+    // Determine permissions: public events should be readable by anyone;
+    // private events readable only by the creator. Creator should always have update/delete.
+    const perms = sanitizedEvent.isPrivate
+      ? [
+          Permission.read(Role.user(sanitizedEvent.creatorId)),
+          Permission.update(Role.user(sanitizedEvent.creatorId)),
+          Permission.delete(Role.user(sanitizedEvent.creatorId)),
+        ]
+      : [
+          Permission.read(Role.any()),
+          Permission.update(Role.user(sanitizedEvent.creatorId)),
+          Permission.delete(Role.user(sanitizedEvent.creatorId)),
+        ];
+
     const createdEvent = await createDocumentSafe(
       config.databaseID,
       config.eventsCollectionID,
       sanitizedEvent.$id || ID.unique(),
-      sanitizedEvent
+      sanitizedEvent,
+      perms
     );
 
-    authDebug.info('Event created successfully:', createdEvent.$id);
+    authDebug.info('Event created successfully (createDocumentSafe response):', createdEvent?.$id);
+    authDebug.debug('EVENT WRITE: Full createDocumentSafe response keys:', Object.keys(createdEvent || {}));
+
+    // Diagnostic: verify the document exists via getDocument and list queries
+    try {
+      const verification = await databases.getDocument(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        createdEvent.$id
+      );
+      authDebug.info('✅ EVENT VERIFICATION: Document exists by getDocument:', verification.$id);
+      authDebug.debug('✅ EVENT VERIFICATION: Document permissions:', verification.$permissions || verification['$permissions']);
+    } catch (verErr) {
+      authDebug.error('❌ EVENT VERIFICATION FAILED: getDocument failed:', verErr);
+    }
+
+    // Wait a moment and try listing/querying the collection for this ID
+    await new Promise((r) => setTimeout(r, 1000));
+    try {
+      const queryTest = await databases.listDocuments(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        [Query.equal('$id', createdEvent.$id), Query.limit(5)]
+      );
+  authDebug.info('🔍 EVENT QUERY TEST', { found: queryTest.documents.length, id: createdEvent.$id });
+  if (queryTest.documents.length > 0) authDebug.debug('🔍 EVENT QUERY TEST: Document via query', { id: queryTest.documents[0].$id });
+    } catch (qErr) {
+      authDebug.error('❌ EVENT QUERY TEST FAILED:', qErr);
+    }
+
+    try {
+      const allDocs = await databases.listDocuments(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        [Query.limit(50)]
+      );
+      authDebug.info('📊 EVENT COLLECTION TEST: Total documents returned by listDocuments:', allDocs.documents.length);
+    } catch (allErr) {
+      authDebug.error('❌ EVENT COLLECTION TEST FAILED:', allErr);
+    }
 
     // IMPORTANT: Automatically mark the creator as attending their own event
     try {
-      const { addAttendeeSimple } = await import('@/lib/utils/simpleAttendeeCount');
-      const attendeeAdded = await addAttendeeSimple(createdEvent.$id, sanitizedEvent.creatorId);
-
-      if (attendeeAdded) {
-        authDebug.info(`Creator ${sanitizedEvent.creatorId} successfully marked as attending event ${createdEvent.$id}`);
-      } else {
-        authDebug.error(`Failed to mark creator as attending event ${createdEvent.$id}`);
-      }
+      await addEventAttendee(createdEvent.$id, sanitizedEvent.creatorId);
+      authDebug.info(`Creator ${sanitizedEvent.creatorId} automatically marked as attending event ${createdEvent.$id}`);
     } catch (attendeeError) {
-      authDebug.error('Failed to mark creator as attending their event:', attendeeError);
+      authDebug.warn('Failed to mark creator as attending their event:', attendeeError);
+      // Don't fail event creation if attendance marking fails
     }
 
     // Cache the created event
@@ -404,12 +467,133 @@ export async function createEvent(event: Event) {
 // ================== JUNCTION TABLE MANAGEMENT ==================
 
 /**
- * Add user to event attendees (simplified counter approach)
+ * Add user to event attendees (junction table approach)
  */
 export async function addEventAttendee(eventId: string, userId: string): Promise<boolean> {
   try {
-    // Just use simple counter approach directly
-    return await addAttendeeSimple(eventId, userId);
+    const collectionId = config.eventAttendancesCollectionID;
+
+    // Check if junction table is properly configured
+    if (!collectionId || collectionId.includes('temp_') || collectionId === 'temp_attendances_id') {
+      authDebug.info('Event attendances junction table not configured, skipping attendance recording');
+      return false;
+    }
+
+    // Fetch event document to enforce privacy rules
+    let eventDoc: any = null;
+    try {
+      eventDoc = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
+    } catch (err) {
+      // If we can't fetch event, fail safe and disallow creating an attendance record
+      authDebug.error(`Failed to fetch event ${eventId} for privacy check`, err);
+      throw new Error('Unable to verify event privacy');
+    }
+
+    // Look for any existing attendance records for this user/event
+    const existingAttendance = await databases.listDocuments(
+      config.databaseID!,
+      collectionId,
+      [
+        Query.equal('eventId', eventId),
+        Query.equal('userId', userId)
+      ]
+    );
+
+    // If an attending record already exists, nothing to do
+    if (existingAttendance.documents.some((d: any) => d.status === 'attending')) {
+      authDebug.info(`User ${userId} already attending event ${eventId}`);
+      return true;
+    }
+
+    // If an invited/pending record exists, promote it to attending and update counts
+    const invitedRecord = existingAttendance.documents.find((d: any) => d.status === 'invited' || d.status === 'pending');
+    if (invitedRecord) {
+      // Update the attendance record to attending
+      await databases.updateDocument(
+        config.databaseID!,
+        collectionId,
+        invitedRecord.$id,
+        {
+          status: 'attending',
+          respondedAt: new Date().toISOString(), // Set when user responds to invitation
+        }
+      );
+
+      // Update event counters: +1 attendee, -1 invite (if present)
+      const currentEvent = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
+      const newAttendeeCount = (currentEvent.attendeeCount || 0) + 1;
+      const newInviteCount = Math.max(0, (currentEvent.inviteCount || 0) - 1);
+
+      await databases.updateDocument(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        eventId,
+        {
+          attendeeCount: newAttendeeCount,
+          inviteCount: newInviteCount,
+          lastActivityAt: new Date().toISOString(),
+        }
+      );
+
+      authDebug.info(`User ${userId} promoted from invite to attending for event ${eventId}, new attendee count: ${newAttendeeCount}`);
+      // Targeted cache invalidation for affected keys
+      try {
+        cacheManager.remove(`event-${eventId}`);
+        cacheManager.remove(`event-attendees-${eventId}`);
+        cacheManager.remove(`event-invitees-${eventId}`);
+        cacheManager.remove(`events-user-${userId}`);
+        // Clear global events cache to ensure all screens update
+        cacheManager.remove('all-events');
+      } catch (e) {
+        authDebug.warn('Failed to invalidate caches after promoting invite to attending', e);
+      }
+      return true;
+    }
+
+    // No existing records -> enforce privacy: private events require an invite (junction table only)
+    if (eventDoc && eventDoc.isPrivate && String(eventDoc.creatorId) !== String(userId)) {
+      authDebug.warn(`User ${userId} attempted to attend private event ${eventId} without an invite`);
+      throw new Error('User is not invited to this private event');
+    }
+
+    // No existing records -> create a fresh attending record
+    await databases.createDocument(
+      config.databaseID!,
+      collectionId,
+      ID.unique(),
+      {
+        eventId,
+        userId,
+        status: 'attending',
+      }
+    );
+
+    // Update event attendee count
+    const currentEvent = await databases.getDocument(config.databaseID!, config.eventsCollectionID!, eventId);
+    const newCount = (currentEvent.attendeeCount || 0) + 1;
+
+    await databases.updateDocument(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      eventId,
+      {
+        attendeeCount: newCount,
+        lastActivityAt: new Date().toISOString(),
+      }
+    );
+
+    authDebug.info(`User ${userId} added to event ${eventId}, new count: ${newCount}`);
+    // Targeted cache invalidation for the affected event and user
+    try {
+      cacheManager.remove(`event-${eventId}`);
+      cacheManager.remove(`event-attendees-${eventId}`);
+      cacheManager.remove(`events-user-${userId}`);
+      // Clear global events cache to ensure all screens update
+      cacheManager.remove('all-events');
+    } catch (e) {
+      authDebug.warn('Failed to invalidate caches after addEventAttendee', e);
+    }
+    return true;
   } catch (error) {
     authDebug.error(`Failed to add attendee to event: ${eventId}`, error);
     throw error;

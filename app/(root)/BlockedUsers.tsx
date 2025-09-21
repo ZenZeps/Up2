@@ -11,15 +11,16 @@ export default function BlockedUsers() {
     const { colors } = useTheme();
     const userId = user?.$id;
 
-    const [blockedIds, setBlockedIds] = useState<string[]>([]);
+
     const [profiles, setProfiles] = useState<any[]>([]);
+
 
     useEffect(() => {
         const load = async () => {
             if (!userId) return;
             const profile = await getUserProfile(userId);
             const ids = profile?.blocked || [];
-            setBlockedIds(ids || []);
+            // setBlockedIds removed since blockedIds is not used elsewhere
 
             if (ids && ids.length > 0) {
                 const pro = await getUsersByIds(ids);
@@ -49,7 +50,7 @@ export default function BlockedUsers() {
                 blocked: newBlocked,
             } as any);
             Alert.alert('Unblocked', 'User has been unblocked');
-            setBlockedIds(newBlocked);
+            // setBlockedIds removed since blockedIds is not used elsewhere
             setProfiles(prev => prev.filter(p => p.$id !== targetId));
             refetch();
         } catch (err) {
@@ -69,7 +70,7 @@ export default function BlockedUsers() {
                 keyExtractor={(item) => item.$id}
                 ListEmptyComponent={() => (
                     <View style={styles.empty}>
-                        <Text style={{ color: colors.textSecondary }}>You haven't blocked anyone.</Text>
+                        <Text style={{ color: colors.textSecondary }}>You haven&apos;t blocked anyone.</Text>
                     </View>
                 )}
                 renderItem={({ item }) => (

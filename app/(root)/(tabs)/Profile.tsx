@@ -128,7 +128,7 @@ const Profile = () => {
       setNationality(user.profile.nationality || '');
       setAge(user.profile.age?.toString() || '');
     }
-  }, [user?.profile, firstName, lastName]);
+  }, [user?.profile]);
 
   // Create a reusable loadUserData function
   const loadUserData = useCallback(async () => {

@@ -1,4 +1,4 @@
-import { createTravelAnnouncementWithFriendNotifications } from '@/lib/api/travelFriendNotifications';
+import { createTravelAnnouncement } from '@/lib/api/travel';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -108,26 +108,37 @@ const TravelForm: React.FC<TravelFormProps> = ({
 
         setIsLoading(true);
         try {
+            console.log('🧳 TravelForm: Starting travel creation...');
+            console.log('🧳 TravelForm: User ID:', currentUserId);
+            console.log('🧳 TravelForm: Destination:', destination.trim());
+            console.log('🧳 TravelForm: User friends:', userFriends?.length || 0);
+
             if (editingTravel) {
                 // TODO: Implement update functionality
                 Alert.alert('Info', 'Editing travel announcements will be available soon');
                 return;
             } else {
                 // Create new travel with friend notifications
-                await createTravelAnnouncementWithFriendNotifications(
-                    {
-                        userId: currentUserId,
-                        destination: destination.trim(),
-                        startDate: startDate.toISOString(),
-                        endDate: endDate.toISOString(),
-                        description: description.trim(),
-                        isPublic,
-                        destinationLat,
-                        destinationLng,
-                        locationName: destination.trim(),
-                    },
+                const travelData = {
+                    userId: currentUserId,
+                    destination: destination.trim(),
+                    startDate: startDate.toISOString(),
+                    endDate: endDate.toISOString(),
+                    description: description.trim(),
+                    isPublic,
+                    destinationLat,
+                    destinationLng,
+                    locationName: destination.trim(),
+                };
+
+                console.log('🧳 TravelForm: About to create travel with data:', travelData);
+
+                const result = await createTravelAnnouncementWithFriendNotifications(
+                    travelData,
                     userFriends
                 );
+
+                console.log('🧳 TravelForm: Travel creation result:', result);
 
                 Alert.alert(
                     'Travel Created! 🌍',
@@ -146,8 +157,21 @@ const TravelForm: React.FC<TravelFormProps> = ({
             setDestinationLat(undefined);
             setDestinationLng(undefined);
         } catch (error) {
-            console.error('Error saving travel:', error);
-            Alert.alert('Error', 'Failed to save travel announcement');
+            console.error('🧳 TravelForm: Error saving travel:', error);
+
+            // Log detailed error information
+            if (error instanceof Error) {
+                console.error('🧳 TravelForm: Error message:', error.message);
+                console.error('🧳 TravelForm: Error stack:', error.stack);
+            }
+
+            // Check for specific Appwrite errors
+            if (error && typeof error === 'object' && 'type' in error) {
+                console.error('🧳 TravelForm: Appwrite error type:', error.type);
+                console.error('🧳 TravelForm: Appwrite error code:', error.code);
+            }
+
+            Alert.alert('Error', `Failed to save travel announcement: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsLoading(false);
         }

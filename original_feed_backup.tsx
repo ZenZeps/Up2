@@ -7,7 +7,6 @@ import { getUserGroups } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
 import { getUsersByIds } from '@/lib/api/user';
-import { config } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { useActionTracker } from '@/lib/hooks/useOptimizedData';
@@ -31,19 +30,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import UserAvatar from '../components/UserAvatar';
 
 import { Event as AppEvent } from '@/lib/types/Events';
-import { TravelAnnouncement } from '@/lib/types/Travel';
+import { TravelAnnouncementWithUserInfo } from '@/lib/types/Travel';
 import EventForm from '../components/EventForm';
-import TravelDebugComponent from '../components/TravelDebugComponent';
 import TravelForm from '../components/TravelForm';
 import { useEvents } from '../context/EventContext';
 
 dayjs.extend(relativeTime);
-
-// Extended types for Feed
-interface TravelAnnouncementWithUserInfo extends TravelAnnouncement {
-  userName?: string;
-  userPhotoUrl?: string;
-}
 
 // Combined feed item type
 // Local extended event type used in the UI layer during migration. This keeps the runtime shape
@@ -52,10 +44,6 @@ type ExtendedEvent = AppEvent & { attendees?: string[]; inviteeIds?: string[]; i
 
 type FeedItem = (ExtendedEvent & { type: 'event' }) | (TravelAnnouncementWithUserInfo & { type: 'travel' });
 export default function Feed() {
-  // DEBUG: Check what collection ID is being used
-  console.log('🔍 FEED DEBUG: Travel Collection ID from config:', config.travelCollectionID);
-  console.log('🔍 FEED DEBUG: Environment var:', process.env.EXPO_PUBLIC_APPWRITE_TRAVEL_COLLECTION_ID);
-
   const { colors, isColorful } = useTheme();
   const insets = useSafeAreaInsets();
   const { events, refetchEvents, hasInitialLoad, getScreenEvents, setScreenEvents, markScreenLoadedFromDb, getScreenLoadedFromDb } = useEvents();
@@ -575,32 +563,14 @@ export default function Feed() {
 
   const fetchTravelAnnouncements = async (friendIds: string[]) => {
     try {
-      console.log('🧳 Feed: Starting fetchTravelAnnouncements with friends:', friendIds.length);
-
       // SCALABILITY FIX: Use the now-optimized getFriendsTravelAnnouncements with limits
-      // Include current user's travel announcements as well
-      const travelData = await getFriendsTravelAnnouncements(friendIds, 30, true, currentUserId); // Limit to 30 travel announcements
-      console.log('🧳 Feed: Raw travel data received:', travelData.length, 'announcements');
-
-      if (travelData.length === 0) {
-        console.log('🧳 Feed: No travel data from API - this could indicate collection is empty');
-        setTravelAnnouncements([]);
-        return;
-      }
-
-      // Log some sample data to see what we got
-      console.log('🧳 Feed: Sample travel data:', {
-        count: travelData.length,
-        destinations: travelData.slice(0, 3).map(t => ({ dest: t.destination, user: t.userId, dates: `${t.startDate} to ${t.endDate}` }))
-      });
+      const travelData = await getFriendsTravelAnnouncements(friendIds, 30); // Limit to 30 travel announcements
 
       // Filter for upcoming/current travel only (not past travel)
       const now = new Date();
       const upcomingTravelData = travelData.filter(travel => new Date(travel.endDate) > now);
-      console.log('🧳 Feed: After filtering for upcoming/current travel:', upcomingTravelData.length, 'remaining');
 
       if (upcomingTravelData.length === 0) {
-        console.log('🧳 Feed: No upcoming travel - all announcements are in the past');
         setTravelAnnouncements([]);
         return;
       }
@@ -981,9 +951,6 @@ export default function Feed() {
             maxPicks={8}
           />
 
-          {/* TEMPORARY: Travel Debug Component */}
-          <TravelDebugComponent />
-
           {/* Main events FlatList (condensed chronological list) */}
           <FlatList
             data={eventsWithCreatorNames}
@@ -1056,7 +1023,6 @@ export default function Feed() {
               }
             }}
             currentUserId={currentUserId ?? ''}
-            userFriends={friends}
           />
         )}
       </SafeAreaView>

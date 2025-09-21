@@ -1,7 +1,7 @@
 import { addEventAttendee, getAllEvents, getEventInvitees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
 import { getUserProfile } from '@/lib/api/user';
 import { account } from '@/lib/appwrite/appwrite';
-import { useTheme } from '@/lib/context/ThemeContext';
+
 import { Event as AppEvent } from '@/lib/types/Events';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
 import { recordUserAction } from '@/lib/utils/dataFetchingOptimizer';
@@ -12,7 +12,7 @@ import EventDetailsModal from '../components/EventDetailsModal';
 import { useEvents } from '../context/EventContext';
 
 export default function FriendCalendar() {
-    const { colors } = useTheme();
+
     const { refetchEvents } = useEvents();
 
     const params = ({} as any);
@@ -126,7 +126,7 @@ export default function FriendCalendar() {
     return (
         <SafeAreaView style={styles.container}>
             <View style={{ padding: 12 }}>
-                <Text style={{ fontSize: 20, fontWeight: '700' }}>{friendName}'s Calendar</Text>
+                <Text style={{ fontSize: 20, fontWeight: '700' }}>{friendName}&apos;s Calendar</Text>
             </View>
 
             <FlatList

@@ -9,6 +9,19 @@ import { databases } from './appwrite';
  */
 export async function createDocumentSafe(databaseId: string, collectionId: string, documentId: string, payload: any, permissions?: any) {
     const clean = stripSystemTimestamps(payload);
+    // Diagnostic logging
+    try {
+        console.log('safeDb: createDocumentSafe called with', {
+            databaseId,
+            collectionId,
+            documentId,
+            dataKeys: Object.keys(clean),
+            hasPermissions: !!permissions,
+        });
+    } catch (e) {
+        // ignore logging errors
+    }
+
     if (permissions) {
         return await databases.createDocument(databaseId, collectionId, documentId, clean, permissions as any);
     }

@@ -20,12 +20,19 @@ export async function createTravelAnnouncementWithFriendNotifications(
     userFriends: string[] = []
 ): Promise<TravelAnnouncement> {
     try {
+        console.log('🧳 createTravelAnnouncementWithFriendNotifications: Starting with data:', {
+            userId: travel.userId,
+            destination: travel.destination,
+            userFriendsCount: userFriends.length
+        });
+
         // Validate required fields
         if (!travel.userId || travel.userId.trim() === '') {
             throw new Error('User ID is required to create travel announcement');
         }
 
         const travelId = ID.unique();
+        console.log('🧳 Generated travel ID:', travelId);
 
         // Find friends who will be in the same location during the same time
         const friendsToNotify = await findFriendsInSameLocation(
@@ -35,6 +42,8 @@ export async function createTravelAnnouncementWithFriendNotifications(
             travel.endDate,
             userFriends
         );
+
+        console.log('🧳 Friends to notify:', friendsToNotify.length);
 
         const travelData = {
             userId: travel.userId,
@@ -50,17 +59,106 @@ export async function createTravelAnnouncementWithFriendNotifications(
 
         const { stripSystemTimestamps } = await import('@/lib/utils/appwriteSanitizer');
 
+        console.log('🧳 Creating travel announcement in collection:', config.travelCollectionID);
+        console.log('🧳 Travel data to save:', {
+            destination: travelData.destination,
+            userId: travelData.userId,
+            dates: `${travelData.startDate} to ${travelData.endDate}`
+        });
+
+        // Log the complete data being sent to database
+        const sanitizedData = stripSystemTimestamps(travelData);
+        console.log('🧳 Complete sanitized data being sent to database:', sanitizedData);
+        console.log('🧳 Data keys:', Object.keys(sanitizedData));
+        console.log('🧳 Database ID:', config.databaseID);
+        console.log('🧳 Collection ID:', config.travelCollectionID);
+
+        // Log the exact parameters being passed to createDocument
+        console.log('🧳 DETAILED: About to call databases.createDocument with:');
+        console.log('🧳 DETAILED: - Database ID:', config.databaseID);
+        console.log('🧳 DETAILED: - Collection ID:', config.travelCollectionID);
+        console.log('🧳 DETAILED: - Document ID:', travelId);
+        console.log('🧳 DETAILED: - Data:', JSON.stringify(sanitizedData, null, 2));
+        console.log('🧳 DETAILED: - Permissions:', [
+            Permission.read(Role.any()),
+            Permission.update(Role.user(travel.userId)),
+            Permission.delete(Role.user(travel.userId)),
+        ]);
+
         const response = await databases.createDocument(
             config.databaseID!,
             config.travelCollectionID!,
             travelId,
-            stripSystemTimestamps(travelData),
+            sanitizedData,
             [
                 Permission.read(Role.any()),
                 Permission.update(Role.user(travel.userId)),
                 Permission.delete(Role.user(travel.userId)),
             ]
         );
+
+        console.log('🧳 Travel announcement created successfully:', response.$id);
+        console.log('🧳 DETAILED: Full response from createDocument:', JSON.stringify(response, null, 2));
+
+        // Verify the document was actually created by trying to fetch it
+        try {
+            const verification = await databases.getDocument(
+                config.databaseID!,
+                config.travelCollectionID!,
+                response.$id
+            );
+            console.log('✅ Verification: Document exists in database with ID:', verification.$id);
+            console.log('✅ Verification: Document data keys:', Object.keys(verification));
+            console.log('✅ Verification: Full document data:', JSON.stringify(verification, null, 2));
+        } catch (verificationError) {
+            console.error('❌ Verification FAILED: Document not found in database:', verificationError);
+        }
+
+        // Wait a moment and check again to see if it persists
+        console.log('🧳 PERSISTENCE TEST: Waiting 2 seconds then checking if document still exists...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        try {
+            const persistenceCheck = await databases.getDocument(
+                config.databaseID!,
+                config.travelCollectionID!,
+                response.$id
+            );
+            console.log('✅ PERSISTENCE TEST: Document still exists after 2 seconds:', persistenceCheck.$id);
+        } catch (persistenceError) {
+            console.error('❌ PERSISTENCE TEST FAILED: Document disappeared after 2 seconds:', persistenceError);
+        }
+
+        // Test if we can query for this document in the collection
+        try {
+            const queryTest = await databases.listDocuments(
+                config.databaseID!,
+                config.travelCollectionID!,
+                [Query.equal('$id', response.$id)]
+            );
+            console.log('🔍 QUERY TEST: Found', queryTest.documents.length, 'documents with this ID');
+            if (queryTest.documents.length > 0) {
+                console.log('🔍 QUERY TEST: Document found via query:', queryTest.documents[0].$id);
+            }
+        } catch (queryError) {
+            console.error('❌ QUERY TEST FAILED:', queryError);
+        }
+
+        // Test if we can list all documents in the collection to see total count
+        try {
+            const allDocs = await databases.listDocuments(
+                config.databaseID!,
+                config.travelCollectionID!,
+                [Query.limit(100)]
+            );
+            console.log('📊 COLLECTION TEST: Total documents in travel collection:', allDocs.total);
+            console.log('📊 COLLECTION TEST: Documents returned:', allDocs.documents.length);
+            if (allDocs.documents.length > 0) {
+                console.log('📊 COLLECTION TEST: Sample document IDs:', allDocs.documents.slice(0, 3).map(d => d.$id));
+            }
+        } catch (collectionError) {
+            console.error('❌ COLLECTION TEST FAILED:', collectionError);
+        }
 
         // Send notifications to friends who will be in the same location
         if (friendsToNotify.length > 0) {
@@ -77,7 +175,24 @@ export async function createTravelAnnouncementWithFriendNotifications(
             $updatedAt: response.$updatedAt,
         } as TravelAnnouncement;
     } catch (error) {
-        console.error('Error creating travel announcement with friend notifications:', error);
+        console.error('🧳 createTravelAnnouncementWithFriendNotifications: Error:', error);
+
+        // Log detailed error information
+        if (error instanceof Error) {
+            console.error('🧳 Error message:', error.message);
+            console.error('🧳 Error stack:', error.stack);
+        }
+
+        // Check for specific Appwrite errors
+        if (error && typeof error === 'object') {
+            const appwriteError = error as any;
+            if ('type' in appwriteError) {
+                console.error('🧳 Appwrite error type:', appwriteError.type);
+                console.error('🧳 Appwrite error code:', appwriteError.code);
+                console.error('🧳 Appwrite error message:', appwriteError.message);
+            }
+        }
+
         throw error;
     }
 }

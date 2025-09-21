@@ -47,7 +47,7 @@ const GroupPage = () => {
 
     // Extract stable values to prevent infinite loops
     const groupId = Array.isArray(params.id) ? params.id[0] : params.id;
-    const userId = user?.$id;
+
 
     const [group, setGroup] = useState<Group | null>(null);
     const [events, setEvents] = useState<any[]>([]);
@@ -61,7 +61,7 @@ const GroupPage = () => {
     const [membersModalVisible, setMembersModalVisible] = useState(false);
     const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
     const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
-    const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+
 
     // Memoize friends array to prevent infinite re-renders
     const friendIds = useMemo(() => {
@@ -76,7 +76,7 @@ const GroupPage = () => {
     const [viewMode, setViewMode] = useState<Mode>('week');
     const [date, setDate] = useState(() => new Date()); // Use function to initialize once
     const [startHour] = useState(() => new Date().getHours() - 4); // Use function to initialize once
-    const [endHour] = useState(() => new Date().getHours() + 4);   // Use function to initialize once
+
 
     // Extracted loadGroupData function for reuse
     const reloadGroupData = useCallback(async () => {
@@ -136,7 +136,7 @@ const GroupPage = () => {
     // Memoize event handlers to prevent re-renders
     const handleEventPress = useCallback((event: AppEvent) => {
         setSelectedEvent(event);
-        setDetailsModalVisible(true);
+        // Modal functionality removed
     }, []);
 
     const handleCreateEvent = useCallback(() => {
@@ -262,8 +262,7 @@ const GroupPage = () => {
     const refreshEvents = useCallback(async () => {
         if (!groupId || typeof groupId !== 'string') return;
 
-        // Get current user ID inside the function
-        const currentUserId = user?.$id;
+        // Get current user ID inside the function - removed since not used
 
         try {
             const groupEvents = await getGroupEvents(groupId);
@@ -279,17 +278,17 @@ const GroupPage = () => {
         } catch (error) {
             console.error('Error reloading events:', error);
         }
-    }, [groupId, user?.$id]);
+    }, [groupId]);
 
     // Memoize modal callbacks to prevent re-renders
     const handleModalClose = useCallback(() => {
-        setDetailsModalVisible(false);
+        // Modal functionality removed
         setSelectedEvent(null);
     }, []);
 
     const handleEventEdit = useCallback((event: any) => {
         console.log('Editing event:', event.title);
-        setDetailsModalVisible(false);
+        // Modal functionality removed
         setSelectedEvent(null);
     }, []);
 
@@ -315,7 +314,7 @@ const GroupPage = () => {
                 <View className="flex-1 justify-center items-center px-4">
                     <Text className="text-lg font-rubik-semibold mb-2" style={{ color: colors.text }}>Group Not Found</Text>
                     <Text className="text-center font-rubik mb-6" style={{ color: colors.textSecondary }}>
-                        This group may no longer exist or you don't have access to it.
+                        This group may no longer exist or you don&apos;t have access to it.
                     </Text>
                     <TouchableOpacity
                         onPress={() => router.back()}
