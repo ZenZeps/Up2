@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "react-native";
 import { authDebug } from "../debug/authDebug";
 import { cacheManager } from "../debug/cacheManager";
-import { dbUsageMonitor } from "../debug/dbUsageMonitor";
+// dbUsageMonitor was removed during cleanup
 
 // Rate limit configuration (calls per minute) - Optimized for 100k users
 const RATE_LIMIT = 15; // Slightly increased for better UX
@@ -162,8 +162,8 @@ export const useAppwrite = <T, P extends Record<string, any>>({
       setLoading(true);
       setError(null);
 
-      // Record this as a database read operation
-      dbUsageMonitor.recordRead(`${fn.name}`);
+      // Database monitoring was removed during cleanup
+      // dbUsageMonitor.recordRead(`${fn.name}`);
 
       try {
         authDebug.debug(`Fetching data for ${fn.name}`, paramsToUse);

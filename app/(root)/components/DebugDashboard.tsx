@@ -1,5 +1,4 @@
 import { cacheManager } from '@/lib/debug/cacheManager';
-import { dbUsageMonitor } from '@/lib/debug/dbUsageMonitor';
 import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -23,13 +22,13 @@ export default function DebugDashboard() {
         if (!visible) return;
 
         const updateStats = () => {
-            const dbStats = dbUsageMonitor.getUsageStats();
+            // dbUsageMonitor was removed during cleanup
             const cacheStats = cacheManager.getStats();
 
             setStats({
-                reads: dbStats.reads,
-                writes: dbStats.writes,
-                readPercentage: dbStats.readPercentage,
+                reads: 0, // Database monitoring removed
+                writes: 0, // Database monitoring removed
+                readPercentage: 0, // Database monitoring removed
                 cacheHitRate: cacheStats.hitRate,
                 cacheSize: cacheStats.size
             });
@@ -128,10 +127,10 @@ export default function DebugDashboard() {
 
                 <View style={styles.buttonContainer}>
                     <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => dbUsageMonitor.resetCounters()}
+                        style={[styles.actionButton, { opacity: 0.5 }]}
+                        disabled
                     >
-                        <Text style={styles.buttonText}>Reset Counters</Text>
+                        <Text style={styles.buttonText}>DB Monitor Removed</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity

@@ -1,4 +1,3 @@
-import { createTravelAnnouncement } from '@/lib/api/travel';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';

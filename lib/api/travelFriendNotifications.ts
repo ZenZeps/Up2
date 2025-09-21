@@ -117,7 +117,7 @@ export async function createTravelAnnouncementWithFriendNotifications(
         // Wait a moment and check again to see if it persists
         console.log('🧳 PERSISTENCE TEST: Waiting 2 seconds then checking if document still exists...');
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
+
         try {
             const persistenceCheck = await databases.getDocument(
                 config.databaseID!,

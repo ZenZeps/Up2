@@ -2,11 +2,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import DeepLinkTester from '../../components/DeepLinkTester';
-import { NotificationTester } from '../../components/debug/NotificationTester';
-// import UserSystemDiagnostic from '../../components/debug/UserSystemDiagnostic';
-import AccountCreationTester from '../../components/debug/AccountCreationTester';
-// Import but don't use OptimizationTester until we fix the context nesting issue
-// import OptimizationTester from './components/OptimizationTester';
+// Removed debug components that were deleted during cleanup
 
 /**
  * Debug page for testing our database optimizations
@@ -21,19 +17,12 @@ export default function DebugPage() {
                 <Text style={styles.subtitle}>Database Optimization Test Suite</Text>
             </View>
 
-            {/* Account Creation Testing */}
-            <AccountCreationTester />
-
-            {/* User System Diagnostics - Temporarily disabled due to import issues */}
-            {/* <UserSystemDiagnostic /> */}
-
-            {/* Notification Testing */}
-            <NotificationTester />            {/* Temporarily disabled to fix context nesting issue */}
-            {/* <OptimizationTester /> */}
-            <View style={{ padding: 20, backgroundColor: '#ffe0e0', borderRadius: 8, marginVertical: 10 }}>
-                <Text style={{ fontWeight: 'bold' }}>OptimizationTester Temporarily Disabled</Text>
+            {/* Debug components were removed during cleanup */}
+            <View style={{ padding: 20, backgroundColor: '#e0f0ff', borderRadius: 8, marginVertical: 10 }}>
+                <Text style={{ fontWeight: 'bold' }}>Debug Components Cleaned Up</Text>
                 <Text style={{ marginTop: 5 }}>
-                    The tester was causing React context nesting issues. It will be fixed in a future update.
+                    Debug testing components have been removed to reduce app bundle size and complexity.
+                    Core app functionality remains unchanged.
                 </Text>
             </View>
 
@@ -60,19 +49,10 @@ export default function DebugPage() {
                 <Text style={styles.infoTitle}>Debug Tools</Text>
                 <DeepLinkTester />
 
-                <TouchableOpacity
-                    style={styles.debugButton}
-                    onPress={() => router.push('/debug/AttendanceMigrationTool')}
-                >
-                    <MaterialIcons name="storage" size={20} color="white" />
-                    <Text style={styles.debugButtonText}>Event Attendance Migration</Text>
-                    <MaterialIcons name="arrow-forward" size={16} color="white" />
-                </TouchableOpacity>
-
                 <TouchableOpacity style={[styles.debugButton, { opacity: 0.5 }]} disabled>
-                    <MaterialIcons name="build" size={20} color="white" />
-                    <Text style={styles.debugButtonText}>Additional Debug Tools Coming Soon</Text>
-                    <MaterialIcons name="more-horiz" size={16} color="white" />
+                    <MaterialIcons name="info" size={20} color="white" />
+                    <Text style={styles.debugButtonText}>Debug tools cleaned up for production</Text>
+                    <MaterialIcons name="check" size={16} color="white" />
                 </TouchableOpacity>
             </View>
 

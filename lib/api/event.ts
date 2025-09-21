@@ -1,10 +1,11 @@
 import { config, databases } from "@/lib/appwrite/appwrite";
+import { createDocumentSafe } from "@/lib/appwrite/safeDb";
 import { Event } from "@/lib/types/Events";
-import { ID, Query, Permission, Role } from "react-native-appwrite";
+import { ID, Permission, Query, Role } from "react-native-appwrite";
 import { authDebug } from "../debug/authDebug";
 import { cacheManager } from "../debug/cacheManager";
 import { sendEventInviteNotification } from "../notifications/notificationUtils";
-import { addAttendeeSimple, removeAttendeeSimple } from "../utils/simpleAttendeeCount";
+import { removeAttendeeSimple } from "../utils/simpleAttendeeCount";
 import { getGroupById } from "./group";
 import { getUserProfile } from "./user";
 
@@ -307,6 +308,8 @@ export async function createEvent(event: Event) {
     }
 
     // If a textual location is provided but no explicit coordinates, attempt to geocode it
+    // TEMPORARILY DISABLED: This might be causing event creation failures
+    /*
     try {
       if (sanitizedEvent.location && (!sanitizedEvent.locationLat || !sanitizedEvent.locationLng)) {
         const { geocodeAddress } = await import('@/lib/utils/geocode');
@@ -319,9 +322,12 @@ export async function createEvent(event: Event) {
     } catch (geocodeErr) {
       authDebug.warn('Geocoding failed or unavailable, continuing without coordinates', geocodeErr);
     }
+    */
+    authDebug.debug('Geocoding temporarily disabled for debugging');
 
     // Create the event
-    const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
+    authDebug.debug('Geocoding temporarily disabled for debugging');
+
     // Diagnostic logging: capture payload and params being sent to DB
     authDebug.debug('EVENT WRITE: About to call createDocumentSafe with:', {
       databaseId: config.databaseID,
@@ -334,15 +340,15 @@ export async function createEvent(event: Event) {
     // private events readable only by the creator. Creator should always have update/delete.
     const perms = sanitizedEvent.isPrivate
       ? [
-          Permission.read(Role.user(sanitizedEvent.creatorId)),
-          Permission.update(Role.user(sanitizedEvent.creatorId)),
-          Permission.delete(Role.user(sanitizedEvent.creatorId)),
-        ]
+        Permission.read(Role.user(sanitizedEvent.creatorId)),
+        Permission.update(Role.user(sanitizedEvent.creatorId)),
+        Permission.delete(Role.user(sanitizedEvent.creatorId)),
+      ]
       : [
-          Permission.read(Role.any()),
-          Permission.update(Role.user(sanitizedEvent.creatorId)),
-          Permission.delete(Role.user(sanitizedEvent.creatorId)),
-        ];
+        Permission.read(Role.any()),
+        Permission.update(Role.user(sanitizedEvent.creatorId)),
+        Permission.delete(Role.user(sanitizedEvent.creatorId)),
+      ];
 
     const createdEvent = await createDocumentSafe(
       config.databaseID,
@@ -376,8 +382,8 @@ export async function createEvent(event: Event) {
         config.eventsCollectionID!,
         [Query.equal('$id', createdEvent.$id), Query.limit(5)]
       );
-  authDebug.info('🔍 EVENT QUERY TEST', { found: queryTest.documents.length, id: createdEvent.$id });
-  if (queryTest.documents.length > 0) authDebug.debug('🔍 EVENT QUERY TEST: Document via query', { id: queryTest.documents[0].$id });
+      authDebug.info('🔍 EVENT QUERY TEST', { found: queryTest.documents.length, id: createdEvent.$id });
+      if (queryTest.documents.length > 0) authDebug.debug('🔍 EVENT QUERY TEST: Document via query', { id: queryTest.documents[0].$id });
     } catch (qErr) {
       authDebug.error('❌ EVENT QUERY TEST FAILED:', qErr);
     }
@@ -1336,5 +1342,79 @@ export async function getEventAttendeeCount(eventId: string): Promise<number> {
   } catch (err) {
     authDebug.error(`Error getting attendee count for event ${eventId}:`, err);
     return 0;
+  }
+}
+
+/**
+ * Clean up orphaned attendance records that point to non-existent events
+ */
+export async function cleanupOrphanedAttendanceRecords(): Promise<number> {
+  try {
+    authDebug.info('🧹 Starting cleanup of orphaned attendance records...');
+
+    // Get all attendance records
+    const attendanceRecords = await databases.listDocuments(
+      config.databaseID!,
+      config.eventAttendancesCollectionID!,
+      [Query.limit(1000)]
+    );
+
+    authDebug.info(`Found ${attendanceRecords.documents.length} attendance records to check`);
+    let deletedCount = 0;
+
+    for (const record of attendanceRecords.documents) {
+      try {
+        // Try to fetch the event this record points to
+        await databases.getDocument(
+          config.databaseID!,
+          config.eventsCollectionID!,
+          record.eventId
+        );
+        // Event exists - record is valid
+      } catch (error: any) {
+        if (error.code === 404) {
+          // Event doesn't exist - delete orphaned record
+          authDebug.info(`🗑️ Deleting orphaned attendance record: ${record.$id} (event: ${record.eventId})`);
+
+          try {
+            await databases.deleteDocument(
+              config.databaseID!,
+              config.eventAttendancesCollectionID!,
+              record.$id
+            );
+            deletedCount++;
+          } catch (deleteError) {
+            authDebug.error(`Failed to delete orphaned record ${record.$id}:`, deleteError);
+          }
+        }
+      }
+    }
+
+    // Clear relevant caches after cleanup
+    cacheManager.remove(EVENT_COLLECTION_CACHE_KEY);
+    authDebug.info('🧹 Clearing user event caches...');
+
+    // Clear common cache patterns (without accessing private cache property)
+    const commonCacheKeys = [
+      'all-events',
+      'events-user-',
+      'user-attending-events-',
+      'event-attendees-',
+      'event-invitees-'
+    ];
+
+    // Try to clear caches for common user IDs and patterns
+    for (let i = 0; i < 10; i++) {
+      commonCacheKeys.forEach(pattern => {
+        cacheManager.remove(`${pattern}${i}`);
+      });
+    }
+
+    authDebug.info(`✅ Cleanup complete! Removed ${deletedCount} orphaned records`);
+    return deletedCount;
+
+  } catch (error) {
+    authDebug.error('❌ Cleanup failed:', error);
+    throw error;
   }
 }

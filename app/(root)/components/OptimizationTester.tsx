@@ -1,7 +1,6 @@
 import { fetchEventById, fetchEvents, fetchUserEvents } from '@/lib/api/event';
 import { useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { cacheManager } from '@/lib/debug/cacheManager';
-import { dbUsageMonitor } from '@/lib/debug/dbUsageMonitor';
 import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -40,25 +39,22 @@ export default function OptimizationTester() {
             cacheManager.clear();
             console.log("Cache cleared");
 
-            // Reset counters
-            dbUsageMonitor.resetCounters();
+            // DB monitoring was removed during cleanup
             console.log("DB counters reset");
 
             // First fetch - should hit database
             await refetchEvents();
             console.log("First fetch completed");
 
-            // Check DB reads
-            const stats1 = dbUsageMonitor.getUsageStats();
-            console.log("DB reads after first fetch:", stats1.reads);
+            // Check DB reads - monitoring removed
+            console.log("DB reads after first fetch: (monitoring removed)");
 
             // Second fetch - should use cache
             await refetchEvents();
             console.log("Second fetch completed");
 
-            // Check DB reads again - should be same as before if cache working
-            const stats2 = dbUsageMonitor.getUsageStats();
-            console.log("DB reads after second fetch:", stats2.reads);
+            // Check DB reads again - monitoring removed
+            console.log("DB reads after second fetch: (monitoring removed)");
 
             // Check cache stats
             const cacheStats = cacheManager.getStats();

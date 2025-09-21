@@ -1,6 +1,6 @@
 import { Background } from '@/components/Background';
 import { CATEGORIES } from '@/constants/categories';
-import { addEventAttendee, addEventInvitation, removeEventAttendee } from '@/lib/api/event';
+import { addEventAttendee, addEventInvitation, cleanupOrphanedAttendanceRecords, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
 import { addEventToGroup } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
@@ -323,7 +323,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       onClose(true);
     } catch (error: any) {
       console.error('🔥 EventForm: Error saving event:', error);
-      
+
       // Log detailed error information for debugging
       console.error('🔥 EventForm: Error details:', {
         message: error?.message || 'Unknown error',
@@ -413,6 +413,53 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   </Text>
                 </View>
               )}
+
+              {/* DEBUG: Cleanup Button - Remove after fixing the issue */}
+              <TouchableOpacity
+                onPress={async () => {
+                  try {
+                    Alert.alert(
+                      'Clean Up Database',
+                      'This will remove orphaned attendance records. Continue?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Clean Up',
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              console.log('🧹 Starting cleanup...');
+                              const deletedCount = await cleanupOrphanedAttendanceRecords();
+                              Alert.alert('Success', `Cleaned up ${deletedCount} orphaned records`);
+                              console.log(`✅ Cleanup complete: ${deletedCount} records removed`);
+                            } catch (error) {
+                              console.error('❌ Cleanup failed:', error);
+                              Alert.alert('Error', 'Cleanup failed. Check console for details.');
+                            }
+                          }
+                        }
+                      ]
+                    );
+                  } catch (error) {
+                    console.error('Cleanup error:', error);
+                  }
+                }}
+                style={{
+                  backgroundColor: 'rgba(255,193,7,0.2)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,193,7,0.5)',
+                  borderRadius: 12,
+                  padding: 16,
+                  marginBottom: 24,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                }}
+              >
+                <MaterialIcons name="cleaning-services" size={20} color="#FFC107" style={{ marginRight: 12 }} />
+                <Text style={{ color: '#FFC107', fontSize: 14, fontWeight: '600' }}>
+                  🧹 Clean Orphaned Database Records (DEBUG)
+                </Text>
+              </TouchableOpacity>
 
               {/* Event Name */}
               <View style={styles.inputContainer}>

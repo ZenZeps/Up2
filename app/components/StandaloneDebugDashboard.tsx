@@ -1,5 +1,4 @@
 import { cacheManager } from '@/lib/debug/cacheManager';
-import { dbUsageMonitor } from '@/lib/debug/dbUsageMonitor';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -25,13 +24,13 @@ export default function StandaloneDebugDashboard() {
 
         const updateStats = () => {
             try {
-                const dbStats = dbUsageMonitor.getUsageStats();
+                // dbUsageMonitor was removed during cleanup
                 const cacheStats = cacheManager.getStats();
 
                 setStats({
-                    reads: dbStats.reads,
-                    writes: dbStats.writes,
-                    readPercentage: dbStats.readPercentage,
+                    reads: 0, // Database monitoring removed
+                    writes: 0, // Database monitoring removed
+                    readPercentage: 0, // Database monitoring removed
                     cacheHitRate: cacheStats.hitRate,
                     cacheSize: cacheStats.size
                 });
@@ -62,7 +61,7 @@ export default function StandaloneDebugDashboard() {
 
     const handleResetCounters = () => {
         try {
-            dbUsageMonitor.resetCounters();
+            // dbUsageMonitor was removed during cleanup
             setStats(prev => ({ ...prev, reads: 0, writes: 0, readPercentage: 0 }));
         } catch (error) {
             console.error('Error resetting counters:', error);
