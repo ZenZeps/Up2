@@ -1,6 +1,7 @@
+import EventImage from '@/components/EventImage';
 import TopPicks from '@/components/feed/TopPicks';
 import { Background } from '@/components/ui/Background';
-import { getCategoriesByValues, getEventEmoji } from '@/constants/categories';
+import { getCategoriesByValues } from '@/constants/categories';
 import { addEventAttendee, getEventAttendeesFor, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
 import { getUserGroups } from '@/lib/api/group';
@@ -20,7 +21,6 @@ import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import { LinearGradient } from 'expo-linear-gradient';
 // header will be plain white
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -778,14 +778,18 @@ export default function Feed() {
 
       return (
         <View
-          style={[styles.eventMiniCard, { backgroundColor: darkCard.card, borderColor: darkCard.border }]}
+          style={[styles.eventMiniCard, { backgroundColor: colors.card, borderColor: colors.border }]}
         >
-          <LinearGradient colors={["#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]} style={styles.eventMiniEmoji}>
-            <Text style={styles.eventEmojiSmall}>{getEventEmoji(item.tags)}</Text>
-          </LinearGradient>
+          <EventImage
+            photoId={(item as any).photoId}
+            tags={item.tags}
+            size={48}
+            style={styles.eventMiniEmoji}
+            gradientColors={["#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]}
+          />
           <View style={styles.eventMiniContent}>
-            <Text style={[styles.eventMiniTitle, { color: darkCard.text }]} numberOfLines={2}>{item.title}</Text>
-            <Text style={[styles.eventMiniMeta, { color: darkCard.textSecondary }]}>{dayjs(item.startTime).fromNow()}</Text>
+            <Text style={[styles.eventMiniTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
+            <Text style={[styles.eventMiniMeta, { color: colors.textSecondary }]}>{dayjs(item.startTime).fromNow()}</Text>
           </View>
           <View style={styles.goIconSmall}>
             <MaterialIcons name="arrow-forward" size={18} color={darkCard.primary} />
@@ -808,25 +812,27 @@ export default function Feed() {
     return (
       <TouchableOpacity
         onPress={() => router.push(`/event/${item.$id}?from=feed` as any)}
-        // Force the main row card to use dark card colors so light-mode matches dark-mode style
-        style={[styles.feedRowCard, { backgroundColor: '#2c2c2e', borderColor: '#333333' }]}
+        style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
       >
-        <LinearGradient colors={["#c78aa5", "#db7d95", "#f2948f", "#f6b793"]} style={styles.feedThumb}>
-          <Text style={styles.eventEmojiThumb}>{getEventEmoji(item.tags)}</Text>
-        </LinearGradient>
+        <EventImage
+          photoId={(item as any).photoId}
+          tags={item.tags}
+          size={72}
+          style={styles.feedThumb}
+        />
 
         <View style={styles.feedBody}>
-          <Text style={[styles.feedTitle, { color: '#FFFFFF' }]} numberOfLines={1}>{item.title}</Text>
+          <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
 
           <View style={styles.feedMetaRow}>
-            <MaterialIcons name="calendar-today" size={12} color={'#bdbdbd'} />
-            <Text style={[styles.feedMetaText, { color: '#bdbdbd', marginLeft: 6 }]}>{dayjs(item.startTime).format('DD MMM, YYYY')}</Text>
-            <Text style={[styles.feedMetaText, { color: '#bdbdbd', marginHorizontal: 8 }]}>•</Text>
-            <MaterialIcons name="location-on" size={12} color={'#bdbdbd'} />
-            <Text style={[styles.feedMetaText, { color: '#bdbdbd', marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
+            <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
+            <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{dayjs(item.startTime).format('DD MMM, YYYY')}</Text>
+            <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
+            <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
+            <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
             {formattedDistance && (
               <>
-                <Text style={[styles.feedMetaText, { color: '#bdbdbd', marginHorizontal: 8 }]}>•</Text>
+                <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
                 <Text style={[styles.feedMetaText, { color: '#4A90E2', marginLeft: 0, fontWeight: '500' }]}>{formattedDistance}</Text>
               </>
             )}
@@ -834,7 +840,7 @@ export default function Feed() {
 
           <View style={styles.feedSubRow}>
             <UserAvatar photoUrl={getCreatorPhotoUrl(item.creatorId)} name={getCreatorName(item.creatorId)} size={28} />
-            <Text style={[styles.smallCreatorName, { color: '#FFFFFF', marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(item.creatorId)}</Text>
+            <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(item.creatorId)}</Text>
           </View>
         </View>
 
@@ -855,7 +861,7 @@ export default function Feed() {
   };
 
   const renderTravelItem = ({ item }: { item: TravelAnnouncementWithUserInfo }) => (
-    <View style={[styles.feedCard, { backgroundColor: '#2c2c2e', borderColor: '#333333' }]}>
+    <View style={[styles.feedCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
       {/* Travel Header */}
       <View style={styles.cardHeader}>
         <UserAvatar

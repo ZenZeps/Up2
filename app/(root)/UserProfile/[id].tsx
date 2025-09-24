@@ -3,8 +3,8 @@ import { blockUser, cancelFriendRequest, getPendingFriendRequests, getUserFriend
 import { getUserGroups } from '@/lib/api/group';
 import { getProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
-import { cacheManager } from '@/lib/debug/cacheManager';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { cacheManager } from '@/lib/debug/cacheManager';
 import { useGlobalContext } from '@/lib/global-provider';
 import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
 import { Group } from '@/lib/types/Groups';
@@ -132,11 +132,6 @@ const UserProfile = () => {
 
         loadFriendship();
     }, [currentUser?.$id, userId]);
-
-    const handleMessageUser = () => {
-        // Navigate to conversation with this user
-        router.push(`/Messages/${userId}` as any);
-    };
 
     const handleViewCalendar = () => {
         try {
@@ -344,15 +339,7 @@ const UserProfile = () => {
                                                 <Text style={[styles.modernButtonText, { color: 'white' }]}>Pending</Text>
                                             </TouchableOpacity>
                                         )}
-                                        {friendshipState === 'friends' && (
-                                            <TouchableOpacity
-                                                style={[styles.modernButton, styles.secondaryButton, { borderColor: colors.border, backgroundColor: colors.card }]}
-                                                onPress={handleMessageUser}
-                                            >
-                                                <MaterialIcons name="message" size={18} color={colors.primary} />
-                                                <Text style={[styles.modernButtonText, { color: colors.primary }]}>Message</Text>
-                                            </TouchableOpacity>
-                                        )}
+
                                     </>
                                 )}
                             </View>

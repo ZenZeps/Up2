@@ -13,6 +13,7 @@ const validateConfig = () => {
     'EXPO_PUBLIC_APPWRITE_EVENTS_COLLECTION_ID',
     'EXPO_PUBLIC_APPWRITE_TRAVEL_COLLECTION_ID',
     'EXPO_PUBLIC_APPWRITE_PROFILE_PHOTOS_BUCKET_ID',
+    'EXPO_PUBLIC_APPWRITE_EVENT_PHOTOS_BUCKET_ID',
     'EXPO_PUBLIC_APPWRITE_GROUPS_COLLECTION_ID',
     'EXPO_PUBLIC_APPWRITE_GROUPMEMBERSHIPS_COLLECTION_ID',
     'EXPO_PUBLIC_APPWRITE_CHATS_ID',
@@ -52,6 +53,7 @@ export const config = {
   travelCollectionID: process.env.EXPO_PUBLIC_APPWRITE_TRAVEL_COLLECTION_ID || "68594f4d0034f9a3bb1b",
   travelInteractionsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_TRAVEL_INTERACTIONS_ID || "travel_interactions",
   profilePhotosBucketID: process.env.EXPO_PUBLIC_APPWRITE_PROFILE_PHOTOS_BUCKET_ID || "68594f610012a2c5c4d7",
+  eventPhotosBucketID: process.env.EXPO_PUBLIC_APPWRITE_EVENT_PHOTOS_BUCKET_ID || "event_photos_bucket",
   groupsCollectionID: process.env.EXPO_PUBLIC_APPWRITE_GROUPS_COLLECTION_ID || "687ef8b7003cc206308f",
   // DEPRECATED: Group invites now handled through groupMemberships collection
   groupInvitesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_GROUP_INVITES_ID || "deprecated_group_invites",

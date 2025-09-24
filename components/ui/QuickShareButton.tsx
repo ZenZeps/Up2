@@ -1,6 +1,3 @@
-import { MaterialIcons } from '@expo/vector-icons';
-import React from 'react';
-import { Alert, Text, TouchableOpacity } from 'react-native';
 import {
     getEventInviteData,
     shareEventInvite,
@@ -8,6 +5,9 @@ import {
     shareToMessenger,
     shareToWhatsApp
 } from '@/lib/utils/invites';
+import { MaterialIcons } from '@expo/vector-icons';
+import React from 'react';
+import { Alert, Text, TouchableOpacity } from 'react-native';
 
 interface QuickShareButtonProps {
     eventId: string;

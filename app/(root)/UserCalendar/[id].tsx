@@ -1,12 +1,15 @@
+import EventImage from '@/components/EventImage';
 import { getEventColor } from '@/constants/categories';
 import { getTravelDaysInMonth, getUserTravelAnnouncements } from '@/lib/api';
 import { addEventAttendee, getAllEvents, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { account } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { useEventAttendeeCount } from '@/lib/hooks/useEventAttendeeCount';
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
+import { useCreatorInfo } from '@/lib/utils/creatorInfoManager';
 import { recordUserAction } from '@/lib/utils/dataFetchingOptimizer';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -16,6 +19,7 @@ import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
+import UserAvatar from '../components/UserAvatar';
 import { useEvents } from '../context/EventContext';
 
 // Define available calendar view modes (removed 'day')
@@ -93,6 +97,20 @@ export default function UserCalendar() {
     // Travel state
     const [userTravel, setUserTravel] = useState<TravelAnnouncement[]>([]);
     const [travelDays, setTravelDays] = useState<Set<string>>(new Set());
+
+    // Additional hooks for Home-style rendering
+    const { getAttendeeCount } = useEventAttendeeCount(events, true);
+
+    // Get unique creator IDs from events
+    const creatorIds = React.useMemo(() => {
+        if (!events || events.length === 0) return [];
+        const ids = events
+            .map((event: AppEvent) => event.creatorId)
+            .filter(Boolean);
+        return [...new Set(ids)] as string[];
+    }, [events]);
+
+    const { getCreatorPhotoUrl, getCreatorName } = useCreatorInfo(creatorIds, 20);
 
     // Fetch user's profile and events
     useEffect(() => {
@@ -345,16 +363,16 @@ export default function UserCalendar() {
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-            {/* Black Header */}
+            {/* White Header with Black Text */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                    <MaterialIcons name="arrow-back" size={24} color="white" />
+                    <MaterialIcons name="arrow-back" size={24} color="black" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>
-                    {userName}'s Calendar
+                    {userName}&apos;s Calendar
                 </Text>
                 <View style={styles.headerRight}>
-                    <MaterialIcons name="person" size={24} color="white" />
+                    <MaterialIcons name="person" size={24} color="black" />
                 </View>
             </View>
 
@@ -484,7 +502,7 @@ export default function UserCalendar() {
                                         </Text>
                                     </View>
 
-                                    {/* Events for this day */}
+                                    {/* Events for this day - Home-style feed cards */}
                                     {dayGroup.events.map(item => (
                                         <TouchableOpacity
                                             key={item.$id}
@@ -497,40 +515,36 @@ export default function UserCalendar() {
                                                 color: getEventColor(item.tags || []),
                                                 rawEvent: item
                                             })}
+                                            style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                                         >
-                                            <View style={[styles.agendaCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                                                <View style={styles.agendaHeader}>
-                                                    <Text style={[styles.agendaTitle, { color: colors.text }]} numberOfLines={2}>
-                                                        {item.title}
-                                                    </Text>
-                                                    <View style={[styles.eventColorDot, { backgroundColor: getEventColor(item.tags || []) || colors.primary }]} />
+                                            <EventImage
+                                                photoId={(item as any).photoId}
+                                                tags={item.tags}
+                                                size={72}
+                                                style={styles.feedThumb}
+                                                gradientColors={["#FF6B6B", "#FFD166"]}
+                                            />
+
+                                            <View style={styles.feedBody}>
+                                                <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
+                                                <View style={styles.feedMetaRow}>
+                                                    <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
+                                                    <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{new Date(item.startTime).toLocaleDateString()}</Text>
+                                                    <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
+                                                    <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
+                                                    <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
                                                 </View>
 
-                                                <View style={styles.agendaMeta}>
-                                                    <View style={styles.agendaMetaRow}>
-                                                        <MaterialIcons name="access-time" size={16} color={colors.primary} />
-                                                        <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                                                            {new Date(item.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(item.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                        </Text>
-                                                    </View>
+                                                <View style={styles.feedSubRow}>
+                                                    <UserAvatar photoUrl={getCreatorPhotoUrl(item.creatorId)} name={getCreatorName(item.creatorId)} size={28} />
+                                                    <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(item.creatorId)}</Text>
+                                                </View>
+                                            </View>
 
-                                                    {(item as any).creatorName && (
-                                                        <View style={styles.agendaMetaRow}>
-                                                            <MaterialIcons name="person" size={16} color={colors.primary} />
-                                                            <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                                                                By {(item as any).creatorName}
-                                                            </Text>
-                                                        </View>
-                                                    )}
-
-                                                    {item.location && item.location !== 'No location' && (
-                                                        <View style={styles.agendaMetaRow}>
-                                                            <MaterialIcons name="location-on" size={16} color={colors.primary} />
-                                                            <Text style={[styles.agendaMetaText, { color: colors.textSecondary }]}>
-                                                                {item.location}
-                                                            </Text>
-                                                        </View>
-                                                    )}
+                                            <View style={styles.feedRightCol}>
+                                                <View style={{ alignItems: 'flex-end' }}>
+                                                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{getAttendeeCount(item)} attending</Text>
+                                                    <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{(item as any).inviteCount ?? 0} invited</Text>
                                                 </View>
                                             </View>
                                         </TouchableOpacity>
@@ -544,7 +558,7 @@ export default function UserCalendar() {
                                     No Events
                                 </Text>
                                 <Text style={[styles.emptyStateDescription, { color: colors.textSecondary }]}>
-                                    {userName} doesn't have any upcoming events.
+                                    {userName} doesn&apos;t have any upcoming events.
                                 </Text>
                             </View>
                         )}
@@ -643,7 +657,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#f8f9fa',
     },
     header: {
-        backgroundColor: '#000000',
+        backgroundColor: 'white',
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -655,7 +669,7 @@ const styles = StyleSheet.create({
         padding: 4,
     },
     headerTitle: {
-        color: 'white',
+        color: 'black',
         fontSize: 18,
         fontWeight: '600',
         flex: 1,
@@ -772,6 +786,62 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         lineHeight: 24,
         marginBottom: 32,
+    },
+    // Home-style feed card styles
+    feedRowCard: {
+        flexDirection: 'row',
+        padding: 16,
+        marginHorizontal: 16,
+        marginBottom: 12,
+        borderRadius: 16,
+        borderWidth: 1,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 3.84,
+        elevation: 5,
+    },
+    feedThumb: {
+        width: 72,
+        height: 72,
+        borderRadius: 12,
+        marginRight: 16,
+    },
+    feedBody: {
+        flex: 1,
+        justifyContent: 'space-between',
+    },
+    feedTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 4,
+    },
+    feedMetaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 8,
+        flexWrap: 'wrap',
+    },
+    feedMetaText: {
+        fontSize: 12,
+        fontWeight: '500',
+    },
+    feedSubRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    smallCreatorName: {
+        fontSize: 12,
+        fontWeight: '500',
+        flex: 1,
+    },
+    feedRightCol: {
+        justifyContent: 'center',
+        alignItems: 'flex-end',
+        marginLeft: 12,
     },
     // Calendar styles - existing
     controlsContainer: {

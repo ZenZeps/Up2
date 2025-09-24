@@ -1,8 +1,9 @@
-import { getEventEmoji } from '@/constants/categories';
+import EventImage from '@/components/EventImage';
 import { addEventAttendee, addEventInvitation, getEventAttendees, getEventById, getEventInvitees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
+import { getEventPhotoThumbnail } from '@/lib/appwrite/eventPhotos';
 import { useAlert, useAlertHelpers } from '@/lib/context/AlertContext';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
@@ -15,7 +16,7 @@ import dayjs from 'dayjs';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, Linking, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Dimensions, FlatList, Image, Linking, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ShareInviteModal from '../../../components/modals/ShareInviteModal';
 import UserAvatar from '../components/UserAvatar';
@@ -52,11 +53,18 @@ const EventDetail = () => {
     const fetchEventAndCreator = async () => {
       try {
         // Use the proper API function instead of direct database call
+        console.log('🔍 Fetching event by ID:', eventId);
         const res = await getEventById(String(eventId));
         if (!res) {
           console.error('Event not found');
           return;
         }
+        console.log('📅 Event fetched:', {
+          eventId: res.$id,
+          title: res.title,
+          hasPhotoId: !!res.photoId,
+          photoId: res.photoId
+        });
         setEvent(res);
 
         if (!globalUser?.$id) {
@@ -320,8 +328,20 @@ const EventDetail = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Hero Section with Gradient Overlay */}
+      {/* Hero Section with Event Image Background */}
       <View style={styles.heroSection}>
+        {/* Event Image Background */}
+        {(event as any)?.photoId ? (
+          <Image
+            source={{ uri: getEventPhotoThumbnail((event as any).photoId, 400, 300) }}
+            style={styles.heroBackgroundImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.heroFallbackBackground} />
+        )}
+
+        {/* Gradient Overlay */}
         <LinearGradient
           colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.7)']}
           style={styles.heroGradient}
@@ -384,9 +404,14 @@ const EventDetail = () => {
           </View>
         </View>
 
-        {/* Event Emoji & Title Overlay */}
+        {/* Event Photo/Emoji & Title Overlay */}
         <View style={styles.heroContent} pointerEvents="box-none">
-          <Text style={styles.eventEmoji}>{getEventEmoji(event?.tags)}</Text>
+          <EventImage
+            photoId={(event as any).photoId}
+            tags={event?.tags}
+            size={120}
+            style={styles.heroEventImage}
+          />
           <Text style={styles.eventTitle}>{event.title}</Text>
 
           {/* Creator Info */}
@@ -688,6 +713,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  heroBackgroundImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  heroFallbackBackground: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#f0f0f0',
+  },
   heroGradient: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 1,
@@ -721,6 +755,13 @@ const styles = StyleSheet.create({
   eventEmoji: {
     fontSize: 80,
     marginBottom: 16,
+  },
+  heroEventImage: {
+    marginBottom: 16,
+    shadowColor: 'rgba(0,0,0,0.3)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 4,
   },
   eventTitle: {
     fontSize: 28,

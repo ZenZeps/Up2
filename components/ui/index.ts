@@ -1,5 +1,5 @@
-export { default as CustomAlert } from './CustomAlert';
 export { Background } from './Background';
+export { default as CustomAlert } from './CustomAlert';
 export { default as EventCardWithShare } from './EventCardWithShare';
 export { default as QuickShareButton } from './QuickShareButton';
 export { default as Search } from './Search';

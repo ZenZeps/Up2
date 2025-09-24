@@ -1,3 +1,4 @@
+import { EventPhotoUpload } from '@/components/EventPhotoUpload';
 import { Background } from '@/components/ui/Background';
 import { CATEGORIES } from '@/constants/categories';
 import { addEventAttendee, addEventInvitation, cleanupOrphanedAttendanceRecords, removeEventAttendee } from '@/lib/api/event';
@@ -81,6 +82,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
   const [locationLng, setLocationLng] = useState<number | null>(null);
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState<string[]>([]);
+  const [photoId, setPhotoId] = useState<string | undefined>(undefined);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
@@ -155,6 +157,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setDescription(event.description || '');
       setTags(Array.isArray(event.tags) ? event.tags : []);
       setIsPrivate(event.isPrivate || false);
+      setPhotoId((event as any).photoId || undefined);
 
       const safeStartDate = safeParseDate(event.startTime);
       const safeEndDate = safeParseDate(event.endTime);
@@ -181,6 +184,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setIsPrivate(false);
       setIsAttending(false);
       setIsAllDay(false);
+      setPhotoId(undefined);
 
       try {
         const newStartDate = new Date(selectedDateTime);
@@ -292,6 +296,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
         description: description.trim(),
         tags: tags,
         isPrivate: isPrivate,
+        ...(photoId ? { photoId } : {}),
       };
 
       let savedEvent;
@@ -479,6 +484,49 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                     placeholderTextColor="rgba(255,255,255,0.6)"
                     editable={editable}
                   />
+                </View>
+              </View>
+
+              {/* Event Photo */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Event Photo</Text>
+                <View style={styles.photoUploadContainer}>
+                  {editable ? (
+                    <>
+                      <EventPhotoUpload
+                        eventId={event?.$id || 'temp-event-' + Date.now()}
+                        currentUserId={currentUserId}
+                        currentPhotoId={photoId}
+                        onPhotoUploaded={(newPhotoId: string) => {
+                          setPhotoId(newPhotoId);
+                        }}
+                        onPhotoDeleted={() => {
+                          setPhotoId(undefined);
+                        }}
+                        size={120}
+                      />
+                      <View style={styles.photoUploadInfo}>
+                        <Text style={styles.photoUploadText}>
+                          Add a photo to make your event more appealing
+                        </Text>
+                        <Text style={styles.photoUploadSubtext}>
+                          Photos help people discover and join your event
+                        </Text>
+                      </View>
+                    </>
+                  ) : (
+                    <View style={styles.photoUploadPlaceholder}>
+                      <MaterialIcons name="visibility" size={48} color="rgba(255,255,255,0.4)" />
+                      <View style={styles.photoUploadInfo}>
+                        <Text style={styles.photoUploadText}>
+                          Event Photo (View Only)
+                        </Text>
+                        <Text style={styles.photoUploadSubtext}>
+                          Only the event creator can modify photos
+                        </Text>
+                      </View>
+                    </View>
+                  )}
                 </View>
               </View>
 
@@ -764,18 +812,28 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   <DateTimePickerModal
                     isVisible={showStartPicker}
                     mode="datetime"
-                    display="compact"
+                    display="spinner"
                     date={startDate}
                     onConfirm={handleStartDateConfirm}
                     onCancel={() => setShowStartPicker(false)}
+                    pickerStyleIOS={{
+                      backgroundColor: '#ffffff',
+                    }}
+                    textColor="#000000"
+                    buttonTextColorIOS="#000000"
                   />
                   <DateTimePickerModal
                     isVisible={showEndPicker}
                     mode="datetime"
-                    display="compact"
+                    display="spinner"
                     date={endDate}
                     onConfirm={handleEndDateConfirm}
                     onCancel={() => setShowEndPicker(false)}
+                    pickerStyleIOS={{
+                      backgroundColor: '#ffffff',
+                    }}
+                    textColor="#000000"
+                    buttonTextColorIOS="#000000"
                   />
                 </>
               ) : (
@@ -1017,6 +1075,49 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                     placeholderTextColor={colors.textSecondary}
                     editable={editable}
                   />
+                </View>
+              </View>
+
+              {/* Event Photo */}
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Event Photo</Text>
+                <View style={styles.photoUploadContainer}>
+                  {editable ? (
+                    <>
+                      <EventPhotoUpload
+                        eventId={event?.$id || 'temp-event-' + Date.now()}
+                        currentUserId={currentUserId}
+                        currentPhotoId={photoId}
+                        onPhotoUploaded={(newPhotoId: string) => {
+                          setPhotoId(newPhotoId);
+                        }}
+                        onPhotoDeleted={() => {
+                          setPhotoId(undefined);
+                        }}
+                        size={120}
+                      />
+                      <View style={styles.photoUploadInfo}>
+                        <Text style={[styles.photoUploadText, { color: colors.text }]}>
+                          Add a photo to make your event more appealing
+                        </Text>
+                        <Text style={[styles.photoUploadSubtext, { color: colors.textSecondary }]}>
+                          Photos help people discover and join your event
+                        </Text>
+                      </View>
+                    </>
+                  ) : (
+                    <View style={styles.photoUploadPlaceholder}>
+                      <MaterialIcons name="visibility" size={48} color={colors.textSecondary} />
+                      <View style={styles.photoUploadInfo}>
+                        <Text style={[styles.photoUploadText, { color: colors.text }]}>
+                          Event Photo (View Only)
+                        </Text>
+                        <Text style={[styles.photoUploadSubtext, { color: colors.textSecondary }]}>
+                          Only the event creator can modify photos
+                        </Text>
+                      </View>
+                    </View>
+                  )}
                 </View>
               </View>
 
@@ -1262,18 +1363,28 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   <DateTimePickerModal
                     isVisible={showStartPicker}
                     mode="datetime"
-                    display="compact"
+                    display="spinner"
                     date={startDate}
                     onConfirm={handleStartDateConfirm}
                     onCancel={() => setShowStartPicker(false)}
+                    pickerStyleIOS={{
+                      backgroundColor: '#ffffff',
+                    }}
+                    textColor="#000000"
+                    buttonTextColorIOS="#000000"
                   />
                   <DateTimePickerModal
                     isVisible={showEndPicker}
                     mode="datetime"
-                    display="compact"
+                    display="spinner"
                     date={endDate}
                     onConfirm={handleEndDateConfirm}
                     onCancel={() => setShowEndPicker(false)}
+                    pickerStyleIOS={{
+                      backgroundColor: '#ffffff',
+                    }}
+                    textColor="#000000"
+                    buttonTextColorIOS="#000000"
                   />
                 </>
               ) : (
@@ -1940,5 +2051,33 @@ const styles = StyleSheet.create({
   },
   removeInviteButton: {
     padding: 4,
+  },
+  photoUploadContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+  },
+  photoUploadInfo: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  photoUploadText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.9)',
+    marginBottom: 4,
+  },
+  photoUploadSubtext: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
+    lineHeight: 16,
+  },
+  photoUploadPlaceholder: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
   },
 });

@@ -1,5 +1,6 @@
+import EventImage from '@/components/EventImage';
 import { Background } from '@/components/ui/Background';
-import { CATEGORIES, getCategoriesByValues, getEventEmoji } from '@/constants/categories';
+import { CATEGORIES, getCategoriesByValues } from '@/constants/categories';
 import { enrichEventsWithGroupNames, fetchEventsWithGroupNames, isUserAttendingEvent } from '@/lib/api/event';
 import { cancelFriendRequest, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
 import { getDiscoverableGroups, getPublicGroups, getUserGroups, joinGroup, searchPublicGroups } from '@/lib/api/group';
@@ -22,7 +23,6 @@ import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -1114,9 +1114,13 @@ const Explore = () => {
         style={[styles.eventMiniCard, { backgroundColor: darkCard.card, borderColor: darkCard.border }]}
         onPress={() => router.push(`/event/${item.$id}?from=explore` as any)}
       >
-        <LinearGradient colors={['#FF6B6B', '#FFD166']} style={styles.eventMiniEmoji}>
-          <Text style={styles.eventEmojiSmall}>{getEventEmoji(item.tags)}</Text>
-        </LinearGradient>
+        <EventImage
+          photoId={(item as any).photoId}
+          tags={item.tags}
+          size={64}
+          style={styles.eventMiniEmoji}
+          gradientColors={['#FF6B6B', '#FFD166']}
+        />
         <View style={styles.eventMiniContent}>
           {/* Title */}
           <Text style={[styles.eventMiniTitle, { color: darkCard.text }]} numberOfLines={2}>{item.title}</Text>
@@ -1503,9 +1507,13 @@ const Explore = () => {
                     onPress={() => router.push(`/event/${event.$id}`)}
                     style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                   >
-                    <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={styles.feedThumb}>
-                      <Text style={styles.eventEmojiThumb}>{getEventEmoji(event.tags)}</Text>
-                    </LinearGradient>
+                    <EventImage
+                      photoId={(event as any).photoId}
+                      tags={event.tags}
+                      size={72}
+                      style={styles.feedThumb}
+                      gradientColors={["#FF6B6B", "#FFD166"]}
+                    />
 
                     <View style={styles.feedBody}>
                       <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{event.title}</Text>
@@ -1567,9 +1575,13 @@ const Explore = () => {
                       onPress={() => router.push(`/event/${event.$id}`)}
                       style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                     >
-                      <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={styles.feedThumb}>
-                        <Text style={styles.eventEmojiThumb}>{getEventEmoji(event.tags)}</Text>
-                      </LinearGradient>
+                      <EventImage
+                        photoId={(event as any).photoId}
+                        tags={event.tags}
+                        size={72}
+                        style={styles.feedThumb}
+                        gradientColors={["#FF6B6B", "#FFD166"]}
+                      />
 
                       <View style={styles.feedBody}>
                         <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{event.title}</Text>

@@ -1,7 +1,7 @@
 import { useTheme } from '@/lib/context/ThemeContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import LocationSuggestions from './LocationSuggestions';
 
 interface Suggestion {
@@ -294,7 +294,7 @@ export default function PlaceAutocomplete({ value, onChangeText, onSelect, place
                 }}
                 style={[styles.textInput, {
                     borderBottomColor: error ? '#EF4444' : 'rgba(255,255,255,0.3)',
-                    color: '#fff'
+                    color: '#000'
                 }]}
                 placeholderTextColor="rgba(255,255,255,0.6)"
                 autoCorrect={false}
@@ -330,46 +330,42 @@ export default function PlaceAutocomplete({ value, onChangeText, onSelect, place
 
             {showSuggestions && suggestions.length > 0 && !loading && (
                 <View style={styles.suggestionsContainer}>
-                    <FlatList
-                        data={suggestions}
-                        keyExtractor={(item) => item.place_id}
+                    <ScrollView
                         keyboardShouldPersistTaps="handled"
                         showsVerticalScrollIndicator={false}
-                        ItemSeparatorComponent={() => <View style={styles.separator} />}
-                        renderItem={({ item, index }) => (
-                            <TouchableOpacity
-                                onPress={() => handleSuggestionPress(item)}
-                                style={[
-                                    styles.suggestionItem,
-                                    index === 0 && styles.firstSuggestionItem,
-                                    index === suggestions.length - 1 && styles.lastSuggestionItem
-                                ]}
-                                activeOpacity={0.7}
-                            >
-                                <MaterialIcons
-                                    name={getLocationIcon(item.types)}
-                                    size={18}
-                                    color="#6b7280"
-                                    style={styles.suggestionIcon}
-                                />
-                                <View style={styles.suggestionTextContainer}>
-                                    <Text style={styles.suggestionMainText} numberOfLines={1}>
-                                        {item.main_text}
-                                    </Text>
-                                    {item.secondary_text ? (
+                        nestedScrollEnabled={true}
+                        style={{ maxHeight: 200 }}
+                    >
+                        {suggestions.map((item, index) => (
+                            <React.Fragment key={item.place_id}>
+                                {index > 0 && <View style={styles.separator} />}
+                                <TouchableOpacity
+                                    onPress={() => handleSuggestionPress(item)}
+                                    style={[
+                                        styles.suggestionItem,
+                                        index === 0 && styles.firstSuggestionItem,
+                                        index === suggestions.length - 1 && styles.lastSuggestionItem
+                                    ]}
+                                    activeOpacity={0.7}
+                                >
+                                    <MaterialIcons
+                                        name={getLocationIcon(item.types)}
+                                        size={16}
+                                        color="rgba(255,255,255,0.7)"
+                                        style={styles.suggestionIcon}
+                                    />
+                                    <View style={styles.suggestionTextContainer}>
+                                        <Text style={styles.suggestionMainText} numberOfLines={1}>
+                                            {item.main_text}
+                                        </Text>
                                         <Text style={styles.suggestionSecondaryText} numberOfLines={1}>
                                             {item.secondary_text}
                                         </Text>
-                                    ) : null}
-                                </View>
-                                <MaterialIcons
-                                    name="arrow-forward-ios"
-                                    size={12}
-                                    color="#9ca3af"
-                                />
-                            </TouchableOpacity>
-                        )}
-                    />
+                                    </View>
+                                </TouchableOpacity>
+                            </React.Fragment>
+                        ))}
+                    </ScrollView>
                 </View>
             )}
 

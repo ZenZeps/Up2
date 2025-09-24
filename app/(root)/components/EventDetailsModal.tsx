@@ -1,5 +1,5 @@
+import EventImage from '@/components/EventImage';
 import { Background } from '@/components/ui/Background';
-import { getEventEmoji } from '@/constants/categories';
 import icons from '@/constants/icons';
 import { addEventAttendee, addEventInvitation, getEventAttendees, getEventInvitees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
@@ -459,9 +459,14 @@ const EventDetailsModal = ({
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} style={styles.contentContainer} contentContainerStyle={{ minHeight: 300 }}>
-              {/* Event Emoji */}
+              {/* Event Photo */}
               <View style={styles.eventEmojiContainer}>
-                <Text style={styles.eventEmoji}>{getEventEmoji(event.tags || [])}</Text>
+                <EventImage
+                  photoId={event.photoId}
+                  tags={event.tags || []}
+                  size={120}
+                  style={{ borderRadius: 12 }}
+                />
               </View>
 
               {/* Creator Info */}

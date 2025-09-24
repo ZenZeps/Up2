@@ -1,8 +1,9 @@
 import { Background } from '@/components/ui/Background';
-import { getEventColor, getEventEmoji } from '@/constants/categories';
+import { getEventColor } from '@/constants/categories';
 import { enrichEventsWithGroupNames, getEventInvitees, getUserAttendingEvents } from '@/lib/api/event';
 import { getUserGroupInvites } from '@/lib/api/group';
 // Removed static import of getActiveTravelForUser - using dynamic import instead
+import EventImage from '@/components/EventImage';
 import { useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { authDebug } from '@/lib/debug/authDebug';
@@ -517,6 +518,7 @@ export default function Home() {
   }, [userAttendingEvents, currentUser, getScreenEvents, markScreenLoadedFromDb, setScreenEvents, events]);
 
   // Format events for the calendar with date validation using utility function
+  // Use enriched events (user's attending/created events) for calendar view
   const calendarEvents = useMemo(() => {
     if (!enrichedEvents || !Array.isArray(enrichedEvents)) {
       return [];
@@ -619,67 +621,99 @@ export default function Home() {
       };
 
       const backgroundColor = isMonthView
-        ? hexToRgba(eventColor, 0.7) // Increased opacity for better visibility
+        ? hexToRgba(eventColor, 0.8) // Increased opacity for better visibility
         : eventColor; // Full opacity for week/day view
 
+      // For month view, we need to work with the library's positioning but constrain the events
+      if (isMonthView) {
+        return (
+          <TouchableOpacity
+            {...touchableOpacityProps}
+            style={[
+              touchableOpacityProps.style,
+              {
+                backgroundColor,
+                borderRadius: 3,
+                padding: 0, // Remove padding to eliminate any spacing
+                margin: 0,
+                marginVertical: -1, // Negative margin to eliminate vertical spacing
+                marginHorizontal: 1,
+                minHeight: 14, // Increased from 10 to make events thicker
+                maxHeight: 14, // Increased from 10 to make events thicker
+                height: 14, // Increased from 10 to make events thicker
+                // Override only what's necessary to prevent layout issues
+                overflow: 'hidden',
+                justifyContent: 'center',
+                alignItems: 'center',
+              }
+            ]}
+            onPress={() => handlePressEvent(event)}
+            key={event.rawEvent.$id || `event-${Math.random()}`}
+          >
+            <Text
+              className={`font-rubik-medium`}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={{
+                fontSize: 8, // Slightly increased font size for better readability
+                color: colors.background,
+                textAlign: 'center',
+                lineHeight: 10, // Adjusted for the new height
+                includeFontPadding: false,
+                margin: 0,
+                padding: 0,
+              }}
+            >
+              {event.rawEvent.title || 'Untitled'}
+            </Text>
+          </TouchableOpacity>
+        );
+      }
+
+      // For week/day view, use the original approach
       return (
         <TouchableOpacity
           {...touchableOpacityProps}
           style={[
-            // Only apply custom positioning for month view, preserve original positioning for week/day
-            ...(isMonthView ? [] : [touchableOpacityProps.style]),
+            touchableOpacityProps.style,
             {
               backgroundColor,
-              padding: 0, // Remove all padding to eliminate spacing
-              borderRadius: isMonthView ? 1 : 4, // Minimal border radius for month view
+              padding: 1, // Minimal padding for text readability
+              borderRadius: 4,
               margin: 0,
-              marginVertical: 0, // Ensure no vertical margin
-              marginHorizontal: 0, // Ensure no horizontal margin
-              flex: 0,
-              // For month view ONLY, completely override positioning to eliminate gaps
-              ...(isMonthView && {
-                position: 'absolute',
-                left: 2, // Small margin from left edge
-                right: 2, // Small margin from right edge
-                height: 12, // Compact height for events
-                minHeight: 12,
-                maxHeight: 12,
-                // Position events at the top of the day cell and stack them
-                top: 20 + (touchableOpacityProps.style?.eventIndex || 0) * 14, // Start below day number, stack with 14px spacing
-                // Remove transform that was causing positioning issues
-              }),
+              marginVertical: 0,
+              marginHorizontal: 0,
             }
           ]}
           onPress={() => handlePressEvent(event)}
-          key={event.rawEvent.$id || `event-${Math.random()}`} // Ensure unique key
+          key={event.rawEvent.$id || `event-${Math.random()}`}
         >
           <Text
             className={`font-rubik-medium`}
             numberOfLines={1}
+            ellipsizeMode="tail"
             style={{
               textAlign: 'center',
-              fontSize: isMonthView ? 9 : 12, // Smaller font for compact month view
-              color: isMonthView ? colors.background : colors.background, // Use background color (white in dark mode)
-              margin: 0, // Remove all margins
-              padding: 0, // No padding needed for compact view
-              lineHeight: isMonthView ? 9 : 12, // Match font size for tight fit
+              fontSize: 12,
+              color: colors.background,
+              margin: 0,
+              padding: 0,
+              lineHeight: 12,
+              includeFontPadding: false,
+              textAlignVertical: 'center',
             }}
           >
             {event.title || 'Untitled'}
           </Text>
-          {!isMonthView && (
-            <>
-              <Text
-                className="text-white text-xs"
-                style={{
-                  textAlign: 'center',
-                  marginTop: -2, // Reduce space above location text
-                }}
-              >
-                {event.location || 'No location'}
-              </Text>
-            </>
-          )}
+          <Text
+            className="text-white text-xs"
+            style={{
+              textAlign: 'center',
+              marginTop: -2, // Reduce space above location text
+            }}
+          >
+            {event.location || 'No location'}
+          </Text>
         </TouchableOpacity>
       );
     } catch (error) {
@@ -1014,9 +1048,13 @@ export default function Home() {
                       })}
                       style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                     >
-                      <LinearGradient colors={["#FF6B6B", "#FFD166"]} style={styles.feedThumb}>
-                        <Text style={styles.eventEmojiThumb}>{getEventEmoji(item.tags)}</Text>
-                      </LinearGradient>
+                      <EventImage
+                        photoId={(item as any).photoId}
+                        tags={item.tags}
+                        size={72}
+                        style={styles.feedThumb}
+                        gradientColors={["#FF6B6B", "#FFD166"]}
+                      />
 
                       <View style={styles.feedBody}>
                         <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
@@ -1168,13 +1206,13 @@ export default function Home() {
                     onPressEvent={handlePressEvent}
                     renderEvent={renderEvent}
                     swipeEnabled={true}
-                    overlapOffset={-12}
+                    overlapOffset={viewMode === 'month' ? 0 : -12} // Remove overlap offset for month view to prevent positioning issues
                     ampm={false}
                     scrollOffsetMinutes={viewMode === 'week' ? 360 : new Date().getHours() * 60 + new Date().getMinutes() - 60} // Start earlier for week view
                     showTime={false}
                     eventCellStyle={{
-                      marginVertical: -2,
-                      marginHorizontal: 0,
+                      marginVertical: -1, // Negative margin to eliminate vertical spacing between events
+                      marginHorizontal: 1, // Minimal horizontal margin
                       paddingVertical: 0,
                       paddingHorizontal: 0,
                     }}

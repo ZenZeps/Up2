@@ -279,9 +279,11 @@ export default function GoogleCalendarDatePicker({
                     <DateTimePicker
                         value={getPickerValue()}
                         mode={getPickerMode()}
-                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        display="spinner"
                         onChange={handleDateChange}
                         style={Platform.OS === 'ios' ? styles.iosPicker : undefined}
+                        textColor="#000000"
+                        accentColor="#000000"
                     />
                 )}
 
@@ -397,7 +399,7 @@ const styles = StyleSheet.create({
     },
     pickerButtonText: {
         fontSize: 16,
-        color: '#007AFF',
+        color: '#000000',
         textAlign: 'center',
     },
     iosPicker: {
@@ -415,7 +417,7 @@ const styles = StyleSheet.create({
     iosPickerDone: {
         alignItems: 'center',
         paddingVertical: 12,
-        backgroundColor: '#007AFF',
+        backgroundColor: '#000000',
         borderRadius: 8,
     },
     iosPickerDoneText: {

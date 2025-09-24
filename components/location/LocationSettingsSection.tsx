@@ -1,3 +1,4 @@
+import { useLocationPermission } from '@/lib/hooks/useLocationPermission';
 import { MaterialIcons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
@@ -8,7 +9,6 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { useLocationPermission } from '@/lib/hooks/useLocationPermission';
 
 export default function LocationSettingsSection() {
     const {

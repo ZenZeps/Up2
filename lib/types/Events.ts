@@ -28,6 +28,8 @@ export interface Event {
   locationLng?: number; // Longitude for geospatial queries (performance critical)
   locationRadius?: number; // Event area radius in meters (for venue events)
   distanceFromUser?: number; // Computed field - distance from current user (not stored)
+  // PHOTO FIELD
+  photoId?: string; // ID of the photo file in event photos bucket
 }
 
 export interface EventWithDetails extends Event {

@@ -59,6 +59,7 @@ export async function fetchEvents(params?: any): Promise<Event[]> {
   let includePast = false;
   if (typeof params === 'boolean') includePast = params;
   else if (params && typeof params.includePast === 'boolean') includePast = params.includePast;
+
   // Check cache first
   const cachedEvents = cacheManager.get<Event[]>(EVENT_COLLECTION_CACHE_KEY);
   if (cachedEvents) {
@@ -114,7 +115,7 @@ export async function fetchEvents(params?: any): Promise<Event[]> {
         endTime = new Date(Date.now() + 60 * 60 * 1000).toISOString();
       }
 
-      return {
+      const event = {
         $id: doc.$id,
         title: doc.title || 'Untitled Event',
         location: doc.location || 'No location',
@@ -124,12 +125,24 @@ export async function fetchEvents(params?: any): Promise<Event[]> {
         description: doc.description || '',
         tags: Array.isArray(doc.tags) ? doc.tags : [],
         isPrivate: doc.isPrivate || false,
+        photoId: doc.photoId,
         // Optimized counters
         attendeeCount: doc.attendeeCount || 0,
         inviteCount: doc.inviteCount || 0,
         viewCount: doc.viewCount || 0,
         popularityScore: doc.popularityScore || 0.0,
       };
+
+      // Debug logging for photo IDs
+      if (doc.photoId) {
+        console.log('📸 Event with photo found:', {
+          eventId: doc.$id,
+          title: doc.title,
+          photoId: doc.photoId
+        });
+      }
+
+      return event;
     });
 
     // Events are stored with denormalized counters; relationships are fetched on demand via junction tables.
@@ -154,7 +167,11 @@ export async function fetchEvents(params?: any): Promise<Event[]> {
  * Fetch a single event by ID with caching
  */
 export async function fetchEventById(id: string): Promise<Event | null> {
-  // Check cache first
+  // TEMPORARY: Clear event caches to ensure we get fresh data with photoId
+  console.log('🗑️ Clearing event cache for fresh photoId data...', id);
+  cacheManager.remove(`event-${id}`);
+
+  // Check cache first (will be empty after clearing)
   const cacheKey = `event-${id}`;
   const cachedEvent = cacheManager.get<Event>(cacheKey);
   if (cachedEvent) {
@@ -180,6 +197,7 @@ export async function fetchEventById(id: string): Promise<Event | null> {
       description: doc.description || '',
       tags: Array.isArray(doc.tags) ? doc.tags : [],
       isPrivate: doc.isPrivate || false,
+      photoId: doc.photoId,
       attendeeCount: doc.attendeeCount || 0,
       inviteCount: doc.inviteCount || 0,
       viewCount: doc.viewCount || 0,
@@ -1214,6 +1232,7 @@ export async function fetchUserEvents(userId: string): Promise<Event[]> {
           creatorId: doc.creatorId,
           description: doc.description || '',
           tags: Array.isArray(doc.tags) ? doc.tags : [],
+          photoId: doc.photoId,
           groupId: doc.groupId || undefined,
           groupName: doc.groupName || undefined,
           attendeeCount: doc.attendeeCount || 0,
@@ -1309,6 +1328,7 @@ export async function getUserAttendingEvents(userId: string): Promise<Event[]> {
       creatorId: doc.creatorId,
       description: doc.description || '',
       tags: Array.isArray(doc.tags) ? doc.tags : [],
+      photoId: doc.photoId,
       attendeeCount: doc.attendeeCount || 0,
       inviteCount: doc.inviteCount || 0,
     }));
