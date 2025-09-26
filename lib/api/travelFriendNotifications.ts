@@ -20,10 +20,23 @@ export async function createTravelAnnouncementWithFriendNotifications(
     userFriends: string[] = []
 ): Promise<TravelAnnouncement> {
     try {
-        console.log('🧳 createTravelAnnouncementWithFriendNotifications: Starting with data:', {
+        console.log('🧳 ===== TRAVEL ANNOUNCEMENT CREATION STARTED =====');
+        console.log('🧳 Input data:', {
             userId: travel.userId,
             destination: travel.destination,
+            startDate: travel.startDate,
+            endDate: travel.endDate,
+            isPublic: travel.isPublic,
+            hasCoordinates: !!(travel.destinationLat && travel.destinationLng),
             userFriendsCount: userFriends.length
+        });
+
+        // Debug configuration values
+        console.log('🔧 Appwrite Configuration:', {
+            databaseID: config.databaseID,
+            travelCollectionID: config.travelCollectionID,
+            endpoint: config.endpoint,
+            projectID: config.projectID
         });
 
         // Validate required fields
@@ -44,18 +57,37 @@ export async function createTravelAnnouncementWithFriendNotifications(
         );
 
         console.log('🧳 Friends to notify:', friendsToNotify.length);
+        console.log('🧳 Friends to notify array:', friendsToNotify);
+        console.log('🧳 Friends array type check:', Array.isArray(friendsToNotify));
 
-        const travelData = {
+        // Create travel data with only valid fields
+        const travelData: any = {
             userId: travel.userId,
             destination: travel.destination,
-            startDate: travel.startDate,
-            endDate: travel.endDate,
+            startDate: new Date(travel.startDate),
+            endDate: new Date(travel.endDate),
             description: travel.description || '',
-            isPublic: travel.isPublic,
-            destinationLat: travel.destinationLat,
-            destinationLng: travel.destinationLng,
-            friendsNotified: friendsToNotify,
+            isPublic: travel.isPublic === true, // Ensure boolean
         };
+
+        // Add optional coordinates if provided
+        if (travel.destinationLat !== undefined && travel.destinationLng !== undefined) {
+            travelData.destinationLat = Number(travel.destinationLat) || 0;
+            travelData.destinationLng = Number(travel.destinationLng) || 0;
+        }
+
+        // Add friends notification array
+        if (Array.isArray(friendsToNotify) && friendsToNotify.length > 0) {
+            travelData.friendsNotified = friendsToNotify;
+        } else {
+            travelData.friendsNotified = [];
+        }
+
+        console.log('🧳 Final travel data structure:', {
+            ...travelData,
+            startDate: travelData.startDate.toISOString(),
+            endDate: travelData.endDate.toISOString()
+        });
 
         const { stripSystemTimestamps } = await import('@/lib/utils/appwriteSanitizer');
 
@@ -70,6 +102,25 @@ export async function createTravelAnnouncementWithFriendNotifications(
         const sanitizedData = stripSystemTimestamps(travelData);
         console.log('🧳 Complete sanitized data being sent to database:', sanitizedData);
         console.log('🧳 Data keys:', Object.keys(sanitizedData));
+
+        // Validate required fields before sending to database
+        if (!sanitizedData.userId || !sanitizedData.destination || !sanitizedData.startDate || !sanitizedData.endDate || sanitizedData.isPublic === undefined) {
+            throw new Error('Missing required fields for travel announcement');
+        }
+
+        // Test collection access before attempting document creation
+        try {
+            console.log('🔍 Testing collection access...');
+            const testDocs = await databases.listDocuments(
+                config.databaseID!,
+                config.travelCollectionID!,
+                [Query.limit(1)]
+            );
+            console.log('✅ Collection accessible, document count:', testDocs.total);
+        } catch (accessError) {
+            console.error('❌ Collection access failed:', accessError);
+            throw new Error(`Cannot access travel collection: ${accessError instanceof Error ? accessError.message : 'Unknown error'}`);
+        }
         console.log('🧳 Database ID:', config.databaseID);
         console.log('🧳 Collection ID:', config.travelCollectionID);
 
@@ -79,6 +130,14 @@ export async function createTravelAnnouncementWithFriendNotifications(
         console.log('🧳 DETAILED: - Collection ID:', config.travelCollectionID);
         console.log('🧳 DETAILED: - Document ID:', travelId);
         console.log('🧳 DETAILED: - Data:', JSON.stringify(sanitizedData, null, 2));
+        console.log('🧳 DETAILED: - Data types check:', {
+            startDate: typeof sanitizedData.startDate,
+            endDate: typeof sanitizedData.endDate,
+            startDateValue: sanitizedData.startDate,
+            endDateValue: sanitizedData.endDate,
+            isStartDateValid: sanitizedData.startDate instanceof Date,
+            isEndDateValid: sanitizedData.endDate instanceof Date
+        });
         console.log('🧳 DETAILED: - Permissions:', [
             Permission.read(Role.any()),
             Permission.update(Role.user(travel.userId)),
@@ -145,19 +204,111 @@ export async function createTravelAnnouncementWithFriendNotifications(
         }
 
         // Test if we can list all documents in the collection to see total count
-        try {
-            const allDocs = await databases.listDocuments(
-                config.databaseID!,
-                config.travelCollectionID!,
-                [Query.limit(100)]
-            );
-            console.log('📊 COLLECTION TEST: Total documents in travel collection:', allDocs.total);
-            console.log('📊 COLLECTION TEST: Documents returned:', allDocs.documents.length);
-            if (allDocs.documents.length > 0) {
-                console.log('📊 COLLECTION TEST: Sample document IDs:', allDocs.documents.slice(0, 3).map(d => d.$id));
+        // Add retry mechanism for potential eventual consistency issues
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                console.log(`📊 COLLECTION TEST (Attempt ${attempt}): Checking collection...`);
+                const allDocs = await databases.listDocuments(
+                    config.databaseID!,
+                    config.travelCollectionID!,
+                    [Query.limit(100)]
+                );
+                console.log(`📊 COLLECTION TEST (Attempt ${attempt}): Total documents in travel collection:`, allDocs.total);
+                console.log(`📊 COLLECTION TEST (Attempt ${attempt}): Documents returned:`, allDocs.documents.length);
+                if (allDocs.documents.length > 0) {
+                    console.log(`📊 COLLECTION TEST (Attempt ${attempt}): Sample document IDs:`, allDocs.documents.slice(0, 3).map(d => d.$id));
+                    break; // Found documents, no need to retry
+                } else if (attempt < 3) {
+                    console.log(`📊 COLLECTION TEST (Attempt ${attempt}): No documents found, waiting 1 second before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            } catch (collectionError) {
+                console.error(`❌ COLLECTION TEST (Attempt ${attempt}) FAILED:`, collectionError);
+                if (attempt === 3) break;
             }
-        } catch (collectionError) {
-            console.error('❌ COLLECTION TEST FAILED:', collectionError);
+        }
+
+        // CRITICAL DIAGNOSIS: Test collection configuration from client side
+        try {
+            console.log('🔬 CRITICAL DIAGNOSIS: Testing collection access patterns...');
+            console.log('🔬 Target user ID:', travel.userId);
+            console.log('🔬 Target user ID type:', typeof travel.userId);
+
+            // Test 1: Basic listDocuments with different limits
+            console.log('\n🔬 Test 1: Basic collection listing...');
+            for (const limit of [1, 10, 100]) {
+                try {
+                    const basicQuery = await databases.listDocuments(
+                        config.databaseID!,
+                        config.travelCollectionID!,
+                        [Query.limit(limit)]
+                    );
+                    console.log(`🔬 Limit ${limit}: Found ${basicQuery.documents.length} documents (total: ${basicQuery.total})`);
+                } catch (limitError) {
+                    console.error(`🔬 Limit ${limit} failed:`, limitError instanceof Error ? limitError.message : limitError);
+                }
+            }
+
+            // Test 2: Try without any queries
+            console.log('\n🔬 Test 2: No query parameters...');
+            try {
+                const noQueryParams = await databases.listDocuments(
+                    config.databaseID!,
+                    config.travelCollectionID!
+                );
+                console.log(`🔬 No params: Found ${noQueryParams.documents.length} documents (total: ${noQueryParams.total})`);
+            } catch (noParamsError) {
+                console.error('🔬 No params failed:', noParamsError instanceof Error ? noParamsError.message : noParamsError);
+            }
+
+            // Test 3: Try different ordering
+            console.log('\n🔬 Test 3: Different ordering...');
+            for (const orderQuery of [Query.orderAsc('$createdAt'), Query.orderDesc('$createdAt')]) {
+                try {
+                    const orderTest = await databases.listDocuments(
+                        config.databaseID!,
+                        config.travelCollectionID!,
+                        [orderQuery, Query.limit(10)]
+                    );
+                    console.log(`🔬 Order test: Found ${orderTest.documents.length} documents`);
+                } catch (orderError) {
+                    console.error('🔬 Order test failed:', orderError instanceof Error ? orderError.message : orderError);
+                }
+            }
+
+            // Test 4: Try user-specific queries
+            console.log('\n🔬 Test 4: User-specific queries...');
+            const userQueryTests = [
+                ['array format', [travel.userId]],
+                ['string format', travel.userId]
+            ];
+
+            for (const [testName, userIdValue] of userQueryTests) {
+                try {
+                    const userQuery = await databases.listDocuments(
+                        config.databaseID!,
+                        config.travelCollectionID!,
+                        [
+                            Query.equal('userId', userIdValue),
+                            Query.orderAsc('$createdAt'),
+                            Query.limit(10)
+                        ]
+                    );
+                    console.log(`🔬 User query (${testName}): Found ${userQuery.documents.length} documents`);
+                    if (userQuery.documents.length > 0) {
+                        console.log(`🔬 User query (${testName}) sample IDs:`, userQuery.documents.slice(0, 3).map(d => d.$id));
+                    }
+                } catch (userError) {
+                    console.error(`🔬 User query (${testName}) failed:`, userError instanceof Error ? userError.message : userError);
+                }
+            }
+
+            console.log('\n🔬 HYPOTHESIS: The issue appears to be with collection-level permissions or document security settings.');
+            console.log('🔬 Individual documents can be accessed by ID, but collection queries return 0 results.');
+            console.log('🔬 This suggests document-level permissions are working but collection-level queries are blocked.');
+
+        } catch (diagnosisError) {
+            console.error('❌ CRITICAL DIAGNOSIS FAILED:', diagnosisError);
         }
 
         // Send notifications to friends who will be in the same location
@@ -169,6 +320,8 @@ export async function createTravelAnnouncementWithFriendNotifications(
             $id: response.$id,
             id: response.$id,
             ...travelData,
+            startDate: travelData.startDate.toISOString(),
+            endDate: travelData.endDate.toISOString(),
             createdAt: response.$createdAt,
             updatedAt: response.$updatedAt,
             $createdAt: response.$createdAt,
@@ -312,7 +465,7 @@ export async function getFriendsOverlappingTravel(
         const queries = [
             Query.equal('userId', friendsInLocation),
             Query.equal('isPublic', true),
-            Query.orderDesc('$createdAt'),
+            Query.orderAsc('$createdAt'),
             Query.limit(50)
         ];
 
@@ -383,7 +536,7 @@ export async function getFriendsCurrentlyTraveling(userFriends: string[] = []): 
             Query.equal('isPublic', true),
             Query.lessThanEqual('startDate', now), // Trip has started
             Query.greaterThanEqual('endDate', now), // Trip hasn't ended
-            Query.orderDesc('$createdAt'),
+            Query.orderAsc('$createdAt'),
             Query.limit(50)
         ];
 

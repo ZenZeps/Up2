@@ -1,8 +1,25 @@
 export interface Chat {
     $id: string;  // Internal ID used by the app
     id?: string;  // Required ID field for Appwrite - will match $id
-    eventId?: string; // Reference to event (optional)
-    groupId?: string; // Reference to group (optional)
+
+    // Entity reference (group or event)
+    entityId: string; // ID of the group or event
+    entityType: 'group' | 'event'; // Type of entity
+
+    // Legacy fields for backward compatibility
+    eventId?: string; // Reference to event (optional) - deprecated, use entityId + entityType
+    groupId?: string; // Reference to group (optional) - deprecated, use entityId + entityType
+
+    // Chat metadata
+    messageCount?: number; // Total number of messages in this chat
+    title?: string | null; // Optional chat title
+
+    // Last message tracking for efficient chat list display
+    lastMessageId?: string | null; // ID of the last message
+    lastMessageAt?: string | null; // Timestamp of last message
+    lastMessagePreview?: string | null; // Preview of last message content
+
+    // Timestamps
     $createdAt?: string; // Created timestamp from Appwrite
     $updatedAt?: string; // Updated timestamp from Appwrite
 }

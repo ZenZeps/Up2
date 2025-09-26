@@ -156,7 +156,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       setLocation(event.location || '');
       setDescription(event.description || '');
       setTags(Array.isArray(event.tags) ? event.tags : []);
-      setIsPrivate(event.isPrivate || false);
+      setIsPrivate(Boolean(event.isPrivate)); // Explicitly convert to boolean to preserve true values
       setPhotoId((event as any).photoId || undefined);
 
       const safeStartDate = safeParseDate(event.startTime);

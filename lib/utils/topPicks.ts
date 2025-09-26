@@ -145,8 +145,22 @@ export const generateTopPicks = async (
 
   console.log('📅 Filtered to future events:', futureEvents.length);
 
+  // Filter to events created by friends only (excluding user's own events)
+  const friendsEvents = futureEvents.filter(event => {
+    // Don't show user's own events in top picks
+    if (currentUserId && event.creatorId === currentUserId) return false;
+    // Only show events from friends
+    return userFriends.includes(event.creatorId);
+  });
+
+  console.log('👥 Filtered to friends events:', {
+    futureEvents: futureEvents.length,
+    friendsEvents: friendsEvents.length,
+    friendsCount: userFriends.length
+  });
+
   // Filter out events the user is already attending if currentUserId is provided
-  let availableEvents = futureEvents;
+  let availableEvents = friendsEvents;
   if (currentUserId) {
     // For performance, we'll check attendance using the junction table for the filtered events
     const attendancePromises = futureEvents.map(async (event) => {
@@ -166,7 +180,7 @@ export const generateTopPicks = async (
       .map(result => result.event);
 
     console.log('🚫 Filtered out attending events:', {
-      futureEvents: futureEvents.length,
+      friendsEvents: friendsEvents.length,
       availableEvents: availableEvents.length,
       excludedEvents: futureEvents.length - availableEvents.length
     });
@@ -267,10 +281,24 @@ export const generateFallbackTopPicks = async (
     return eventTime > new Date();
   });
 
+  // Filter to events created by friends only (excluding user's own events)
+  const friendsEvents = futureEvents.filter(event => {
+    // Don't show user's own events in top picks
+    if (currentUserId && event.creatorId === currentUserId) return false;
+    // Only show events from friends
+    return userFriends.includes(event.creatorId);
+  });
+
+  console.log('👥 Fallback filtered to friends events:', {
+    futureEvents: futureEvents.length,
+    friendsEvents: friendsEvents.length,
+    friendsCount: userFriends.length
+  });
+
   // Filter out events the user is already attending if currentUserId is provided
-  let availableEvents = futureEvents;
+  let availableEvents = friendsEvents;
   if (currentUserId) {
-    const attendancePromises = futureEvents.map(async (event) => {
+    const attendancePromises = friendsEvents.map(async (event) => {
       try {
         const isAttending = await isUserAttendingEvent(currentUserId, event.$id);
         return { event, isAttending };

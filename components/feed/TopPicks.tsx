@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import dayjs from 'dayjs';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import EventImage from '@/components/EventImage';
@@ -25,7 +25,7 @@ interface TopPicksProps {
   maxPicks?: number;
 }
 
-const TopPicks: React.FC<TopPicksProps> = ({
+const TopPicks: React.FC<TopPicksProps> = React.memo(({
   allEvents,
   userFriends,
   currentUserId,
@@ -43,6 +43,15 @@ const TopPicks: React.FC<TopPicksProps> = ({
     maxPicks
   });
 
+  // Memoize inputs to prevent unnecessary effect runs
+  const stableInputs = useMemo(() => ({
+    eventCount: allEvents?.length || 0,
+    eventIds: allEvents?.map(e => e.$id).sort().join('|') || '',
+    friendCount: userFriends?.length || 0,
+    userId: currentUserId || '',
+    maxPicks
+  }), [allEvents, userFriends, currentUserId, maxPicks]);
+
   // Load from cache initially
   useEffect(() => {
     // Early return if no current user - but inside useEffect to maintain hook order
@@ -57,9 +66,18 @@ const TopPicks: React.FC<TopPicksProps> = ({
         if (cached) {
           const cachedPicks = JSON.parse(cached);
           if (cachedPicks && Array.isArray(cachedPicks) && cachedPicks.length > 0) {
-            console.log('🎯 TopPicks: Loaded', cachedPicks.length, 'picks from cache');
-            setTopPicks(cachedPicks);
-            setIsLoading(false);
+            // Validate cached picks have required fields
+            const validPicks = cachedPicks.filter(pick =>
+              pick &&
+              pick.$id &&
+              pick.title &&
+              pick.startTime
+            );
+            if (validPicks.length > 0) {
+              console.log('🎯 TopPicks: Loaded', validPicks.length, 'picks from cache');
+              setTopPicks(validPicks);
+              setIsLoading(false);
+            }
           }
         }
       } catch (error) {
@@ -147,7 +165,7 @@ const TopPicks: React.FC<TopPicksProps> = ({
     };
 
     generateTopPicks();
-  }, [allEvents, userFriends, currentUserId, maxPicks]);
+  }, [stableInputs]);
 
   // Handle event press
   const handleEventPress = (eventId: string) => {
@@ -219,79 +237,99 @@ const TopPicks: React.FC<TopPicksProps> = ({
         contentContainerStyle={styles.scrollContent}
         style={styles.scrollView}
       >
-        {Array.isArray(topPicks) && topPicks.length > 0 ?
-          topPicks.filter(event => event && event.$id && event.title).map((event, index) => {
-            try {
-              // Ensure all values are properly converted to safe strings
-              const rawEmoji = getEventEmoji(event.tags || ['other']);
-              const emoji = (rawEmoji && typeof rawEmoji === 'string') ? rawEmoji : '🎉';
+        {Array.isArray(topPicks) && topPicks.length > 0 ? (
+          topPicks
+            .filter(event => event && event.$id && event.title)
+            .map((event, index) => {
+              try {
+                // Ensure all values are properly converted to safe strings
+                const rawEmoji = getEventEmoji(event.tags || ['other']);
+                const emoji = (rawEmoji && typeof rawEmoji === 'string') ? rawEmoji : '🎉';
 
-              const rawEventDate = dayjs(event.startTime).format('MMM D');
-              const eventDate = (rawEventDate && typeof rawEventDate === 'string') ? rawEventDate : 'TBD';
+                const rawEventDate = dayjs(event.startTime).format('MMM D');
+                const eventDate = (rawEventDate && typeof rawEventDate === 'string') ? rawEventDate : 'TBD';
 
-              const rawEventTitle = event.title;
-              const eventTitle = (rawEventTitle && typeof rawEventTitle === 'string') ? String(rawEventTitle) : 'Untitled Event';
+                const rawEventTitle = event.title;
+                const eventTitle = (rawEventTitle && typeof rawEventTitle === 'string') ? String(rawEventTitle) : 'Untitled Event';
 
-              // Final safety check - ensure ALL values are strings before proceeding
-              if (typeof emoji !== 'string' || typeof eventDate !== 'string' || typeof eventTitle !== 'string') {
-                console.warn('TopPicks: Skipping event due to invalid data types after conversion', {
-                  emoji: typeof emoji,
-                  eventDate: typeof eventDate,
-                  eventTitle: typeof eventTitle,
-                  event: event
-                });
+                // Final safety check - ensure ALL values are strings before proceeding
+                if (typeof emoji !== 'string' || typeof eventDate !== 'string' || typeof eventTitle !== 'string') {
+                  console.warn('TopPicks: Skipping event due to invalid data types after conversion', {
+                    emoji: typeof emoji,
+                    eventDate: typeof eventDate,
+                    eventTitle: typeof eventTitle,
+                    event: event
+                  });
+                  return null;
+                }
+
+                return (
+                  <TouchableOpacity
+                    key={`pick-${event.$id}-${index}`}
+                    style={styles.pickItem}
+                    onPress={() => handleEventPress(event.$id)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.pickCircle}>
+                      <EventImage
+                        photoId={(event as any).photoId}
+                        tags={event.tags || []}
+                        size={70}
+                        style={{ borderRadius: 35 }}
+                      />
+                      {(() => {
+                        const reasonIcon = getRecommendationIcon((event as any).recommendationReason);
+                        if ((event as any).recommendationReason && reasonIcon) {
+                          return (
+                            <View style={styles.reasonBadge}>
+                              <Text style={styles.reasonIcon}>{String(reasonIcon)}</Text>
+                            </View>
+                          );
+                        }
+                        return null;
+                      })()}
+                      {/* Attending count bubble */}
+                      {(() => {
+                        const attendeeCount = (event as any).attendeeCount;
+                        if (attendeeCount && attendeeCount > 0) {
+                          return (
+                            <View style={styles.attendingBubble}>
+                              <Text style={styles.attendingCount}>
+                                {String(attendeeCount)}
+                              </Text>
+                            </View>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </View>
+                    <Text
+                      style={[styles.pickName, { color: colors.text || '#000000' }]}
+                      numberOfLines={2}
+                    >
+                      {String(eventTitle)}
+                    </Text>
+                    <Text style={[styles.pickDate, { color: colors.textSecondary || '#666666' }]}>
+                      {String(eventDate)}
+                    </Text>
+                    {(() => {
+                      if (event.distance && typeof event.distance === 'number' && event.distance > 0) {
+                        return (
+                          <Text style={[styles.pickDistance, { color: colors.textSecondary || '#666666' }]}>
+                            {String(event.distance.toFixed(1))}km
+                          </Text>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </TouchableOpacity>
+                );
+              } catch (error) {
+                console.error('Error rendering TopPick item:', error);
                 return null;
               }
-
-              return (
-                <TouchableOpacity
-                  key={event.$id}
-                  style={styles.pickItem}
-                  onPress={() => handleEventPress(event.$id)}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.pickCircle}>
-                    <EventImage
-                      photoId={(event as any).photoId}
-                      tags={event.tags || []}
-                      size={70}
-                      style={{ borderRadius: 35 }}
-                    />
-                    {((event as any).recommendationReason) && getRecommendationIcon((event as any).recommendationReason) && (
-                      <View style={styles.reasonBadge}>
-                        <Text style={styles.reasonIcon}>{getRecommendationIcon((event as any).recommendationReason)}</Text>
-                      </View>
-                    )}
-                    {/* Attending count bubble */}
-                    {((event as any).attendeeCount && (event as any).attendeeCount > 0) && (
-                      <View style={styles.attendingBubble}>
-                        <Text style={styles.attendingCount}>
-                          {(event as any).attendeeCount}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text
-                    style={[styles.pickName, { color: colors.text || '#000000' }]}
-                    numberOfLines={2}
-                  >
-                    {eventTitle}
-                  </Text>
-                  <Text style={[styles.pickDate, { color: colors.textSecondary || '#666666' }]}>
-                    {eventDate}
-                  </Text>
-                  {event.distance && typeof event.distance === 'number' && event.distance > 0 && (
-                    <Text style={[styles.pickDistance, { color: colors.textSecondary || '#666666' }]}>
-                      {event.distance.toFixed(1)}km
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              );
-            } catch (error) {
-              console.error('Error rendering TopPick item:', error);
-              return null;
-            }
-          }) :
+            })
+        ) : (
           // Fallback when no valid topPicks
           Array.from({ length: 3 }).map((_, index) => (
             <View key={`fallback-${index}`} style={styles.pickItem}>
@@ -305,11 +343,11 @@ const TopPicks: React.FC<TopPicksProps> = ({
               <Text style={[styles.pickName, { color: colors.textSecondary }]}>Loading...</Text>
             </View>
           ))
-        }
+        )}
       </ScrollView>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

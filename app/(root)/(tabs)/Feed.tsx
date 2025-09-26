@@ -49,6 +49,7 @@ interface TravelAnnouncementWithUserInfo extends TravelAnnouncement {
 type ExtendedEvent = AppEvent & { attendees?: string[]; inviteeIds?: string[]; isAttending?: boolean; attendeeCount?: number; creatorName?: string };
 
 type FeedItem = (ExtendedEvent & { type: 'event' }) | (TravelAnnouncementWithUserInfo & { type: 'travel' });
+
 export default function Feed() {
   const { colors, isColorful } = useTheme();
   const insets = useSafeAreaInsets();
@@ -83,42 +84,43 @@ export default function Feed() {
   // Re-render when real-time UI pending actions change
   const rtTick = useRealTimeUI();
 
-  // Apply real-time UI overlay whenever base data or pending actions change
-  useEffect(() => {
-    console.log('🍽️ Feed reactive effect triggered', { rtTick, baseEventsCount: baseEventsWithCreatorNames?.length });
+  // Memoize the filtered events to prevent unnecessary recalculations
+  const filteredEvents = useMemo(() => {
     if (!Array.isArray(baseEventsWithCreatorNames) || !currentUserId) {
-      setEventsWithCreatorNames(baseEventsWithCreatorNames);
-      return;
+      return baseEventsWithCreatorNames;
     }
 
     const pendingAttendIds = new Set(realTimeUI.getEventIdsByAction('attend'));
     const pendingUnattendIds = new Set(realTimeUI.getEventIdsByAction('unattend'));
-    console.log('🍽️ Feed pending actions', { attend: Array.from(pendingAttendIds), unattend: Array.from(pendingUnattendIds) });
 
     // Feed shows non-attending events
     // Remove events with pending 'attend' (user is joining)
-    // Add back events from context with pending 'unattend' (user is leaving)
-    let filteredEvents = baseEventsWithCreatorNames.filter(ev => !pendingAttendIds.has(ev.$id));
+    let filtered = baseEventsWithCreatorNames.filter(ev => !pendingAttendIds.has(ev.$id));
 
     // Add back events with pending unattend (from global context if available)
     if (pendingUnattendIds.size > 0) {
       try {
         const additionalEvents = events.filter((ev: any) => pendingUnattendIds.has(ev.$id));
-        const eventsMap = new Map(filteredEvents.map(e => [e.$id, e]));
+        const eventsMap = new Map(filtered.map(e => [e.$id, e]));
         additionalEvents.forEach((ev: any) => {
           if (!eventsMap.has(ev.$id)) {
             eventsMap.set(ev.$id, ev as ExtendedEvent);
           }
         });
-        filteredEvents = Array.from(eventsMap.values());
+        filtered = Array.from(eventsMap.values());
       } catch (e) {
         // Context not available, continue with filtered events
       }
     }
 
-    console.log('🍽️ Feed setting filtered events', { count: filteredEvents.length });
+    return filtered;
+  }, [baseEventsWithCreatorNames, currentUserId, rtTick, events]);
+
+  // Apply filtered events only when they actually change
+  useEffect(() => {
+    console.log('🍽️ Feed setting filtered events', { count: filteredEvents?.length || 0 });
     setEventsWithCreatorNames(filteredEvents);
-  }, [rtTick, baseEventsWithCreatorNames, currentUserId, events]);
+  }, [filteredEvents]);
 
   const [travelAnnouncements, setTravelAnnouncements] = useState<TravelAnnouncementWithUserInfo[]>([]);
   const [friends, setFriends] = useState<string[]>([]);
@@ -270,8 +272,8 @@ export default function Feed() {
           (async () => {
             try {
               console.log('Feed: Background revalidation of events started');
-              const { fetchEvents } = await import('@/lib/api/event');
-              const freshAllEvents = await fetchEvents();
+              const { getPublicEvents } = await import('@/lib/api/event');
+              const freshAllEvents = await getPublicEvents(false, globalUser?.$id);
 
               // Store all events for top picks (not just friend/group events)
               setAllEventsForTopPicks(freshAllEvents);
@@ -396,8 +398,8 @@ export default function Feed() {
       }
 
       // No cache: fetch synchronously and map
-      const { fetchEvents } = await import('@/lib/api/event');
-      const allEvents = await fetchEvents();
+      const { getPublicEvents } = await import('@/lib/api/event');
+      const allEvents = await getPublicEvents(false, globalUser?.$id);
 
       // Store all events for top picks (not just friend/group events)
       setAllEventsForTopPicks(allEvents);
@@ -573,7 +575,7 @@ export default function Feed() {
 
       // SCALABILITY FIX: Use the now-optimized getFriendsTravelAnnouncements with limits
       // Include current user's travel announcements as well
-      const travelData = await getFriendsTravelAnnouncements(friendIds, 30, true, currentUserId || undefined); // Limit to 30 travel announcements
+      const travelData = await getFriendsTravelAnnouncements(friendIds, 30, true, currentUserId ?? undefined); // Limit to 30 travel announcements
       console.log('🧳 Feed: Raw travel data received:', travelData.length, 'announcements');
 
       if (travelData.length === 0) {
@@ -978,27 +980,14 @@ export default function Feed() {
             data={eventsWithCreatorNames}
             keyExtractor={(item) => item.$id}
             renderItem={renderEventItem}
-            ListHeaderComponent={() => {
-              try {
-                return (
-                  <TopPicks
-                    allEvents={allEventsForTopPicks}
-                    userFriends={friends}
-                    currentUserId={currentUserId || undefined}
-                    maxPicks={8}
-                  />
-                );
-              } catch (error) {
-                console.error('Error rendering TopPicks in Feed:', error);
-                return (
-                  <View style={{ padding: 16 }}>
-                    <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>
-                      Top Picks temporarily unavailable
-                    </Text>
-                  </View>
-                );
-              }
-            }}
+            ListHeaderComponent={useMemo(() => () => (
+              <TopPicks
+                allEvents={allEventsForTopPicks}
+                userFriends={friends}
+                currentUserId={currentUserId || undefined}
+                maxPicks={8}
+              />
+            ), [allEventsForTopPicks, friends, currentUserId])}
             ListEmptyComponent={() => (
               <View style={{ padding: 24, alignItems: 'center' }}>
                 <Text style={{ color: colors.textSecondary }}>No events yet. Pull to refresh.</Text>

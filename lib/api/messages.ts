@@ -1,7 +1,7 @@
 import { config, databases, ID, Query } from '@/lib/appwrite/appwrite';
 import { Chat, Message, MessageInput, MessageThread, MessageWithAuthor } from '@/lib/types/Messages';
 import { sendChatMessageNotification } from '../notifications/notificationUtils';
-import { getOrCreateEventChat, getOrCreateGroupChat } from './chats';
+import { getOrCreateChat } from './chats-optimized';
 import { getUserProfilePhotoUrl } from './profilePhoto';
 import { getUserProfile } from './user';
 
@@ -159,7 +159,7 @@ export const getChatMessages = async (chatId: string, limit: number = 50, offset
  */
 export const getEventMessages = async (eventId: string, limit: number = 50, offset: number = 0): Promise<MessageThread> => {
     try {
-        const chat = await getOrCreateEventChat(eventId);
+        const chat = await getOrCreateChat(eventId, 'event');
         return await getChatMessages(chat.$id, limit, offset);
     } catch (error) {
         console.error('Error fetching event messages:', error);
@@ -172,7 +172,7 @@ export const getEventMessages = async (eventId: string, limit: number = 50, offs
  */
 export const getGroupMessages = async (groupId: string, limit: number = 50, offset: number = 0): Promise<MessageThread> => {
     try {
-        const chat = await getOrCreateGroupChat(groupId);
+        const chat = await getOrCreateChat(groupId, 'group');
         return await getChatMessages(chat.$id, limit, offset);
     } catch (error) {
         console.error('Error fetching group messages:', error);
@@ -185,7 +185,7 @@ export const getGroupMessages = async (groupId: string, limit: number = 50, offs
  */
 export const createEventMessage = async (eventId: string, content: string, authorId: string): Promise<Message> => {
     try {
-        const chat = await getOrCreateEventChat(eventId);
+        const chat = await getOrCreateChat(eventId, 'event');
         const messageInput: MessageInput = {
             content,
             chatId: chat.$id,
@@ -202,7 +202,7 @@ export const createEventMessage = async (eventId: string, content: string, autho
  */
 export const createGroupMessage = async (groupId: string, content: string, authorId: string): Promise<Message> => {
     try {
-        const chat = await getOrCreateGroupChat(groupId);
+        const chat = await getOrCreateChat(groupId, 'group');
         const messageInput: MessageInput = {
             content,
             chatId: chat.$id,

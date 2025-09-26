@@ -222,6 +222,48 @@ export async function getAllEvents(includePast: boolean = false) {
 }
 
 /**
+ * Get only public events for feeds (excludes private events unless user is creator/invitee)
+ */
+export async function getPublicEvents(includePast: boolean = false, userId?: string): Promise<Event[]> {
+  const allEvents = await fetchEvents(includePast);
+
+  // If no userId provided, only return public events
+  if (!userId) {
+    return allEvents.filter(event => !event.isPrivate);
+  }
+
+  // If userId provided, return public events + private events where user is creator or invitee
+  const filteredEvents: Event[] = [];
+
+  for (const event of allEvents) {
+    // Always show public events
+    if (!event.isPrivate) {
+      filteredEvents.push(event);
+      continue;
+    }
+
+    // Show private events if user is the creator
+    if (event.creatorId === userId) {
+      filteredEvents.push(event);
+      continue;
+    }
+
+    // Check if user is invited to private event
+    try {
+      const isInvited = await isUserAttendingEvent(userId, event.$id);
+      if (isInvited) {
+        filteredEvents.push(event);
+      }
+    } catch (error) {
+      console.error('Error checking event invitation for event', event.$id, ':', error);
+      // Don't include the event if we can't verify invitation
+    }
+  }
+
+  return filteredEvents;
+}
+
+/**
  * Get event by ID (alias for fetchEventById)
  */
 export async function getEventById(id: string) {
@@ -276,6 +318,23 @@ export async function createEvent(event: Event) {
       throw new Error('Tags must be an array');
     }
 
+    // DEBUGGING: Log event creation attempts with empty tags
+    if (!event.tags || event.tags.length === 0) {
+      authDebug.info('⚠️ CREATING EVENT WITH NO TAGS:', {
+        title: event.title,
+        creatorId: event.creatorId,
+        isPrivate: event.isPrivate,
+        tagsProvided: event.tags,
+        tagsType: typeof event.tags
+      });
+    } else {
+      authDebug.info('✅ Creating event with tags:', {
+        title: event.title,
+        tags: event.tags,
+        tagCount: event.tags.length
+      });
+    }
+
     // Sanitize and prepare data with new required fields
     const locationTrimmed = event.location?.trim() || '';
 
@@ -308,7 +367,7 @@ export async function createEvent(event: Event) {
       locationLng: (event as any).locationLng ?? 0.0,
 
       // Array fields that exist in your schema
-      tags: event.tags?.filter(tag => tag && typeof tag === 'string') || [],
+      tags: Array.isArray(event.tags) ? event.tags.filter(tag => tag && typeof tag === 'string') : [],
       searchKeywords: [], // Required field in your schema
       categoryTags: [], // Required field in your schema
     };
@@ -317,6 +376,15 @@ export async function createEvent(event: Event) {
     delete (sanitizedEvent as any).inviteeIds;
     delete (sanitizedEvent as any).attendees;
     delete (sanitizedEvent as any).isAttending;
+
+    // DEBUG: Log final sanitized event data
+    authDebug.info('📝 FINAL SANITIZED EVENT DATA:', {
+      title: sanitizedEvent.title,
+      tags: sanitizedEvent.tags,
+      isPrivate: sanitizedEvent.isPrivate,
+      hasLocation: Boolean(sanitizedEvent.location),
+      allFields: Object.keys(sanitizedEvent)
+    });
 
     authDebug.debug('Creating event with data:', sanitizedEvent);
 

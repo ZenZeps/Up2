@@ -1,5 +1,5 @@
-import { getGroupChatMessages, getOrCreateGroupChat } from '@/lib/api/chats';
-import { createMessage } from '@/lib/api/messages';
+import { getOrCreateChat } from '@/lib/api/chats-optimized';
+import { createMessage, getChatMessages } from '@/lib/api/messages-optimized';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Group } from '@/lib/types/Groups';
@@ -48,11 +48,11 @@ const GroupMessagesModal: React.FC<GroupMessagesModalProps> = ({
             setLoading(true);
 
             // Get or create chat for this group
-            const chat = await getOrCreateGroupChat(group.$id);
+            const chat = await getOrCreateChat(group.$id, 'group');
             setChatId(chat.$id);
 
             // Load messages
-            const messages = await getGroupChatMessages(chat.$id);
+            const { messages } = await getChatMessages(chat.$id, 50);
             setMessages(messages);
 
         } catch (error) {
@@ -68,10 +68,11 @@ const GroupMessagesModal: React.FC<GroupMessagesModalProps> = ({
         try {
             setSending(true);
 
-            await createMessage({
-                content: newMessage.trim(),
+            await createMessage(
                 chatId,
-            }, user.$id);
+                newMessage.trim(),
+                user.$id
+            );
 
             setNewMessage('');
 

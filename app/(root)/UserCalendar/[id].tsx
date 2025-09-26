@@ -11,11 +11,16 @@ import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
 import { useCreatorInfo } from '@/lib/utils/creatorInfoManager';
 import { recordUserAction } from '@/lib/utils/dataFetchingOptimizer';
+import {
+    formatDateHeader,
+    groupEventsByDay,
+    transformGroupedEventsForList
+} from '@/lib/utils/homeHelpers';
 import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventDetailsModal from '../components/EventDetailsModal';
@@ -27,51 +32,9 @@ const viewModes: Mode[] = ['week', 'month'];
 
 type TabType = 'calendar' | 'agenda';
 
-// Helper functions for date formatting - copied from Home.tsx
-const formatDateHeader = (date: Date): string => {
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
+// formatDateHeader is imported from homeHelpers for consistency
 
-    // Check if it's today
-    if (date.toDateString() === today.toDateString()) {
-        return 'Today';
-    }
-
-    // Check if it's tomorrow
-    if (date.toDateString() === tomorrow.toDateString()) {
-        return 'Tomorrow';
-    }
-
-    // Otherwise, format like "Thu, Sept 4"
-    return date.toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-    });
-};
-
-// Group events by day - copied from Home.tsx
-const groupEventsByDay = (events: AppEvent[]) => {
-    const grouped: { [key: string]: { date: Date; events: AppEvent[] } } = {};
-
-    events.forEach(event => {
-        const eventDate = new Date(event.startTime);
-        const dateKey = eventDate.toDateString();
-
-        if (!grouped[dateKey]) {
-            grouped[dateKey] = {
-                date: eventDate,
-                events: []
-            };
-        }
-
-        grouped[dateKey].events.push(event);
-    });
-
-    // Sort by date and return as array
-    return Object.values(grouped).sort((a, b) => a.date.getTime() - b.date.getTime());
-};
+// groupEventsByDay is imported from homeHelpers for consistency
 
 export default function UserCalendar() {
     const { colors } = useTheme();
@@ -112,7 +75,28 @@ export default function UserCalendar() {
 
     const { getCreatorPhotoUrl, getCreatorName } = useCreatorInfo(creatorIds, 20);
 
-    // Fetch user's profile and events
+    // Calendar events - transform events for BigCalendar component
+    const calendarEvents = React.useMemo(() => {
+        return events.map(event => ({
+            title: event.title,
+            start: new Date(event.startTime),
+            end: new Date(event.endTime),
+            location: event.location,
+            color: getEventColor(event.tags || []), // Add color based on first tag
+            rawEvent: event, // Store the original event for access in renderEvent
+        }));
+    }, [events]);
+
+    // Agenda events - only show upcoming events for the friends calendar
+    const agendaEvents = React.useMemo(() => {
+        const now = new Date();
+        return events
+            .filter(event => {
+                const eventDate = new Date(event.startTime);
+                return eventDate >= now; // Only show upcoming events
+            })
+            .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+    }, [events]);    // Fetch user's profile and events
     useEffect(() => {
         const fetchUserData = async () => {
             try {
@@ -220,7 +204,30 @@ export default function UserCalendar() {
         };
 
         updateTravelDays();
-    }, [date, userId]);
+    }, [date.getFullYear(), date.getMonth(), userId]); // Use primitive values instead of date object
+
+    // Handle date changes from BigCalendar to prevent infinite re-renders
+    const handleDateChange = useCallback((range: any) => {
+        console.log('handleDateChange called with:', range, typeof range);
+
+        let newDate: Date;
+
+        if (Array.isArray(range) && range.length >= 2) {
+            newDate = new Date(range[0]);
+            console.log('Array range detected, using first date:', newDate);
+        } else if (range && typeof range === 'object') {
+            if (range.start) {
+                newDate = new Date(range.start);
+            } else {
+                newDate = new Date(range);
+            }
+        } else {
+            newDate = new Date(range);
+        }
+
+        console.log('Setting new date:', newDate);
+        setDate(newDate);
+    }, []);
 
     const handleAttend = async (event: AppEvent) => {
         if (!currentUserId) return;
@@ -284,82 +291,162 @@ export default function UserCalendar() {
         }
     };
 
-    const calendarEvents = events.map((e) => ({
-        title: e.title,
-        start: new Date(e.startTime),
-        end: new Date(e.endTime),
-        location: e.location,
-        color: getEventColor(e.tags || []), // Add color based on first tag
-        rawEvent: e,
-    }));
-
-    // Filter events for agenda view (only future events)
-    const agendaEvents = events.filter(event => {
-        const eventEnd = new Date(event.endTime);
-        const now = new Date();
-        return eventEnd > now; // Only show events that haven't ended yet
-    });
-
     const handlePressEvent = (event: any) => {
         setSelectedEvent(event.rawEvent);
         setDetailsModalVisible(true);
     };
 
-    const renderEvent = (event: any, touchableOpacityProps: any) => {
-        // Safety check to prevent rendering invalid events
-        if (!event || !event.rawEvent) {
-            return null;
-        }
+    const renderEvent = React.useCallback((event: any, touchableOpacityProps: any) => {
+        try {
+            // Safety checks to prevent rendering invalid events
+            if (!event) {
+                console.warn('renderEvent: event is null or undefined');
+                return null;
+            }
 
-        const isMonthView = viewMode === 'month';
-        const eventColor = event.color || colors.primary;
+            if (!event.rawEvent) {
+                console.warn('renderEvent: event.rawEvent is null or undefined');
+                return null;
+            }
 
-        // Convert hex color to rgba for opacity in month view
-        const hexToRgba = (hex: string, alpha: number) => {
-            const r = parseInt(hex.slice(1, 3), 16);
-            const g = parseInt(hex.slice(3, 5), 16);
-            const b = parseInt(hex.slice(5, 7), 16);
-            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-        };
+            // Validate essential event properties
+            if (!event.rawEvent.title) {
+                console.warn('renderEvent: event.rawEvent.title is missing');
+                return null;
+            }
 
-        const backgroundColor = isMonthView
-            ? hexToRgba(eventColor, 0.4) // 40% opacity for month view
-            : eventColor; // Full opacity for week view
+            const isMonthView = viewMode === 'month';
+            const eventColor = event.color || '#000000';
 
-        return (
-            <TouchableOpacity
-                {...touchableOpacityProps}
-                style={[
-                    touchableOpacityProps.style, // Preserve original calendar positioning styles
-                    {
-                        backgroundColor,
-                        padding: 4,
-                        borderRadius: 6,
-                    }
-                ]}
-                onPress={() => handlePressEvent(event)}
-                key={event.rawEvent.$id || `event-${Math.random()}`} // Ensure unique key
-            >
-                <Text
-                    className={`text-xs font-rubik-medium ${isMonthView ? 'text-black-300' : 'text-white'
-                        }`}
-                    numberOfLines={1}
+            // Convert hex color to rgba for opacity in month view
+            const hexToRgba = (hex: string, alpha: number) => {
+                try {
+                    const r = parseInt(hex.slice(1, 3), 16);
+                    const g = parseInt(hex.slice(3, 5), 16);
+                    const b = parseInt(hex.slice(5, 7), 16);
+                    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+                } catch (error) {
+                    console.warn('Error converting hex to rgba:', error);
+                    return hex; // Return original hex if conversion fails
+                }
+            };
+
+            const backgroundColor = isMonthView
+                ? hexToRgba(eventColor, 0.8) // Increased opacity for better visibility
+                : eventColor; // Full opacity for week/day view
+
+            // For month view, we need to work with the library's positioning but constrain the events
+            if (isMonthView) {
+                return (
+                    <TouchableOpacity
+                        {...touchableOpacityProps}
+                        style={[
+                            touchableOpacityProps.style,
+                            {
+                                backgroundColor,
+                                borderRadius: 3,
+                                padding: 0, // Remove padding to eliminate any spacing
+                                margin: 0,
+                                marginVertical: -1, // Negative margin to eliminate vertical spacing
+                                marginHorizontal: 1,
+                                minHeight: 14, // Increased from 10 to make events thicker
+                                maxHeight: 14, // Increased from 10 to make events thicker
+                                height: 14, // Increased from 10 to make events thicker
+                                // Override only what's necessary to prevent layout issues
+                                overflow: 'hidden',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                            }
+                        ]}
+                        onPress={() => handlePressEvent(event)}
+                        key={event.rawEvent.$id || `event-${Math.random()}`}
+                    >
+                        <Text
+                            className={`font-rubik-medium`}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                            style={{
+                                fontSize: 8, // Slightly increased font size for better readability
+                                color: colors.background,
+                                textAlign: 'center',
+                                lineHeight: 10, // Adjusted for the new height
+                                includeFontPadding: false,
+                                margin: 0,
+                                padding: 0,
+                            }}
+                        >
+                            {event.rawEvent.title || 'Untitled'}
+                        </Text>
+                    </TouchableOpacity>
+                );
+            }
+
+            // For week/day view, use the original approach
+            return (
+                <TouchableOpacity
+                    {...touchableOpacityProps}
+                    style={[
+                        touchableOpacityProps.style,
+                        {
+                            backgroundColor,
+                            padding: 1, // Minimal padding for text readability
+                            borderRadius: 4,
+                            margin: 0,
+                            marginVertical: 0,
+                            marginHorizontal: 0,
+                        }
+                    ]}
+                    onPress={() => handlePressEvent(event)}
+                    key={event.rawEvent.$id || `event-${Math.random()}`}
                 >
-                    {event.title || 'Untitled'}
-                </Text>
-                {!isMonthView && (
-                    <>
-                        <Text className="text-white text-xs">
-                            {event.location || 'No location'}
-                        </Text>
-                        <Text className="text-white text-xs">
-                            {event.rawEvent?.creatorName || 'Unknown'}
-                        </Text>
-                    </>
-                )}
-            </TouchableOpacity>
-        );
-    };
+                    <Text
+                        className={`font-rubik-medium`}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                        style={{
+                            textAlign: 'center',
+                            fontSize: 12,
+                            color: colors.background,
+                            margin: 0,
+                            padding: 0,
+                            lineHeight: 12,
+                            includeFontPadding: false,
+                            textAlignVertical: 'center',
+                        }}
+                    >
+                        {event.title || 'Untitled'}
+                    </Text>
+                    <Text
+                        className="text-white text-xs"
+                        style={{
+                            textAlign: 'center',
+                            marginTop: -2, // Reduce space above location text
+                        }}
+                    >
+                        {event.location || 'No location'}
+                    </Text>
+                </TouchableOpacity>
+            );
+        } catch (error) {
+            console.error('Error in renderEvent:', error);
+            // Return a fallback UI instead of crashing
+            return (
+                <TouchableOpacity
+                    style={[
+                        touchableOpacityProps.style,
+                        {
+                            backgroundColor: colors.error,
+                            borderRadius: 4,
+                            padding: 4,
+                            marginVertical: 1,
+                        }
+                    ]}
+                >
+                    <Text style={{ color: 'white', fontSize: 10 }}>Error</Text>
+                </TouchableOpacity>
+            );
+        }
+    }, [viewMode, colors, handlePressEvent]);
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -376,20 +463,18 @@ export default function UserCalendar() {
                 </View>
             </View>
 
-            {/* Tab Container - Similar to Home.tsx */}
+            {/* Modern Tab Navigation - matching Home */}
             <View style={[styles.tabContainer, { borderBottomColor: colors.border }]}>
                 <TouchableOpacity
                     onPress={() => setActiveTab('agenda')}
                     style={[
                         styles.tabButton,
-                        {
-                            borderBottomColor: activeTab === 'agenda' ? colors.primary : 'transparent',
-                        }
+                        { borderBottomColor: activeTab === 'agenda' ? colors.primary : 'transparent' }
                     ]}
                 >
                     <MaterialIcons
                         name="list"
-                        size={18}
+                        size={20}
                         color={activeTab === 'agenda' ? colors.primary : colors.textSecondary}
                     />
                     <Text
@@ -401,18 +486,17 @@ export default function UserCalendar() {
                         Agenda
                     </Text>
                 </TouchableOpacity>
+
                 <TouchableOpacity
                     onPress={() => setActiveTab('calendar')}
                     style={[
                         styles.tabButton,
-                        {
-                            borderBottomColor: activeTab === 'calendar' ? colors.primary : 'transparent',
-                        }
+                        { borderBottomColor: activeTab === 'calendar' ? colors.primary : 'transparent' }
                     ]}
                 >
                     <MaterialIcons
                         name="calendar-today"
-                        size={18}
+                        size={20}
                         color={activeTab === 'calendar' ? colors.primary : colors.textSecondary}
                     />
                     <Text
@@ -429,129 +513,132 @@ export default function UserCalendar() {
             {/* Content */}
             <View style={styles.content}>
                 {activeTab === 'agenda' ? (
-                    <ScrollView style={[styles.agendaList, { backgroundColor: colors.background }]}>
-                        {/* Travel Status Section */}
-                        {userTravel.length > 0 && (
-                            <View style={[styles.travelSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                                <View style={styles.travelHeader}>
-                                    <MaterialIcons name="flight" size={20} color={colors.primary} />
-                                    <Text style={[styles.travelHeaderText, { color: colors.text }]}>
-                                        Travel Plans
-                                    </Text>
-                                </View>
-
-                                {userTravel.slice(0, 3).map((travel) => {
-                                    const startDate = new Date(travel.startDate);
-                                    const endDate = new Date(travel.endDate);
-                                    const now = new Date();
-                                    const isCurrentlyTraveling = startDate <= now && now <= endDate;
-                                    const isUpcoming = startDate > now;
-
-                                    return (
-                                        <View key={travel.$id} style={styles.travelItem}>
-                                            <View style={styles.travelItemHeader}>
-                                                <Text style={[styles.travelDestination, { color: colors.text }]}>
-                                                    ✈️ {travel.destination}
-                                                </Text>
-                                                {isCurrentlyTraveling && (
-                                                    <View style={[styles.travelStatusBadge, { backgroundColor: colors.primary }]}>
-                                                        <Text style={styles.travelStatusText}>TRAVELING NOW</Text>
-                                                    </View>
-                                                )}
-                                                {isUpcoming && (
-                                                    <View style={[styles.travelStatusBadge, { backgroundColor: '#FFA500' }]}>
-                                                        <Text style={styles.travelStatusText}>UPCOMING</Text>
-                                                    </View>
-                                                )}
-                                            </View>
-                                            <Text style={[styles.travelDates, { color: colors.textSecondary }]}>
-                                                {startDate.toLocaleDateString('en-US', {
-                                                    month: 'short',
-                                                    day: 'numeric'
-                                                })} - {endDate.toLocaleDateString('en-US', {
-                                                    month: 'short',
-                                                    day: 'numeric',
-                                                    year: 'numeric'
-                                                })}
-                                            </Text>
-                                            {travel.description && (
-                                                <Text style={[styles.travelDescription, { color: colors.textSecondary }]}>
-                                                    {travel.description}
-                                                </Text>
-                                            )}
-                                        </View>
-                                    );
-                                })}
-
-                                {userTravel.length > 3 && (
-                                    <Text style={[styles.travelMoreText, { color: colors.textSecondary }]}>
-                                        +{userTravel.length - 3} more travel plans
-                                    </Text>
-                                )}
-                            </View>
-                        )}
-
-                        {/* Events List */}
-                        {groupEventsByDay(agendaEvents).length > 0 ? (
-                            groupEventsByDay(agendaEvents).map((dayGroup) => (
-                                <View key={dayGroup.date.toDateString()} style={styles.dayGroup}>
-                                    {/* Day Header */}
-                                    <View style={[styles.dayHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-                                        <Text style={[styles.dayHeaderText, { color: colors.text }]}>
-                                            {formatDateHeader(dayGroup.date)}
+                    /* Modern Agenda View with Day Groupings - matching Home exactly */
+                    <FlatList
+                        style={[styles.agendaList, { backgroundColor: colors.background }]}
+                        data={transformGroupedEventsForList(groupEventsByDay(agendaEvents))}
+                        keyExtractor={(item) => item.date.toDateString()}
+                        ListHeaderComponent={
+                            userTravel.length > 0 ? (
+                                <View style={[styles.travelSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                                    <View style={styles.travelHeader}>
+                                        <MaterialIcons name="flight" size={20} color={colors.primary} />
+                                        <Text style={[styles.travelHeaderText, { color: colors.text }]}>
+                                            Travel Plans
                                         </Text>
                                     </View>
 
-                                    {/* Events for this day - Home-style feed cards */}
-                                    {dayGroup.events.map(item => (
-                                        <TouchableOpacity
-                                            key={item.$id}
-                                            onPress={() => handlePressEvent({
-                                                id: item.$id,
-                                                title: item.title,
-                                                start: new Date(item.startTime),
-                                                end: new Date(item.endTime),
-                                                location: item.location,
-                                                color: getEventColor(item.tags || []),
-                                                rawEvent: item
-                                            })}
-                                            style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                                        >
-                                            <EventImage
-                                                photoId={(item as any).photoId}
-                                                tags={item.tags}
-                                                size={72}
-                                                style={styles.feedThumb}
-                                                gradientColors={["#FF6B6B", "#FFD166"]}
-                                            />
+                                    {userTravel.slice(0, 3).map((travel) => {
+                                        const startDate = new Date(travel.startDate);
+                                        const endDate = new Date(travel.endDate);
+                                        const now = new Date();
+                                        const isCurrentlyTraveling = startDate <= now && now <= endDate;
+                                        const isUpcoming = startDate > now;
 
-                                            <View style={styles.feedBody}>
-                                                <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
-                                                <View style={styles.feedMetaRow}>
-                                                    <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
-                                                    <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{new Date(item.startTime).toLocaleDateString()}</Text>
-                                                    <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
-                                                    <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
-                                                    <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
+                                        return (
+                                            <View key={travel.$id} style={styles.travelItem}>
+                                                <View style={styles.travelItemHeader}>
+                                                    <Text style={[styles.travelDestination, { color: colors.text }]}>
+                                                        ✈️ {travel.destination}
+                                                    </Text>
+                                                    {isCurrentlyTraveling && (
+                                                        <View style={[styles.travelStatusBadge, { backgroundColor: colors.primary }]}>
+                                                            <Text style={styles.travelStatusText}>TRAVELING NOW</Text>
+                                                        </View>
+                                                    )}
+                                                    {isUpcoming && (
+                                                        <View style={[styles.travelStatusBadge, { backgroundColor: '#FFA500' }]}>
+                                                            <Text style={styles.travelStatusText}>UPCOMING</Text>
+                                                        </View>
+                                                    )}
                                                 </View>
-
-                                                <View style={styles.feedSubRow}>
-                                                    <UserAvatar photoUrl={getCreatorPhotoUrl(item.creatorId)} name={getCreatorName(item.creatorId)} size={28} />
-                                                    <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(item.creatorId)}</Text>
-                                                </View>
+                                                <Text style={[styles.travelDates, { color: colors.textSecondary }]}>
+                                                    {startDate.toLocaleDateString('en-US', {
+                                                        month: 'short',
+                                                        day: 'numeric',
+                                                        year: 'numeric'
+                                                    })} - {endDate.toLocaleDateString('en-US', {
+                                                        month: 'short',
+                                                        day: 'numeric',
+                                                        year: 'numeric'
+                                                    })}
+                                                </Text>
+                                                {travel.description && (
+                                                    <Text style={[styles.travelDescription, { color: colors.textSecondary }]}>
+                                                        {travel.description}
+                                                    </Text>
+                                                )}
                                             </View>
+                                        );
+                                    })}
 
-                                            <View style={styles.feedRightCol}>
-                                                <View style={{ alignItems: 'flex-end' }}>
-                                                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{getAttendeeCount(item)} attending</Text>
-                                                    <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{(item as any).inviteCount ?? 0} invited</Text>
-                                                </View>
-                                            </View>
-                                        </TouchableOpacity>
-                                    ))}
+                                    {userTravel.length > 3 && (
+                                        <Text style={[styles.travelMoreText, { color: colors.textSecondary }]}>
+                                            +{userTravel.length - 3} more travel plans
+                                        </Text>
+                                    )}
                                 </View>
-                            ))
-                        ) : (
+                            ) : null
+                        }
+                        renderItem={({ item: dayGroup }) => (
+                            <View style={styles.dayGroup}>
+                                {/* Day Header */}
+                                <View style={[styles.dayHeader, { borderBottomColor: colors.border }]}>
+                                    <Text style={[styles.dayHeaderText, { color: colors.text }]}>
+                                        {formatDateHeader(dayGroup.date)}
+                                    </Text>
+                                </View>
+
+                                {/* Events for this day - Home-style feed cards */}
+                                {dayGroup.events.map(item => (
+                                    <TouchableOpacity
+                                        key={item.$id}
+                                        onPress={() => handlePressEvent({
+                                            id: item.$id,
+                                            title: item.title,
+                                            start: new Date(item.startTime),
+                                            end: new Date(item.endTime),
+                                            location: item.location,
+                                            color: getEventColor(item.tags || []),
+                                            rawEvent: item
+                                        })}
+                                        style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                                    >
+                                        <EventImage
+                                            photoId={(item as any).photoId}
+                                            tags={item.tags}
+                                            size={72}
+                                            style={styles.feedThumb}
+                                            gradientColors={["#FF6B6B", "#FFD166"]}
+                                        />
+
+                                        <View style={styles.feedBody}>
+                                            <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
+                                            <View style={styles.feedMetaRow}>
+                                                <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
+                                                <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{new Date(item.startTime).toLocaleDateString()}</Text>
+                                                <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
+                                                <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
+                                                <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
+                                            </View>
+
+                                            <View style={styles.feedSubRow}>
+                                                <UserAvatar photoUrl={getCreatorPhotoUrl(item.creatorId)} name={getCreatorName(item.creatorId)} size={28} />
+                                                <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(item.creatorId)}</Text>
+                                            </View>
+                                        </View>
+
+                                        <View style={styles.feedRightCol}>
+                                            <View style={{ alignItems: 'flex-end' }}>
+                                                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{getAttendeeCount(item)} attending</Text>
+                                                <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{(item as any).inviteCount ?? 0} invited</Text>
+                                            </View>
+                                        </View>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
+                        ListEmptyComponent={
                             <View style={styles.emptyState}>
                                 <MaterialIcons name="event" size={64} color={colors.textSecondary} />
                                 <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
@@ -561,8 +648,10 @@ export default function UserCalendar() {
                                     {userName} doesn&apos;t have any upcoming events.
                                 </Text>
                             </View>
-                        )}
-                    </ScrollView>
+                        }
+                        showsVerticalScrollIndicator={false}
+                        contentContainerStyle={[styles.agendaContent, { paddingBottom: 20 }]}
+                    />
                 ) : (
                     /* Calendar View */
                     <>
@@ -612,19 +701,30 @@ export default function UserCalendar() {
                         >
                             {calendarHeight > 0 && (
                                 <BigCalendar
+                                    key={`calendar-${viewMode}-${date.getTime()}`}
                                     events={calendarEvents as any[]}
                                     height={calendarHeight}
                                     mode={viewMode}
                                     date={date}
+                                    onChangeDate={handleDateChange}
+                                    onPressCell={(dateTime) => {
+                                        // Handle cell press if needed
+                                    }}
                                     onPressEvent={handlePressEvent}
                                     renderEvent={renderEvent}
                                     swipeEnabled={true}
-                                    overlapOffset={8}
+                                    overlapOffset={viewMode === 'month' ? 0 : -12} // Remove overlap offset for month view to prevent positioning issues
                                     ampm={false}
-                                    headerContainerStyle={{
-                                        height: 50,
-                                        backgroundColor: colors.surface,
+                                    scrollOffsetMinutes={viewMode === 'week' ? 360 : new Date().getHours() * 60 + new Date().getMinutes() - 60} // Start earlier for week view
+                                    showTime={false}
+                                    eventCellStyle={{
+                                        marginVertical: -1, // Negative margin to eliminate vertical spacing between events
+                                        marginHorizontal: 1, // Minimal horizontal margin
+                                        paddingVertical: 0,
+                                        paddingHorizontal: 0,
                                     }}
+                                    // Week view specific styling
+                                    weekStartsOn={0} // Start week on Sunday
                                 />
                             )}
                         </View>
@@ -787,14 +887,15 @@ const styles = StyleSheet.create({
         lineHeight: 24,
         marginBottom: 32,
     },
-    // Home-style feed card styles
+    // Home-style feed card styles - optimized for single-line location text
     feedRowCard: {
         flexDirection: 'row',
         padding: 16,
-        marginHorizontal: 16,
+        marginHorizontal: 12,
         marginBottom: 12,
         borderRadius: 16,
         borderWidth: 1,
+        minWidth: '95%', // Ensure wider cards for single-line location text
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
@@ -811,7 +912,7 @@ const styles = StyleSheet.create({
         marginRight: 16,
     },
     feedBody: {
-        flex: 1,
+        flex: 2, // Increased flex for more text space
         justifyContent: 'space-between',
     },
     feedTitle: {
@@ -823,7 +924,8 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 8,
-        flexWrap: 'wrap',
+        flexWrap: 'nowrap', // Prevent text wrapping to keep location on one line
+        flex: 1,
     },
     feedMetaText: {
         fontSize: 12,
