@@ -1,5 +1,4 @@
 import { cacheManager } from '@/lib/debug/cacheManager';
-import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -69,7 +68,8 @@ export default function StandaloneDebugDashboard() {
     };
 
     const navigateToDebugPage = () => {
-        router.push('/debug');
+        // Debug page removed - functionality available inline
+        console.log('Debug page navigation disabled');
     };
 
     if (!expanded) {

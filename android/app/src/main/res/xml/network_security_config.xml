@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">syd.cloud.appwrite.io</domain>
+        <domain includeSubdomains="true">up2.app</domain>
+    </domain-config>
+    
+    <!-- Block cleartext traffic for security -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+    
+    <!-- Only allow HTTPS connections -->
+    <domain-config>
+        <domain includeSubdomains="true">syd.cloud.appwrite.io</domain>
+        <pin-set expiration="2026-12-31">
+            <!-- Pin for Let's Encrypt (commonly used by cloud providers) -->
+            <pin digest="SHA-256">AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</pin>
+        </pin-set>
+    </domain-config>
+</network-security-config>

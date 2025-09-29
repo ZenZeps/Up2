@@ -289,7 +289,7 @@ const Profile = () => {
             <View style={styles.headerSpacer} />
             <Text style={[styles.headerTitle, { color: colors.text }]}>Profile</Text>
             <View style={styles.headerRight}>
-              <TouchableOpacity style={[styles.headerButton, { backgroundColor: colors.background }]} onPress={() => router.push('/(root)/Settings')}>
+              <TouchableOpacity style={[styles.headerButton, { backgroundColor: colors.background }]} onPress={() => router.push('/(root)/settings/Settings')}>
                 <MaterialIcons name="settings" size={20} color={colors.text} />
               </TouchableOpacity>
             </View>
@@ -333,9 +333,14 @@ const Profile = () => {
 
             {/* Action Buttons */}
             <View style={styles.actionButtons}>
-              <TouchableOpacity style={[styles.editProfileButton, { backgroundColor: colors.primary }]} onPress={() => setIsEditing(true)}>
-                <MaterialIcons name="edit" size={16} color={colors.buttonText} />
-                <Text style={[styles.editProfileButtonText, { color: colors.buttonText }]}>{t('profile.editProfile')}</Text>
+              <TouchableOpacity
+                style={[styles.editProfileButton, { backgroundColor: isEditing ? '#EF4444' : colors.primary }]}
+                onPress={() => setIsEditing(!isEditing)}
+              >
+                <MaterialIcons name={isEditing ? "close" : "edit"} size={16} color={colors.buttonText} />
+                <Text style={[styles.editProfileButtonText, { color: colors.buttonText }]}>
+                  {isEditing ? 'Cancel' : t('profile.editProfile')}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.shareButton, { borderColor: colors.border, backgroundColor: colors.background }]}>
                 <MaterialIcons name="share" size={16} color={colors.text} />
@@ -346,28 +351,12 @@ const Profile = () => {
         </View>
 
         {/* Bio Section with Edit Functionality */}
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 16 }]}>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 8 }]}>
           <View style={styles.cardHeader}>
             <View style={styles.cardTitleContainer}>
               <MaterialIcons name="info" size={20} color={colors.primary} />
               <Text style={[styles.cardTitle, { color: colors.text }]}>{t('profile.bio')}</Text>
             </View>
-            <TouchableOpacity
-              onPress={() => setIsEditing(!isEditing)}
-              style={[
-                styles.editButton,
-                { backgroundColor: isEditing ? '#EF4444' : colors.primary }
-              ]}
-            >
-              <MaterialIcons
-                name={isEditing ? "close" : "edit"}
-                size={16}
-                color={isEditing ? 'white' : (colors.primary.toLowerCase() === '#ffffff' || colors.primary.toLowerCase() === 'white' ? '#000' : 'white')}
-              />
-              <Text style={[styles.editButtonText, { color: isEditing ? 'white' : (colors.primary.toLowerCase() === '#ffffff' || colors.primary.toLowerCase() === 'white' ? '#000' : colors.buttonText) }]}>
-                {isEditing ? 'Cancel' : 'Edit'}
-              </Text>
-            </TouchableOpacity>
           </View>
 
           {isEditing ? (
@@ -427,26 +416,25 @@ const Profile = () => {
                 </View>
               </View>
 
-              <TouchableOpacity
-                onPress={handleSaveProfile}
-                style={[styles.saveButton, { backgroundColor: colors.primary }]}
-              >
-                <MaterialIcons name="check" size={16} color={colors.buttonText} />
-                <Text style={[styles.saveButtonText, { color: colors.buttonText }]}>{t('profile.saveChanges')}</Text>
-              </TouchableOpacity>
+              <View style={styles.editActionButtons}>
+                <TouchableOpacity
+                  onPress={() => setIsEditing(false)}
+                  style={[styles.cancelButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+                >
+                  <MaterialIcons name="close" size={16} color={colors.text} />
+                  <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSaveProfile}
+                  style={[styles.saveButton, { backgroundColor: colors.primary }]}
+                >
+                  <MaterialIcons name="check" size={16} color={colors.buttonText} />
+                  <Text style={[styles.saveButtonText, { color: colors.buttonText }]}>{t('profile.saveChanges')}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ) : (
             <View style={[styles.contentContainer, { backgroundColor: colors.background }]}>
-              <View style={styles.aboutRow}>
-                <View style={styles.aboutIconWrap}>
-                  <MaterialIcons name="favorite" size={18} color={colors.primary} />
-                </View>
-                <View style={styles.aboutTextWrap}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>About Me</Text>
-                  <Text style={[styles.detailValue, { color: colors.text, paddingLeft: -10 }]}>{about || 'No about information set'}</Text>
-                </View>
-              </View>
-
               <View style={styles.detailsContainer}>
                 <View style={styles.detailRow}>
                   <MaterialIcons name="flag" size={18} color={colors.textSecondary} />
@@ -492,7 +480,7 @@ const Profile = () => {
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.friendItemModern}
-                  onPress={() => router.push(`/UserProfile/${item.$id}` as any)}
+                  onPress={() => router.push(`/(root)/profile/${item.$id}` as any)}
                 >
                   <View style={styles.friendAvatarWrap}>
                     <UserAvatar
@@ -524,7 +512,7 @@ const Profile = () => {
               <MaterialIcons name="apps" size={20} color={colors.primary} />
               <Text style={[styles.cardTitle, { color: colors.text }]}>Groups</Text>
             </View>
-            <TouchableOpacity onPress={() => router.push('/(root)/CreateGroup')} style={[styles.createButton, { backgroundColor: colors.primary }]}>
+            <TouchableOpacity onPress={() => router.push('/(root)/groups/create')} style={[styles.createButton, { backgroundColor: colors.primary }]}>
               <MaterialIcons name="add" size={16} color={colors.buttonText} />
               <Text style={[styles.createButtonText, { color: colors.buttonText }]}>New</Text>
             </TouchableOpacity>
@@ -540,7 +528,7 @@ const Profile = () => {
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.groupItem}
-                  onPress={() => router.push(`/Group/${item.$id}` as any)}
+                  onPress={() => router.push(`/(root)/groups/${item.$id}` as any)}
                 >
                   <View style={styles.groupAvatar}>
                     <Text style={styles.groupAvatarText}>{(item.title || '').charAt(0).toUpperCase()}</Text>
@@ -617,21 +605,21 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   profileAvatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
     borderWidth: 2,
   },
   avatarPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
   },
   avatarText: {
-    fontSize: 32,
+    fontSize: 42,
     fontWeight: '700',
     color: 'white',
   },
@@ -732,8 +720,8 @@ const styles = StyleSheet.create({
   },
   // Card and functional styles
   card: {
-    marginBottom: 16,
-    padding: 18,
+    marginBottom: 12,
+    padding: 16,
     borderRadius: 14,
     borderWidth: 0,
     shadowColor: '#000',
@@ -760,18 +748,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 8,
   },
-  editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-  },
-  editButtonText: {
-    color: 'white',
-    marginLeft: 8,
-    fontWeight: '600',
-  },
+
   editContainer: {
     gap: 12,
   },
@@ -800,13 +777,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   saveButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 12,
-    alignSelf: 'flex-end',
+    borderRadius: 8,
   },
   saveButtonText: {
     color: 'white',
@@ -815,28 +792,12 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   contentContainer: {
-    padding: 16,
+    padding: 12,
     borderRadius: 12,
   },
-  aboutRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 6,
-  },
-  aboutIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  aboutTextWrap: {
-    flex: 1,
-  },
+
   detailsContainer: {
-    gap: 8,
+    gap: 12,
   },
   detailRow: {
     flexDirection: 'row',
@@ -929,6 +890,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 8,
     textAlign: 'center',
+  },
+  editActionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  cancelButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
   },
 });
 

@@ -1,6 +1,6 @@
 import { Background } from '@/components/ui/Background';
 import { getEventColor } from '@/constants/categories';
-import { enrichEventsWithGroupNames, getEventInvitees, getUserAttendingEvents } from '@/lib/api/event';
+import { enrichEventsWithGroupNames, getEventInvitees, getUserAttendingEvents, isUserAttendingEvent } from '@/lib/api/event';
 import { getUserGroupInvites } from '@/lib/api/group';
 // Removed static import of getActiveTravelForUser - using dynamic import instead
 import EventImage from '@/components/EventImage';
@@ -36,9 +36,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import EventDetailsModal from '../components/EventDetailsModal';
-import EventForm from '../components/EventForm';
-import MessageModal from '../components/MessageModal';
+import MessageModal from '../chat/ChatModal';
+import EventForm from '../components/forms/EventForm';
+import EventDetailsModal from '../components/modals/EventDetailsModal';
 import UserAvatar from '../components/UserAvatar';
 import { EventsContext } from '../context/EventContext';
 
@@ -352,8 +352,10 @@ export default function Home() {
           const hasEventInvites = (homeCache as AppEvent[]).some(event => {
             if (event.creatorId === currentUser.$id) return false;
             if (typeof (event as any).inviteCount === 'number' && (event as any).inviteCount === 0) return false;
-            // Use centralized heuristic as a lightweight hint based on legacy fields
-            return isUserAttendingHeuristic(event, currentUser.$id);
+            // Check for pending invitations, not attendance
+            const anyEv: any = event as any;
+            return (Array.isArray(anyEv.inviteeIds) && anyEv.inviteeIds.includes(currentUser.$id)) ||
+              (Array.isArray(anyEv.pendingInvitees) && anyEv.pendingInvitees.includes(currentUser.$id));
           });
           if (mounted) setHasInvites(hasEventInvites || groupInvites.length > 0);
           return;
@@ -370,11 +372,32 @@ export default function Home() {
           try {
             const invitees = await getEventInvitees(event.$id);
             if (Array.isArray(invitees) && invitees.includes(currentUser.$id)) {
-              hasEventInvites = true;
-              break;
+              // Check if user is invited but hasn't accepted yet
+              const isAlreadyAttending = await isUserAttendingEvent(currentUser.$id, event.$id);
+              if (!isAlreadyAttending) {
+                // User has a genuine pending invitation
+                hasEventInvites = true;
+                break;
+              }
             }
           } catch (_err) {
-            // ignore and continue
+            // Fallback to legacy fields for pending invitations
+            const anyEv: any = event as any;
+            if ((Array.isArray(anyEv.inviteeIds) && anyEv.inviteeIds.includes(currentUser.$id)) ||
+              (Array.isArray(anyEv.pendingInvitees) && anyEv.pendingInvitees.includes(currentUser.$id))) {
+              // Also check if they haven't accepted in the fallback case
+              try {
+                const isAlreadyAttending = await isUserAttendingEvent(currentUser.$id, event.$id);
+                if (!isAlreadyAttending) {
+                  hasEventInvites = true;
+                  break;
+                }
+              } catch (err) {
+                // If we can't check attendance, assume it's a pending invitation
+                hasEventInvites = true;
+                break;
+              }
+            }
           }
         }
       } catch (err) {

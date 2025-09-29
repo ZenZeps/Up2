@@ -709,7 +709,7 @@ const Explore = () => {
     return (
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <TouchableOpacity
-          onPress={() => router.push(`/UserProfile/${user.$id}` as any)}
+          onPress={() => router.push(`/(root)/profile/${user.$id}` as any)}
           style={styles.userItem}
         >
           <View style={styles.userInfo}>
@@ -810,7 +810,7 @@ const Explore = () => {
     const isMember = Array.isArray(group.users) ? group.users.includes(userId) : false;
     return (
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.push(`/Group/${group.$id}`)} style={styles.groupItem}>
+        <TouchableOpacity onPress={() => router.push(`/(root)/groups/${group.$id}`)} style={styles.groupItem}>
           <View style={styles.groupInfo}>
             <View style={[styles.groupAvatar, { backgroundColor: colors.primary }]}>
               <Text style={[styles.groupAvatarText, { color: colors.buttonText }]}>{(group.title || '').charAt(0).toUpperCase()}</Text>
@@ -1112,7 +1112,7 @@ const Explore = () => {
       //The Minicard Layout
       <TouchableOpacity
         style={[styles.eventMiniCard, { backgroundColor: darkCard.card, borderColor: darkCard.border }]}
-        onPress={() => router.push(`/event/${item.$id}?from=explore` as any)}
+        onPress={() => router.push(`/(root)/events/${item.$id}?from=explore` as any)}
       >
         <EventImage
           photoId={(item as any).photoId}
@@ -1135,7 +1135,7 @@ const Explore = () => {
           {/* Date (In number of days from today)*/}
           <Text style={[styles.eventMiniMeta, { color: darkCard.textSecondary }]}>{dayjs(item.startTime).fromNow()}</Text>
         </View>
-        <TouchableOpacity style={styles.goIconSmall} onPress={() => router.push(`/event/${item.$id}?from=explore` as any)}>
+        <TouchableOpacity style={styles.goIconSmall} onPress={() => router.push(`/(root)/events/${item.$id}?from=explore` as any)}>
           <MaterialIcons name="arrow-forward" size={18} color={darkCard.primary} />
         </TouchableOpacity>
       </TouchableOpacity>
@@ -1504,7 +1504,7 @@ const Explore = () => {
                 filteredEvents.map((event) => (
                   <TouchableOpacity
                     key={event.$id}
-                    onPress={() => router.push(`/event/${event.$id}`)}
+                    onPress={() => router.push(`/(root)/events/${event.$id}`)}
                     style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                   >
                     <EventImage
@@ -1572,7 +1572,7 @@ const Explore = () => {
                   filteredEvents.map((event) => (
                     <TouchableOpacity
                       key={event.$id}
-                      onPress={() => router.push(`/event/${event.$id}`)}
+                      onPress={() => router.push(`/(root)/events/${event.$id}`)}
                       style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                     >
                       <EventImage
@@ -1682,7 +1682,7 @@ const Explore = () => {
                     <MaterialIcons name="group-add" size={48} color={colors.primary} />
                     <Text style={[styles.eventTitle, { color: colors.text, textAlign: 'center', marginTop: 16 }]}>Create Groups</Text>
                     <Text style={[styles.eventDescription, { color: colors.textSecondary, textAlign: 'center', marginTop: 8, marginBottom: 16 }]}>Start your own group and bring together people who share your interests and passions</Text>
-                    <TouchableOpacity onPress={() => router.push('/CreateGroup')} style={[styles.actionButton, { backgroundColor: colors.primary }]}>
+                    <TouchableOpacity onPress={() => router.push('/(root)/groups/create')} style={[styles.actionButton, { backgroundColor: colors.primary }]}>
                       <MaterialIcons name="add" size={16} color={colors.buttonText} />
                       <Text style={[styles.actionButtonText, { color: colors.buttonText }]}>Create Group</Text>
                     </TouchableOpacity>

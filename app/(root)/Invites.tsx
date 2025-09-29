@@ -349,7 +349,7 @@ export default function Invites() {
               <Text style={[styles.headerTitle, { color: colors.text }]}>Notifications</Text>
               {__DEV__ && (
                 <TouchableOpacity
-                  onPress={() => router.push('/(root)/debug/InviteDebugger')}
+                  onPress={() => {/* Debug functionality removed */ }}
                   style={styles.debugButton}
                 >
                   <MaterialIcons name="bug-report" size={18} color={colors.text} />

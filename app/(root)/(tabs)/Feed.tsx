@@ -31,8 +31,8 @@ import UserAvatar from '../components/UserAvatar';
 
 import { Event as AppEvent } from '@/lib/types/Events';
 import { TravelAnnouncement } from '@/lib/types/Travel';
-import EventForm from '../components/EventForm';
-import TravelForm from '../components/TravelForm';
+import EventForm from '../components/forms/EventForm';
+import TravelForm from '../components/forms/TravelForm';
 import { useEvents } from '../context/EventContext';
 
 dayjs.extend(relativeTime);
@@ -575,7 +575,7 @@ export default function Feed() {
 
       // SCALABILITY FIX: Use the now-optimized getFriendsTravelAnnouncements with limits
       // Include current user's travel announcements as well
-      const travelData = await getFriendsTravelAnnouncements(friendIds, 30, true, currentUserId ?? undefined); // Limit to 30 travel announcements
+      const travelData = await getFriendsTravelAnnouncements(friendIds, 30); // Limit to 30 travel announcements
       console.log('🧳 Feed: Raw travel data received:', travelData.length, 'announcements');
 
       if (travelData.length === 0) {
@@ -813,7 +813,7 @@ export default function Feed() {
 
     return (
       <TouchableOpacity
-        onPress={() => router.push(`/event/${item.$id}?from=feed` as any)}
+        onPress={() => router.push(`/(root)/events/${item.$id}?from=feed` as any)}
         style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
       >
         <EventImage
@@ -1016,7 +1016,7 @@ export default function Feed() {
                         <Text style={[styles.creatorName, { color: colors.text }]}>{item.userName}</Text>
                         <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>{dayjs(item.startDate).fromNow()}</Text>
                       </View>
-                      <TouchableOpacity style={styles.moreButton} onPress={() => router.push(`/event/${item.$id}?from=feed` as any)}>
+                      <TouchableOpacity style={styles.moreButton} onPress={() => router.push(`/(root)/events/${item.$id}?from=feed` as any)}>
                         <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
                       </TouchableOpacity>
                     </View>

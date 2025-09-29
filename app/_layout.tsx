@@ -6,11 +6,13 @@ import GlobalProvider from "@/lib/global-provider";
 import "@/lib/i18n"; // Initialize i18n
 import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import notificationService from "@/lib/notifications/notificationService";
+import { dataPreloader } from "@/lib/services/dataPreloader";
 import { useFonts } from "expo-font";
 import * as Linking from 'expo-linking';
 import { SplashScreen, Stack, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { BackHandler } from "react-native";
+import { CustomSplashScreen } from "../components/SplashScreen";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./globals.css";
 
@@ -29,6 +31,8 @@ export default function RootLayout() {
 
   const [isAppReady, setIsAppReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [showCustomSplash, setShowCustomSplash] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Handle hardware back button for proper navigation
   useEffect(() => {
@@ -70,8 +74,9 @@ export default function RootLayout() {
           return;
         }
 
-        await account.get(); // Will throw if not logged in
+        const user = await account.get(); // Will throw if not logged in
         setIsAuthenticated(true);
+        setCurrentUserId(user.$id);
         console.log("User is authenticated");
       } catch (err: any) {
         // These errors are expected for unauthenticated users, don't log them
@@ -94,7 +99,8 @@ export default function RootLayout() {
     };
 
     if (fontsLoaded) {
-      SplashScreen.hideAsync();
+      // Keep native splash screen visible until custom splash is ready
+      SplashScreen.preventAutoHideAsync();
       checkAuth();
     }
   }, [fontsLoaded]);
@@ -108,7 +114,7 @@ export default function RootLayout() {
         // Handle email verification
         const { userId, secret } = queryParams as { userId?: string; secret?: string };
         if (userId && secret) {
-          router.push(`/Verify?userId=${userId}&secret=${secret}`);
+          router.push(`/auth/Verify?userId=${userId}&secret=${secret}`);
         }
       } else if (hostname === 'reset-password' || path === '/reset-password') {
         // Handle password reset
@@ -130,7 +136,7 @@ export default function RootLayout() {
           type?: string;
         };
         if (type === 'event-invite' && eventId) {
-          router.push(`/InviteLanding?eventId=${eventId}&inviter=${inviter || ''}`);
+          router.push(`/(root)/invites/inviteLanding?eventId=${eventId}&inviter=${inviter || ''}`);
         }
       }
     };
@@ -163,7 +169,7 @@ export default function RootLayout() {
 
           if (data?.type === 'event_invite' && data?.eventId) {
             // Navigate to event details
-            router.push(`/event/${data.eventId}` as any);
+            router.push(`/(root)/events/${data.eventId}` as any);
           } else if (data?.type === 'chat_message' && data?.chatId) {
             // Navigate to chat
             router.push(`/Messages/${data.chatId}` as any);
@@ -193,7 +199,40 @@ export default function RootLayout() {
     return cleanup;
   }, [router]);
 
-  if (!fontsLoaded || !isAppReady || isAuthenticated === null) return null;
+  // Handle data preloading specifically for Home and Feed screens
+  const handlePreloadData = async () => {
+    try {
+      console.log('🚀 Starting preload for Home and Feed screens...');
+      await dataPreloader.preloadAppData({
+        userId: currentUserId || undefined,
+        skipCache: false
+      });
+      console.log('✅ Preload completed - Home and Feed should be ready');
+    } catch (error) {
+      console.error('❌ Preload failed:', error);
+      // Don't throw - let the app start even if preload fails
+    }
+  };
+
+  const handleSplashFinish = () => {
+    setShowCustomSplash(false);
+  };
+
+  // Show custom splash screen while app is initializing
+  if (!fontsLoaded || !isAppReady || isAuthenticated === null || showCustomSplash) {
+    if (fontsLoaded && isAppReady && isAuthenticated !== null) {
+      return (
+        <ThemeProvider>
+          <CustomSplashScreen
+            onFinish={handleSplashFinish}
+            preloadData={handlePreloadData}
+            minimumDisplayTime={4000} // 4 seconds to ensure Home/Feed screens are ready
+          />
+        </ThemeProvider>
+      );
+    }
+    return null;
+  }
 
   // Decide whether to expose debug screens (dev or explicit flag)
   const showDebugScreens = __DEV__ || process.env.EXPO_PUBLIC_SHOW_CONFIG_SCREEN === '1';

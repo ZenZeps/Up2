@@ -82,7 +82,7 @@ export const DeleteAccountButton: React.FC<DeleteAccountButtonProps> = ({
                             text: 'OK',
                             onPress: () => {
                                 onDeleteComplete?.();
-                                router.replace('/SignIn');
+                                router.replace('/auth/SignIn');
                             }
                         }
                     ]
@@ -96,7 +96,7 @@ export const DeleteAccountButton: React.FC<DeleteAccountButtonProps> = ({
                             text: 'OK',
                             onPress: () => {
                                 onDeleteComplete?.();
-                                router.replace('/SignIn');
+                                router.replace('/auth/SignIn');
                             }
                         }
                     ]

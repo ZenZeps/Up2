@@ -1,5 +1,4 @@
 import { cacheManager } from '@/lib/debug/cacheManager';
-import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -141,11 +140,7 @@ export default function DebugDashboard() {
                     </TouchableOpacity>
                 </View>
 
-                <Link href="/(root)/Debug" asChild>
-                    <TouchableOpacity style={styles.debugPageButton}>
-                        <Text style={styles.buttonText}>Open Debug Page</Text>
-                    </TouchableOpacity>
-                </Link>
+                {/* Debug page removed - functionality available inline */}
 
                 <View style={styles.tips}>
                     <Text style={styles.tipsTitle}>Optimization Tips:</Text>

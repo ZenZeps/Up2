@@ -8,23 +8,68 @@
     "scheme": "up2",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "description": "Connect with friends, discover local events, and create unforgettable experiences. Up2 is your social platform for event discovery and community building.",
+    "keywords": [
+      "social",
+      "events",
+      "friends",
+      "community",
+      "local",
+      "networking"
+    ],
+    "primaryColor": "#007AFF",
+    "privacy": "public",
+    "githubUrl": "https://github.com/ZenZeps/Up2",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "category": "social",
+    "splash": {
+      "image": "./assets/images/Up2-Logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nikolajszeps.up2",
+      "buildNumber": "1",
       "associatedDomains": [
         "applinks:up2.app"
       ],
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "We need access to your photo library to allow you to select a profile photo.",
-        "NSCameraUsageDescription": "We need access to your camera to allow you to take profile photos.",
-        "NSMicrophoneUsageDescription": "We need access to your microphone for video recordings.",
-        "NSLocationWhenInUseUsageDescription": "We need access to your location to show nearby events and improve your experience.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "We need access to your location to show nearby events and improve your experience.",
-        "ITSAppUsesNonExemptEncryption": false
+        "NSPhotoLibraryUsageDescription": "Up2 needs access to your photo library to let you select and upload profile pictures and event photos.",
+        "NSCameraUsageDescription": "Up2 needs camera access to let you take profile pictures and event photos directly within the app.",
+        "NSMicrophoneUsageDescription": "Up2 may need microphone access for future video features and event recordings.",
+        "NSLocationWhenInUseUsageDescription": "Up2 uses your location to show nearby events and friends, helping you discover local activities and connect with people around you.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Up2 uses your location to show nearby events and friends, helping you discover local activities and connect with people around you.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSExceptionDomains": {
+            "syd.cloud.appwrite.io": {
+              "NSExceptionAllowsInsecureHTTPLoads": false,
+              "NSExceptionMinimumTLSVersion": "TLSv1.2"
+            }
+          }
+        },
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
+        "CFBundleDisplayName": "Up2",
+        "CFBundleShortVersionString": "1.0.0",
+        "CFBundleVersion": "1"
       }
     },
     "android": {
       "package": "com.nikolajszeps.up2",
+      "versionCode": 1,
+      "compileSdkVersion": 34,
+      "targetSdkVersion": 34,
+      "minSdkVersion": 23,
       "intentFilters": [
         {
           "action": "VIEW",
@@ -46,15 +91,23 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
+      "allowBackup": false,
+      "networkSecurityConfig": "network_security_config",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
         "android.permission.RECORD_AUDIO",
         "android.permission.VIBRATE",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.WAKE_LOCK"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ]
     },
     "web": {

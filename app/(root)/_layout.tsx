@@ -32,12 +32,12 @@ export default function RootLayout() {
       // Add a small delay to prevent race conditions
       const timer = setTimeout(() => {
         try {
-          router.replace('/SignIn');
+          router.replace('/auth/SignIn');
         } catch (navError) {
           console.error('Navigation error during auth redirect:', navError);
           // In React Native, just try router again instead of window.location
           setTimeout(() => {
-            router.replace('/SignIn');
+            router.replace('/auth/SignIn');
           }, 500);
         }
       }, 100);

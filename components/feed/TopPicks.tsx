@@ -169,7 +169,7 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
 
   // Handle event press
   const handleEventPress = (eventId: string) => {
-    router.push(`/event/${eventId}?from=top-picks` as any);
+    router.push(`/(root)/events/${eventId}?from=top-picks` as any);
   };
 
   // Get recommendation reason icon (if available on event)

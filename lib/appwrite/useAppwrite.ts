@@ -25,7 +25,7 @@ function useDebounce<T extends (...args: any[]) => Promise<any>>(
   callback: T,
   delay: number
 ): (...args: Parameters<T>) => Promise<ReturnType<T>> {
-  const timer = useRef<NodeJS.Timeout | null>(null);
+  const timer = useRef<number | null>(null);
 
   return (...args: Parameters<T>): Promise<ReturnType<T>> => {
     return new Promise((resolve, reject) => {
