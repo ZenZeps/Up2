@@ -7,12 +7,14 @@ import "@/lib/i18n"; // Initialize i18n
 import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import notificationService from "@/lib/notifications/notificationService";
 import { dataPreloader } from "@/lib/services/dataPreloader";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts } from "expo-font";
 import * as Linking from 'expo-linking';
 import { SplashScreen, Stack, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { BackHandler } from "react-native";
 import { CustomSplashScreen } from "../components/SplashScreen";
+import FirstTimeSetupModal from "../components/onboarding/FirstTimeSetupModal";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./globals.css";
 
@@ -33,6 +35,7 @@ export default function RootLayout() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [showCustomSplash, setShowCustomSplash] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [showFirstTimeSetup, setShowFirstTimeSetup] = useState(false);
 
   // Handle hardware back button for proper navigation
   useEffect(() => {
@@ -78,6 +81,12 @@ export default function RootLayout() {
         setIsAuthenticated(true);
         setCurrentUserId(user.$id);
         console.log("User is authenticated");
+
+        // Check if this is a first-time user
+        const firstTimeSetupCompleted = await AsyncStorage.getItem(`first_time_setup_${user.$id}`);
+        if (!firstTimeSetupCompleted) {
+          setShowFirstTimeSetup(true);
+        }
       } catch (err: any) {
         // These errors are expected for unauthenticated users, don't log them
         let errorMessage = typeof err === 'string' ? err :
@@ -253,6 +262,15 @@ export default function RootLayout() {
                 <Stack.Screen name="ResetPassword" />
                 {showDebugScreens && <Stack.Screen name="DebugConfig" />}
               </Stack>
+
+              {/* First-time setup modal for new users */}
+              {showFirstTimeSetup && currentUserId && (
+                <FirstTimeSetupModal
+                  visible={showFirstTimeSetup}
+                  userId={currentUserId}
+                  onComplete={() => setShowFirstTimeSetup(false)}
+                />
+              )}
             </GlobalProvider>
           </AlertProvider>
         </ThemeProvider>

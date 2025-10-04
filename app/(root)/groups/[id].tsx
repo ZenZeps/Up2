@@ -28,9 +28,9 @@ import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GroupMessagesModal from '../chat/GroupChat';
 import EventForm from '../components/forms/EventForm';
+import EventDetailsModal from '../components/modals/EventDetailsModal';
 import GroupInfoModal from '../components/modals/GroupInfoModal';
 import GroupSettingsModal from '../components/modals/GroupSettingsModal';
-import EventDetailsModal from '../components/modals/EventDetailsModal';
 import UserAvatar from '../components/UserAvatar';
 
 // Define available calendar view modes
@@ -713,6 +713,8 @@ const GroupPage = () => {
                     group={group}
                 />
             )}
+
+
         </SafeAreaView>
     );
 };

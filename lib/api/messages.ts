@@ -16,8 +16,14 @@ export const createMessage = async (messageInput: MessageInput, authorId: string
 
         const messageData = {
             content: messageInput.content.trim(),
+            // TEMPORARY FIX: Only use string fields until relationships are configured
+            // TODO: Add back relationship fields once Appwrite Console is configured:
+            // sender: authorId,
+            // chat: messageInput.chatId,
+            // Keep string fields for compatibility during transition
             authorId,
             chatId: messageInput.chatId,
+            senderId: authorId, // Alternative field name used in some places
             replyToId: messageInput.replyToId || null,
             isEdited: false,
         };

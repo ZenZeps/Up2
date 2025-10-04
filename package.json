@@ -9,7 +9,6 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "setup-travel": "node setup-travel-friend-notifications.js",
     "build:check": "./scripts/build-for-stores.sh",
     "build:ios": "eas build --platform ios --profile production",
     "build:android": "eas build --platform android --profile production",

@@ -318,7 +318,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
       if (groupId && savedEvent) {
         console.log('🔥 EventForm: Adding event to group:', { eventId: savedEvent.$id, groupId });
         try {
-          await addEventToGroup(savedEvent.$id, groupId);
+          await addEventToGroup(groupId, savedEvent.$id);
           console.log('🔥 EventForm: Successfully added event to group');
         } catch (error) {
           console.error('🔥 EventForm: Error adding event to group:', error);
@@ -1460,12 +1460,213 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
           </SafeAreaView>
         </Background>
       )}
+
+      {/* Enhanced Date & Time Picker Modal */}
+      {showGoogleDatePicker && (
+        <Modal
+          visible={showGoogleDatePicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowGoogleDatePicker(false)}
+        >
+          <View style={styles.enhancedPickerOverlay}>
+            <View style={styles.enhancedPickerContainer}>
+              {/* Header */}
+              <View style={styles.enhancedPickerHeader}>
+                <TouchableOpacity
+                  onPress={() => setShowGoogleDatePicker(false)}
+                  style={styles.pickerCloseButton}
+                >
+                  <MaterialIcons name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
+                <Text style={styles.enhancedPickerTitle}>Event Date & Time</Text>
+                <TouchableOpacity
+                  onPress={() => setShowGoogleDatePicker(false)}
+                  style={styles.pickerDoneButton}
+                >
+                  <Text style={styles.pickerDoneText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Content */}
+              <View style={styles.enhancedPickerContent}>
+                {/* All Day Toggle */}
+                <TouchableOpacity
+                  onPress={() => setIsAllDay(!isAllDay)}
+                  style={styles.allDayToggleContainer}
+                >
+                  <Text style={styles.allDayToggleText}>All day</Text>
+                  <View style={[
+                    styles.toggleSwitch,
+                    { backgroundColor: isAllDay ? '#4ECDC4' : '#E5E7EB' }
+                  ]}>
+                    <View style={[
+                      styles.toggleThumb,
+                      {
+                        backgroundColor: '#fff',
+                        transform: [{ translateX: isAllDay ? 20 : 2 }]
+                      }
+                    ]} />
+                  </View>
+                </TouchableOpacity>
+
+                {/* Start Date & Time */}
+                <View style={styles.dateTimeSection}>
+                  <Text style={styles.dateTimeSectionTitle}>Starts</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowStartPicker(true)}
+                    style={styles.dateTimeButton}
+                  >
+                    <View>
+                      <Text style={styles.dateText}>
+                        {dayjs(startDate).format('dddd, MMMM D, YYYY')}
+                      </Text>
+                      {!isAllDay && (
+                        <Text style={styles.timeText}>
+                          {dayjs(startDate).format('h:mm A')}
+                        </Text>
+                      )}
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* End Date & Time */}
+                <View style={styles.dateTimeSection}>
+                  <Text style={styles.dateTimeSectionTitle}>Ends</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowEndPicker(true)}
+                    style={styles.dateTimeButton}
+                  >
+                    <View>
+                      <Text style={styles.dateText}>
+                        {dayjs(endDate).format('dddd, MMMM D, YYYY')}
+                      </Text>
+                      {!isAllDay && (
+                        <Text style={styles.timeText}>
+                          {dayjs(endDate).format('h:mm A')}
+                        </Text>
+                      )}
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  // Fallback DateTimePicker styles
+  // Enhanced DateTimePicker styles
+  enhancedPickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  enhancedPickerContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '60%',
+    paddingBottom: 34, // Safe area padding
+  },
+  enhancedPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  pickerCloseButton: {
+    padding: 4,
+    width: 60,
+  },
+  enhancedPickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    textAlign: 'center',
+  },
+  pickerDoneButton: {
+    padding: 4,
+    width: 60,
+    alignItems: 'flex-end',
+  },
+  pickerDoneText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4ECDC4',
+  },
+  enhancedPickerContent: {
+    padding: 20,
+  },
+  allDayToggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    marginBottom: 20,
+  },
+  allDayToggleText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1F2937',
+  },
+  toggleSwitch: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    position: 'absolute',
+  },
+  dateTimeSection: {
+    marginBottom: 20,
+  },
+  dateTimeSectionTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  dateTimeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  dateText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  timeText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+
+  // Fallback DateTimePicker styles (keep for compatibility)
   fallbackPickerOverlay: {
     flex: 1,
     justifyContent: 'center',

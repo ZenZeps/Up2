@@ -49,11 +49,16 @@ export const createMessage = async (
         // Get author data (with caching)
         const author = await getCachedAuthor(authorId);
 
-        // Create message data
+        // Create message data with relationship fields
         const messageData = {
             content: content.trim(),
+            // New relationship fields
+            sender: authorId,
+            chat: chatId,
+            // Keep string fields for compatibility during transition
             authorId,
             chatId,
+            senderId: authorId, // Alternative field name
             authorName: author.name,
             authorPhotoUrl: author.photoUrl,
             isEdited: false,

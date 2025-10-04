@@ -1,8 +1,8 @@
+import images from '@/constants/images';
 import { useTheme } from '@/lib/context/ThemeContext';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Animated, Dimensions, Image, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Dimensions, Image, View } from 'react-native';
 
 interface CustomSplashScreenProps {
     onFinish: () => void;
@@ -21,15 +21,18 @@ export const CustomSplashScreen: React.FC<CustomSplashScreenProps> = ({
     const [isLoading, setIsLoading] = useState(true);
     const [loadingText, setLoadingText] = useState('Welcome to Up2');
 
-    // Animation values
+    // Enhanced animation values
     const fadeAnim = new Animated.Value(0);
     const scaleAnim = new Animated.Value(0.8);
     const textFadeAnim = new Animated.Value(0);
+    const pulseAnim = new Animated.Value(1);
+    const rotateAnim = new Animated.Value(0);
+    const progressAnim = new Animated.Value(0);
 
     useEffect(() => {
         const initializeApp = async () => {
             try {
-                // Start animations
+                // Start enhanced animations
                 Animated.parallel([
                     Animated.timing(fadeAnim, {
                         toValue: 1,
@@ -43,6 +46,38 @@ export const CustomSplashScreen: React.FC<CustomSplashScreenProps> = ({
                         useNativeDriver: true,
                     }),
                 ]).start();
+
+                // Start pulsing animation for logo
+                Animated.loop(
+                    Animated.sequence([
+                        Animated.timing(pulseAnim, {
+                            toValue: 1.1,
+                            duration: 1000,
+                            useNativeDriver: true,
+                        }),
+                        Animated.timing(pulseAnim, {
+                            toValue: 1,
+                            duration: 1000,
+                            useNativeDriver: true,
+                        }),
+                    ])
+                ).start();
+
+                // Start subtle rotation animation
+                Animated.loop(
+                    Animated.timing(rotateAnim, {
+                        toValue: 1,
+                        duration: 3000,
+                        useNativeDriver: true,
+                    })
+                ).start();
+
+                // Animate progress bar
+                Animated.timing(progressAnim, {
+                    toValue: 1,
+                    duration: minimumDisplayTime,
+                    useNativeDriver: false,
+                }).start();
 
                 // Show text after logo animation
                 setTimeout(() => {
@@ -106,91 +141,100 @@ export const CustomSplashScreen: React.FC<CustomSplashScreenProps> = ({
         return null;
     }
 
+    const spin = rotateAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['0deg', '360deg'],
+    });
+
     return (
-        <View style={{ flex: 1 }}>
-            <LinearGradient
-                colors={[colors.primary, colors.secondary, '#ffffff']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
+        <View style={{
+            flex: 1,
+            backgroundColor: '#ffffff',
+            justifyContent: 'center',
+            alignItems: 'center'
+        }}>
+            <Animated.View
                 style={{
-                    flex: 1,
-                    justifyContent: 'center',
+                    opacity: fadeAnim,
+                    transform: [{ scale: scaleAnim }],
                     alignItems: 'center',
-                    width,
-                    height,
                 }}
             >
+                {/* Animated Logo with pulsing and subtle rotation */}
                 <Animated.View
                     style={{
-                        opacity: fadeAnim,
-                        transform: [{ scale: scaleAnim }],
-                        alignItems: 'center',
+                        transform: [
+                            { scale: pulseAnim },
+                            { rotate: spin }
+                        ],
+                        marginBottom: 40,
                     }}
                 >
-                    {/* Logo */}
                     <Image
-                        source={require('../assets/images/Up2-Logo.png')}
+                        source={images.logo}
                         style={{
                             width: 120,
                             height: 120,
-                            marginBottom: 40,
                         }}
                         resizeMode="contain"
                     />
+                </Animated.View>
 
-                    {/* App Name */}
-                    <Text
+                {/* App Name */}
+                <Animated.Text
+                    style={{
+                        opacity: textFadeAnim,
+                        fontSize: 28,
+                        fontWeight: 'bold',
+                        color: colors.primary,
+                        marginBottom: 30,
+                        fontFamily: 'Rubik-ExtraBold',
+                    }}
+                >
+                    Up2
+                </Animated.Text>
+
+                {/* Progress Bar */}
+                <View style={{
+                    width: 200,
+                    height: 4,
+                    backgroundColor: '#f0f0f0',
+                    borderRadius: 2,
+                    marginBottom: 20,
+                    overflow: 'hidden'
+                }}>
+                    <Animated.View
                         style={{
-                            fontSize: 32,
-                            fontWeight: 'bold',
-                            color: '#ffffff',
-                            marginBottom: 20,
-                            fontFamily: 'Rubik-ExtraBold',
-                            textShadowColor: 'rgba(0, 0, 0, 0.3)',
-                            textShadowOffset: { width: 0, height: 2 },
-                            textShadowRadius: 4,
+                            height: '100%',
+                            backgroundColor: colors.primary,
+                            borderRadius: 2,
+                            width: progressAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ['0%', '100%'],
+                            }),
                         }}
-                    >
-                        Up2
-                    </Text>
+                    />
+                </View>
 
-                    {/* Tagline */}
+                {/* Loading indicator and text */}
+                <View style={{ alignItems: 'center' }}>
+                    <ActivityIndicator
+                        size="small"
+                        color={colors.primary}
+                        style={{ marginBottom: 12 }}
+                    />
                     <Animated.Text
                         style={{
                             opacity: textFadeAnim,
-                            fontSize: 16,
-                            color: '#ffffff',
-                            marginBottom: 40,
-                            fontFamily: 'Rubik-Medium',
-                            textAlign: 'center',
-                            textShadowColor: 'rgba(0, 0, 0, 0.2)',
-                            textShadowOffset: { width: 0, height: 1 },
-                            textShadowRadius: 2,
+                            fontSize: 14,
+                            color: colors.textSecondary,
+                            fontFamily: 'Rubik-Regular',
                         }}
                     >
-                        Connect, Event, Experience
+                        {loadingText}
                     </Animated.Text>
-
-                    {/* Loading indicator */}
-                    <View style={{ alignItems: 'center' }}>
-                        <ActivityIndicator
-                            size="small"
-                            color="#ffffff"
-                            style={{ marginBottom: 12 }}
-                        />
-                        <Animated.Text
-                            style={{
-                                opacity: textFadeAnim,
-                                fontSize: 14,
-                                color: 'rgba(255, 255, 255, 0.9)',
-                                fontFamily: 'Rubik-Regular',
-                            }}
-                        >
-                            {loadingText}
-                        </Animated.Text>
-                    </View>
-                </Animated.View>
-            </LinearGradient>
+                </View>
+            </Animated.View>
         </View>
     );
 };

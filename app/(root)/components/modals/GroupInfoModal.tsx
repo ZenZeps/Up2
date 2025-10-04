@@ -12,11 +12,11 @@ import {
     ScrollView,
     StyleSheet,
     Text,
-    TextInput,
     TouchableOpacity,
     View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import GroupInviteFriendsModal from './GroupInviteFriendsModal';
 
 interface GroupInfoModalProps {
     visible: boolean;
@@ -36,6 +36,7 @@ const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
     const router = useRouter();
     const [inviteName, setInviteName] = useState('');
     const [loading, setLoading] = useState(false);
+    const [inviteFriendsVisible, setInviteFriendsVisible] = useState(false);
 
     const isCreator = group.creatorId === user?.$id;
 
@@ -267,46 +268,24 @@ const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                     </View>
 
                     {/* Invite Friends Card */}
-                    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <View style={styles.cardHeader}>
-                            <MaterialIcons name="person-add" size={20} color={colors.primary} />
-                            <Text style={[styles.cardTitle, { color: colors.text }]}>
-                                Invite Friends
-                            </Text>
+                    <TouchableOpacity
+                        onPress={() => setInviteFriendsVisible(true)}
+                        style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    >
+                        <View style={[styles.cardHeader, { justifyContent: 'space-between' }]}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <MaterialIcons name="person-add" size={20} color={colors.primary} />
+                                <Text style={[styles.cardTitle, { color: colors.text }]}>
+                                    Invite Friends
+                                </Text>
+                            </View>
+                            <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
                         </View>
 
                         <Text style={[styles.cardSubtitle, { color: colors.textSecondary }]}>
-                            Search for friends by name to invite them to this group
+                            Invite your friends to join this group
                         </Text>
-
-                        <View style={styles.inviteContainer}>
-                            <View style={[styles.inviteInputContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                                <MaterialIcons name="search" size={20} color={colors.textSecondary} />
-                                <TextInput
-                                    style={[styles.inviteInput, { color: colors.text }]}
-                                    placeholder="Enter friend's name"
-                                    placeholderTextColor={colors.textSecondary}
-                                    value={inviteName}
-                                    onChangeText={setInviteName}
-                                    editable={!loading}
-                                />
-                            </View>
-                            <TouchableOpacity
-                                onPress={handleInviteFriend}
-                                disabled={loading || !inviteName.trim()}
-                                style={[
-                                    styles.inviteButton,
-                                    { backgroundColor: loading || !inviteName.trim() ? colors.border : colors.primary }
-                                ]}
-                            >
-                                <MaterialIcons
-                                    name="send"
-                                    size={18}
-                                    color={loading || !inviteName.trim() ? colors.textSecondary : 'white'}
-                                />
-                            </TouchableOpacity>
-                        </View>
-                    </View>
+                    </TouchableOpacity>
 
                     {/* Action Buttons */}
                     <View style={styles.actionsContainer}>
@@ -339,6 +318,23 @@ const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                     </View>
                 </ScrollView>
             </SafeAreaView>
+
+            {/* Group Invite Friends Modal */}
+            {user && (
+                <GroupInviteFriendsModal
+                    visible={inviteFriendsVisible}
+                    onClose={() => setInviteFriendsVisible(false)}
+                    groupId={group.$id}
+                    currentUserId={user.$id}
+                    existingMemberIds={group.users?.map((member: any) =>
+                        typeof member === 'string' ? member : member.$id
+                    ) || []}
+                    onInviteSuccess={() => {
+                        onUpdateGroup();
+                        setInviteFriendsVisible(false);
+                    }}
+                />
+            )}
         </Modal>
     );
 };

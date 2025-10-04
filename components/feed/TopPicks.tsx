@@ -62,7 +62,8 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
 
     const loadFromCache = async () => {
       try {
-        const cached = await AsyncStorage.getItem('simple_top_picks');
+        const cacheKey = `top_picks_${currentUserId || 'anonymous'}`;
+        const cached = await AsyncStorage.getItem(cacheKey);
         if (cached) {
           const cachedPicks = JSON.parse(cached);
           if (cachedPicks && Array.isArray(cachedPicks) && cachedPicks.length > 0) {
@@ -74,7 +75,7 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
               pick.startTime
             );
             if (validPicks.length > 0) {
-              console.log('🎯 TopPicks: Loaded', validPicks.length, 'picks from cache');
+              console.log('🎯 TopPicks: Loaded', validPicks.length, 'picks from cache for user', currentUserId);
               setTopPicks(validPicks);
               setIsLoading(false);
             }
@@ -97,6 +98,12 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
       setTopPicks([]);
       return;
     }
+
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      console.warn('🎯 TopPicks: Generation timeout, setting loading to false');
+      setIsLoading(false);
+    }, 10000); // 10 second timeout
 
     const generateTopPicks = async () => {
       console.log('🎯 TopPicks: Starting generation...', {
@@ -142,10 +149,11 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
         console.log('✅ Generated', picks.length, 'top picks');
         setTopPicks(picks);
 
-        // Simple cache save
+        // Cache save with user-specific key to prevent cross-user cache conflicts
         try {
-          await AsyncStorage.setItem('simple_top_picks', JSON.stringify(picks));
-          console.log('💾 TopPicks: Cached', picks.length, 'picks');
+          const cacheKey = `top_picks_${currentUserId || 'anonymous'}`;
+          await AsyncStorage.setItem(cacheKey, JSON.stringify(picks));
+          console.log('💾 TopPicks: Cached', picks.length, 'picks for user', currentUserId);
         } catch (error) {
           console.warn('TopPicks: Failed to cache picks:', error);
         }
@@ -161,10 +169,16 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
         });
       } finally {
         setIsLoading(false);
+        clearTimeout(timeoutId); // Clear timeout on completion
       }
     };
 
     generateTopPicks();
+
+    // Cleanup timeout on unmount or dependency change
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, [stableInputs]);
 
   // Handle event press

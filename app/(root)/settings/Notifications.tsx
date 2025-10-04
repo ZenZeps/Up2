@@ -1,7 +1,7 @@
-import { getUserProfile, updateUserProfile } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -21,68 +21,92 @@ const NotificationSettings = () => {
     const { colors } = useTheme();
     const userId = user?.$id;
 
-    const [notificationsEnabled, setNotificationsEnabled] = useState<boolean | null>(null);
+    const [notificationsEnabled, setNotificationsEnabled] = useState(true);
     const [eventReminders, setEventReminders] = useState(true);
     const [friendRequests, setFriendRequests] = useState(true);
     const [groupInvites, setGroupInvites] = useState(true);
     const [eventInvites, setEventInvites] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
 
-    // Load profile data
+    // Initialize notification settings from AsyncStorage
     useEffect(() => {
-        const loadProfile = async () => {
+        const loadNotificationSettings = async () => {
             if (!userId) return;
 
             try {
-                const profile = await getUserProfile(userId);
-                if (profile) {
-                    setNotificationsEnabled(profile.notificationsEnabled ?? null);
-                    // For now, using the general notification setting for all types
-                    setEventReminders(profile.notificationsEnabled ?? true);
-                    setFriendRequests(profile.notificationsEnabled ?? true);
-                    setGroupInvites(profile.notificationsEnabled ?? true);
-                    setEventInvites(profile.notificationsEnabled ?? true);
-                }
+                const [notifEnabled, eventRem, friendReq, groupInv, eventInv] = await Promise.all([
+                    AsyncStorage.getItem(`notifications_enabled_${userId}`),
+                    AsyncStorage.getItem(`event_reminders_${userId}`),
+                    AsyncStorage.getItem(`friend_requests_${userId}`),
+                    AsyncStorage.getItem(`group_invites_${userId}`),
+                    AsyncStorage.getItem(`event_invites_${userId}`)
+                ]);
+
+                setNotificationsEnabled(notifEnabled !== null ? JSON.parse(notifEnabled) : true);
+                setEventReminders(eventRem !== null ? JSON.parse(eventRem) : true);
+                setFriendRequests(friendReq !== null ? JSON.parse(friendReq) : true);
+                setGroupInvites(groupInv !== null ? JSON.parse(groupInv) : true);
+                setEventInvites(eventInv !== null ? JSON.parse(eventInv) : true);
             } catch (err) {
-                console.error('Error loading profile:', err);
+                console.error('Error loading notification settings:', err);
+                // Set defaults on error
+                setNotificationsEnabled(true);
+                setEventReminders(true);
+                setFriendRequests(true);
+                setGroupInvites(true);
+                setEventInvites(true);
             }
         };
 
-        loadProfile();
+        loadNotificationSettings();
     }, [userId]);
 
     const handleToggleNotifications = async (value: boolean) => {
+        if (!userId) return;
+
         try {
             setIsLoading(true);
             setNotificationsEnabled(value);
 
-            if (!userId) return;
+            // Store in AsyncStorage
+            await AsyncStorage.setItem(`notifications_enabled_${userId}`, JSON.stringify(value));
 
-            // Get current profile to preserve other data
-            const currentProfile = await getUserProfile(userId);
-
-            await updateUserProfile({
-                $id: userId,
-                firstName: currentProfile?.firstName || '',
-                lastName: currentProfile?.lastName || '',
-                name: `${currentProfile?.firstName || ''} ${currentProfile?.lastName || ''}`.trim(),
-                email: currentProfile?.email || user?.email || '',
-                isPublic: currentProfile?.isPublic ?? true,
-                preferences: currentProfile?.preferences || [],
-                friends: currentProfile?.friends || [],
-                photoId: currentProfile?.photoId,
-                notificationsEnabled: value,
-            });
-
-            await refetch();
-            Alert.alert('Success', 'Notification settings updated successfully');
+            console.log(`Notifications ${value ? 'enabled' : 'disabled'}`);
+            Alert.alert('Success', `Notifications ${value ? 'enabled' : 'disabled'}`);
         } catch (err) {
             console.error('Error updating notification settings:', err);
             Alert.alert('Error', 'Failed to update notification settings');
-            // Revert the switch if update failed
             setNotificationsEnabled(!value);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleToggleSpecificNotification = async (type: string, value: boolean) => {
+        if (!userId) return;
+
+        try {
+            switch (type) {
+                case 'eventReminders':
+                    setEventReminders(value);
+                    await AsyncStorage.setItem(`event_reminders_${userId}`, JSON.stringify(value));
+                    break;
+                case 'friendRequests':
+                    setFriendRequests(value);
+                    await AsyncStorage.setItem(`friend_requests_${userId}`, JSON.stringify(value));
+                    break;
+                case 'groupInvites':
+                    setGroupInvites(value);
+                    await AsyncStorage.setItem(`group_invites_${userId}`, JSON.stringify(value));
+                    break;
+                case 'eventInvites':
+                    setEventInvites(value);
+                    await AsyncStorage.setItem(`event_invites_${userId}`, JSON.stringify(value));
+                    break;
+            }
+            console.log(`${type} ${value ? 'enabled' : 'disabled'}`);
+        } catch (err) {
+            console.error(`Error updating ${type}:`, err);
         }
     };
 
@@ -138,7 +162,7 @@ const NotificationSettings = () => {
                         </View>
                         <Switch
                             value={eventReminders}
-                            onValueChange={setEventReminders}
+                            onValueChange={(value) => handleToggleSpecificNotification('eventReminders', value)}
                             disabled={!notificationsEnabled}
                             trackColor={{ false: '#E0E0E0', true: '#FF8A65' }}
                             thumbColor={eventReminders && notificationsEnabled ? '#FFFFFF' : '#f4f3f4'}
@@ -154,7 +178,7 @@ const NotificationSettings = () => {
                         </View>
                         <Switch
                             value={friendRequests}
-                            onValueChange={setFriendRequests}
+                            onValueChange={(value) => handleToggleSpecificNotification('friendRequests', value)}
                             disabled={!notificationsEnabled}
                             trackColor={{ false: '#E0E0E0', true: '#FF8A65' }}
                             thumbColor={friendRequests && notificationsEnabled ? '#FFFFFF' : '#f4f3f4'}
@@ -170,7 +194,7 @@ const NotificationSettings = () => {
                         </View>
                         <Switch
                             value={groupInvites}
-                            onValueChange={setGroupInvites}
+                            onValueChange={(value) => handleToggleSpecificNotification('groupInvites', value)}
                             disabled={!notificationsEnabled}
                             trackColor={{ false: '#E0E0E0', true: '#FF8A65' }}
                             thumbColor={groupInvites && notificationsEnabled ? '#FFFFFF' : '#f4f3f4'}
@@ -186,7 +210,7 @@ const NotificationSettings = () => {
                         </View>
                         <Switch
                             value={eventInvites}
-                            onValueChange={setEventInvites}
+                            onValueChange={(value) => handleToggleSpecificNotification('eventInvites', value)}
                             disabled={!notificationsEnabled}
                             trackColor={{ false: '#E0E0E0', true: '#FF8A65' }}
                             thumbColor={eventInvites && notificationsEnabled ? '#FFFFFF' : '#f4f3f4'}

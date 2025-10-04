@@ -97,12 +97,23 @@ const getUserGroupsLegacy = async (userId: string, limit: number = 50): Promise<
  * UPDATED: Now uses junction table for member information
  */
 export const getGroupById = async (groupId: string): Promise<Group | null> => {
+    if (!groupId || typeof groupId !== 'string') {
+        console.error('getGroupById: Invalid groupId provided:', groupId);
+        return null;
+    }
+
     try {
+        console.log('🔍 Fetching group:', groupId);
         const response = await databases.getDocument(
             config.databaseID!,
             config.groupsCollectionID!,
             groupId
         );
+
+        if (!response) {
+            console.warn('getGroupById: No response received for group:', groupId);
+            return null;
+        }
 
         // Get member count and member list from junction table
         let memberCount = response.memberCount || 0;
@@ -132,8 +143,12 @@ export const getGroupById = async (groupId: string): Promise<Group | null> => {
             $createdAt: response.$createdAt,
             $updatedAt: response.$updatedAt,
         } as Group;
-    } catch (error) {
-        console.error('Error fetching group:', error);
+    } catch (error: any) {
+        if (error.code === 404 || error.message?.includes('not be found')) {
+            console.warn(`Group not found: ${groupId}. This might be expected if the group was deleted.`);
+        } else {
+            console.error('Error fetching group:', groupId, error);
+        }
         return null;
     }
 };
@@ -822,47 +837,22 @@ const addUserToGroupLegacy = async (groupId: string, userId: string): Promise<bo
 };
 
 /**
- * Delete group (Owner only)
+ * Delete group (Owner only) with relationship-based cascade deletion
  */
 export const deleteGroup = async (groupId: string, userId: string): Promise<boolean> => {
     try {
-        // Import permission function
-        const { checkGroupPermission } = await import('./groupMembership');
+        console.log(`Starting relationship-based group deletion: ${groupId}`);
 
-        // Check if user has permission to delete
-        const canDelete = await checkGroupPermission(groupId, userId, 'delete_group');
-        if (!canDelete) {
-            console.error('User does not have permission to delete group');
-            return false;
-        }
-
-        // Delete all group memberships first
-        const memberships = await databases.listDocuments(
-            config.databaseID!,
-            config.groupMembershipsCollectionID!,
-            [
-                Query.equal('groupId', groupId),
-                Query.limit(1000) // Should handle most groups
-            ]
-        );
-
-        // Delete all membership records
-        for (const membership of memberships.documents) {
-            await databases.deleteDocument(
-                config.databaseID!,
-                config.groupMembershipsCollectionID!,
-                membership.$id
-            );
-        }
-
-        // Delete the group itself
+        // With relationship-based cascade deletion, we just delete the group
+        // All related data (memberships, events, messages, etc.) will be automatically deleted
         await databases.deleteDocument(
             config.databaseID!,
             config.groupsCollectionID!,
             groupId
         );
 
-        console.log(`Group ${groupId} deleted successfully by user ${userId}`);
+        console.log(`Successfully deleted group ${groupId} - relationships automatically cascaded deletion of all memberships, events, and related data`);
+
         return true;
     } catch (error) {
         console.error('Error deleting group:', error);

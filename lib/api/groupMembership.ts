@@ -61,13 +61,18 @@ export async function addGroupMember(
             }
         }
 
-        // Create new membership
+        // Create new membership with relationship fields
         const { createDocumentSafe } = await import('@/lib/appwrite/safeDb');
         await createDocumentSafe(
             config.databaseID!,
             config.groupMembershipsCollectionID!,
             ID.unique(),
             {
+                // TEMPORARY FIX: Only use string fields until relationships are configured
+                // TODO: Add back relationship fields once Appwrite Console is configured:
+                // group: groupId,
+                // user: userId,
+                // Keep string fields for compatibility during transition
                 groupId,
                 userId,
                 role,

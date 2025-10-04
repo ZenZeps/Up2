@@ -139,9 +139,10 @@ export default function ShareInviteModal({ visible, onClose, eventId }: ShareInv
             animationType="slide"
             transparent
             onRequestClose={onClose}
+            presentationStyle="overFullScreen"
         >
             <View style={styles.overlay}>
-                <View style={styles.modalContainer}>
+                <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
                     {/* Black Header matching your app style */}
                     <View style={[styles.header, { backgroundColor: colors.primary, borderBottomColor: colors.border }]}>
                         <Text style={[styles.headerTitle, { color: colors.buttonText }]}>Share Event Invite</Text>
@@ -258,27 +259,33 @@ export default function ShareInviteModal({ visible, onClose, eventId }: ShareInv
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
         justifyContent: 'flex-end',
+        paddingBottom: 0, // Remove any bottom padding that might cause cutoff
     },
     modalContainer: {
-        backgroundColor: 'white',
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
-        maxHeight: '95%', // Increased from 90% to give more space
-        minHeight: '50%', // Ensure minimum height for content visibility
+        maxHeight: '95%', // Take up majority of screen
+        minHeight: '80%', // Much larger minimum height
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: -4,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 10,
+        elevation: 20,
     },
     header: {
-        backgroundColor: '#000000',
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 16,
+        paddingHorizontal: 20,
+        paddingVertical: 18,
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         borderBottomWidth: 1,
-        borderBottomColor: '#333333',
     },
     headerTitle: {
         fontSize: 20,
@@ -289,13 +296,14 @@ const styles = StyleSheet.create({
         padding: 8,
     },
     content: {
-        paddingHorizontal: 16,
-        paddingTop: 20,
-        paddingBottom: 40, // Increased bottom padding to prevent cutoff
-        maxHeight: '100%', // Allow full height usage
+        paddingHorizontal: 20,
+        paddingTop: 24,
+        paddingBottom: 32,
+        flex: 1,
     },
     scrollContent: {
-        paddingBottom: 20, // Additional padding for scroll content
+        paddingBottom: 32,
+        flexGrow: 1,
     },
     loadingContainer: {
         paddingVertical: 48,
@@ -341,11 +349,20 @@ const styles = StyleSheet.create({
     shareOption: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 16,
-        backgroundColor: '#f8f9fa',
-        borderRadius: 12,
+        padding: 18,
+        backgroundColor: '#ffffff',
+        borderRadius: 16,
         borderWidth: 1,
         borderColor: '#e9ecef',
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 3,
+        marginBottom: 4,
     },
     shareIconContainer: {
         width: 48,
