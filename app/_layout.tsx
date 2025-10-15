@@ -11,7 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts } from "expo-font";
 import * as Linking from 'expo-linking';
 import { SplashScreen, Stack, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { BackHandler } from "react-native";
 import { CustomSplashScreen } from "../components/SplashScreen";
 import FirstTimeSetupModal from "../components/onboarding/FirstTimeSetupModal";
@@ -31,126 +31,117 @@ export default function RootLayout() {
     "Rubik-SemiBold": require("../assets/fonts/Rubik-SemiBold.ttf"),
   });
 
-  const [isAppReady, setIsAppReady] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [showCustomSplash, setShowCustomSplash] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [showFirstTimeSetup, setShowFirstTimeSetup] = useState(false);
+  // Consolidated app state for better performance
+  const [appState, setAppState] = useState(() => ({
+    isAppReady: false,
+    isAuthenticated: null as boolean | null,
+    showCustomSplash: true,
+    currentUserId: null as string | null,
+    showFirstTimeSetup: false
+  }));
 
-  // Handle hardware back button for proper navigation
-  useEffect(() => {
-    const backAction = () => {
+  // Memoized destructuring for performance
+  const { isAppReady, isAuthenticated, showCustomSplash, currentUserId, showFirstTimeSetup } = appState;
+
+  // Optimized back button handler with memoization
+  const backAction = useCallback(() => {
+    try {
+      if (router.canGoBack()) {
+        router.back();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error handling back button:', error);
       try {
         if (router.canGoBack()) {
           router.back();
-          return true; // Prevent default behavior
+          return true;
         }
-        // If we can't go back, allow the default behavior (which will exit the app)
-        return false;
-      } catch (error) {
-        console.error('Error handling back button:', error);
-        // Try emergency fallback
-        try {
-          if (router.canGoBack()) {
-            router.back();
-            return true;
-          }
-        } catch (fallbackError) {
-          console.error('Emergency back button fallback failed:', fallbackError);
-        }
-        return false; // Allow app exit if all else fails
+      } catch {
+        // Silent fallback
       }
-    };
-
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
-    return () => backHandler.remove();
+      return false;
+    }
   }, [router]);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        // Check if Appwrite is properly configured
-        if (!process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID) {
-          console.error("Appwrite configuration missing");
-          setIsAuthenticated(false);
-          setIsAppReady(true);
-          return;
-        }
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [backAction]);
 
-        const user = await account.get(); // Will throw if not logged in
-        setIsAuthenticated(true);
-        setCurrentUserId(user.$id);
-        console.log("User is authenticated");
-
-        // Check if this is a first-time user
-        const firstTimeSetupCompleted = await AsyncStorage.getItem(`first_time_setup_${user.$id}`);
-        if (!firstTimeSetupCompleted) {
-          setShowFirstTimeSetup(true);
-        }
-      } catch (err: any) {
-        // These errors are expected for unauthenticated users, don't log them
-        let errorMessage = typeof err === 'string' ? err :
-          err?.message ||
-          (err?.toString ? err.toString() : 'Unknown error');
-
-        if (
-          !errorMessage.includes('missing scope (account)') &&
-          !errorMessage.includes('User (role: guests)')
-        ) {
-          console.error("Auth error:", err);
-        } else {
-          console.log("User is not authenticated (expected behavior)");
-        }
-        setIsAuthenticated(false);
-      } finally {
-        setIsAppReady(true);
+  const checkAuth = useCallback(async () => {
+    try {
+      if (!process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID) {
+        console.error("Appwrite configuration missing");
+        setAppState(prev => ({ ...prev, isAuthenticated: false, isAppReady: true }));
+        return;
       }
-    };
 
+      const user = await account.get();
+
+      // Parallel check for first-time setup
+      const firstTimeSetupCompleted = await AsyncStorage.getItem(`first_time_setup_${user.$id}`);
+
+      setAppState(prev => ({
+        ...prev,
+        isAuthenticated: true,
+        currentUserId: user.$id,
+        showFirstTimeSetup: !firstTimeSetupCompleted,
+        isAppReady: true
+      }));
+    } catch (err: any) {
+      const errorMessage = typeof err === 'string' ? err : err?.message || 'Unknown error';
+
+      // Only log unexpected errors
+      if (!errorMessage.includes('missing scope') && !errorMessage.includes('User (role: guests)')) {
+        console.error("Auth error:", err);
+      }
+
+      setAppState(prev => ({ ...prev, isAuthenticated: false, isAppReady: true }));
+    }
+  }, []);
+
+  useEffect(() => {
     if (fontsLoaded) {
-      // Keep native splash screen visible until custom splash is ready
       SplashScreen.preventAutoHideAsync();
       checkAuth();
     }
-  }, [fontsLoaded]);
+  }, [fontsLoaded, checkAuth]);
 
-  // Handle deep links for email verification, password reset, and invites
-  useEffect(() => {
-    const handleDeepLink = (url: string) => {
-      const { hostname, path, queryParams } = Linking.parse(url);
+  // Optimized deep link handler with memoization
+  const handleDeepLink = useCallback((url: string) => {
+    const { hostname, path, queryParams } = Linking.parse(url);
 
-      if (hostname === 'verify' || path === '/verify') {
-        // Handle email verification
-        const { userId, secret } = queryParams as { userId?: string; secret?: string };
-        if (userId && secret) {
-          router.push(`/auth/Verify?userId=${userId}&secret=${secret}`);
-        }
-      } else if (hostname === 'reset-password' || path === '/reset-password') {
-        // Handle password reset
-        const { userId, secret, expire } = queryParams as {
-          userId?: string;
-          secret?: string;
-          expire?: string;
-        };
-        if (userId && secret) {
-          // Include expire parameter if present for additional validation
-          const resetUrl = `/ResetPassword?userId=${userId}&secret=${secret}${expire ? `&expire=${expire}` : ''}`;
-          router.push(resetUrl as any); // Type assertion for dynamic URL
-        }
-      } else if (hostname === 'invite' || path === '/invite') {
-        // Handle event invites
-        const { eventId, inviter, type } = queryParams as {
-          eventId?: string;
-          inviter?: string;
-          type?: string;
-        };
-        if (type === 'event-invite' && eventId) {
-          router.push(`/(root)/invites/inviteLanding?eventId=${eventId}&inviter=${inviter || ''}`);
-        }
+    if (hostname === 'verify' || path === '/verify') {
+      const { userId, secret } = queryParams as { userId?: string; secret?: string };
+      if (userId && secret) {
+        router.push(`/auth/Verify?userId=${userId}&secret=${secret}`);
       }
-    };
+    } else if (hostname === 'reset-password' || path === '/reset-password') {
+      const { userId, secret, expire } = queryParams as {
+        userId?: string;
+        secret?: string;
+        expire?: string;
+      };
+      if (userId && secret) {
+        const resetUrl = `/ResetPassword?userId=${userId}&secret=${secret}${expire ? `&expire=${expire}` : ''}`;
+        router.push(resetUrl as any);
+      }
+    } else if (hostname === 'invite' || path === '/invite') {
+      const { eventId, inviter, type } = queryParams as {
+        eventId?: string;
+        inviter?: string;
+        type?: string;
+      };
+      if (type === 'event-invite' && eventId) {
+        router.push(`/(root)/invites/inviteLanding?eventId=${eventId}&inviter=${inviter || ''}`);
+      }
+    }
+  }, [router]);
 
-    // Handle app being opened from a deep link
+  useEffect(() => {
+
     const getInitialURL = async () => {
       const initialURL = await Linking.getInitialURL();
       if (initialURL) {
@@ -158,74 +149,58 @@ export default function RootLayout() {
       }
     };
 
-    // Handle deep links when app is already running
     const subscription = Linking.addEventListener('url', ({ url }) => {
       handleDeepLink(url);
     });
 
     getInitialURL();
-
     return () => subscription?.remove();
+  }, [handleDeepLink]);
+
+  // Optimized notification setup with memoized handlers
+  const handleNotificationResponse = useCallback((response: any) => {
+    const data = response.notification.request.content.data;
+
+    if (data?.type === 'event_invite' && data?.eventId) {
+      router.push(`/(root)/events/${data.eventId}` as any);
+    } else if (data?.type === 'chat_message' && data?.chatId) {
+      router.push(`/Messages/${data.chatId}` as any);
+    } else if (data?.type === 'friend_request') {
+      router.push('/Invites' as any);
+    }
   }, [router]);
 
-  // Set up notification listeners
+  const handleNotificationReceived = useCallback((notification: any) => {
+    // Custom handling for received notifications (e.g., badge updates)
+    // Removed console.log for better performance
+  }, []);
+
   useEffect(() => {
-    const setupNotifications = () => {
-      // Add notification response listener (when user taps notification)
-      const responseListener = notificationService.addNotificationResponseListener(
-        (response) => {
-          const data = response.notification.request.content.data;
+    const responseListener = notificationService.addNotificationResponseListener(handleNotificationResponse);
+    const notificationListener = notificationService.addNotificationListener(handleNotificationReceived);
 
-          if (data?.type === 'event_invite' && data?.eventId) {
-            // Navigate to event details
-            router.push(`/(root)/events/${data.eventId}` as any);
-          } else if (data?.type === 'chat_message' && data?.chatId) {
-            // Navigate to chat
-            router.push(`/Messages/${data.chatId}` as any);
-          } else if (data?.type === 'friend_request') {
-            // Navigate to invites page
-            router.push('/Invites' as any);
-          }
-        }
-      );
-
-      // Add notification received listener (when notification arrives)
-      const notificationListener = notificationService.addNotificationListener(
-        (notification) => {
-          console.log('Notification received:', notification);
-          // You can add any custom handling here (e.g., badge updates)
-        }
-      );
-
-      // Cleanup listeners
-      return () => {
-        notificationService.removeNotificationListener(responseListener);
-        notificationService.removeNotificationListener(notificationListener);
-      };
+    return () => {
+      notificationService.removeNotificationListener(responseListener);
+      notificationService.removeNotificationListener(notificationListener);
     };
+  }, [handleNotificationResponse, handleNotificationReceived]);
 
-    const cleanup = setupNotifications();
-    return cleanup;
-  }, [router]);
-
-  // Handle data preloading specifically for Home and Feed screens
-  const handlePreloadData = async () => {
+  // Optimized preload handler with reduced logging
+  const handlePreloadData = useCallback(async () => {
     try {
-      console.log('🚀 Starting preload for Home and Feed screens...');
       await dataPreloader.preloadAppData({
         userId: currentUserId || undefined,
         skipCache: false
       });
-      console.log('✅ Preload completed - Home and Feed should be ready');
     } catch (error) {
-      console.error('❌ Preload failed:', error);
+      console.error('Preload failed:', error);
       // Don't throw - let the app start even if preload fails
     }
-  };
+  }, [currentUserId]);
 
-  const handleSplashFinish = () => {
-    setShowCustomSplash(false);
-  };
+  const handleSplashFinish = useCallback(() => {
+    setAppState(prev => ({ ...prev, showCustomSplash: false }));
+  }, []);
 
   // Show custom splash screen while app is initializing
   if (!fontsLoaded || !isAppReady || isAuthenticated === null || showCustomSplash) {
@@ -268,7 +243,7 @@ export default function RootLayout() {
                 <FirstTimeSetupModal
                   visible={showFirstTimeSetup}
                   userId={currentUserId}
-                  onComplete={() => setShowFirstTimeSetup(false)}
+                  onComplete={() => setAppState(prev => ({ ...prev, showFirstTimeSetup: false }))}
                 />
               )}
             </GlobalProvider>

@@ -55,72 +55,76 @@ const Profile = () => {
   // Track actions for cache invalidation
   const recordAction = useActionTracker();
 
-  // Optimized data loading with smart caching strategy
-  useEffect(() => {
-    const fetchProfileData = async () => {
-      if (!userId) return;
+  // Single optimized data loading function
+  const loadProfileData = useCallback(async (forceRefresh: boolean = false) => {
+    if (!userId) return;
 
-      // For Profile, only refresh on specific actions (friend/group/profile changes)
-      const fetchResult = await shouldFetchData('profile', isInitialMount);
-      const shouldRefresh = fetchResult.shouldFetch;
-
-      if (!shouldRefresh) {
-        console.log('Profile: Using cached data, no action recorded');
-        setIsInitialMount(false);
-        return;
+    try {
+      // Smart caching - only refresh when needed
+      if (!forceRefresh && !isInitialMount) {
+        const fetchResult = await shouldFetchData('profile', false);
+        if (!fetchResult.shouldFetch) {
+          console.log('Profile: Using cached data');
+          return;
+        }
       }
 
-      try {
-        console.log('Profile: Fetching fresh data from database');
-        // Load user profile, friends and groups
-        const [freshProfile, userFriendIds, userGroups] = await Promise.all([
-          getUserProfile(userId),
-          getUserFriends(userId),
-          getUserGroups(userId)
-        ]);
+      console.log('Profile: Loading fresh data');
 
-        // Get full friend profiles from IDs
-        const userFriends = userFriendIds.length > 0 ? await getUsersByIds(userFriendIds) : [];
+      // Single batch API call
+      const [freshProfile, userFriendIds, userGroups] = await Promise.all([
+        getUserProfile(userId),
+        getUserFriends(userId),
+        getUserGroups(userId)
+      ]);
 
-        // Update profile information with fresh data
-        if (freshProfile) {
-          setFirstName(freshProfile.firstName || '');
-          setLastName(freshProfile.lastName || '');
-          setAbout(freshProfile.about || '');
-          setNationality(freshProfile.nationality || '');
-          setAge(freshProfile.age?.toString() || '');
-        }
+      // Get full friend profiles only if we have friend IDs
+      const userFriends = userFriendIds.length > 0
+        ? await getUsersByIds(userFriendIds)
+        : [];
 
-        setFriends(userFriends || []);
-        setGroups(userGroups || []);
-        setStats({
-          friends: userFriends?.length || 0,
-          groups: userGroups?.length || 0,
-        });
+      // Update all state in single batch
+      if (freshProfile) {
+        setFirstName(freshProfile.firstName || '');
+        setLastName(freshProfile.lastName || '');
+        setAbout(freshProfile.about || '');
+        setNationality(freshProfile.nationality || '');
+        setAge(freshProfile.age?.toString() || '');
 
         // Load profile photo if available
-        if (freshProfile?.photoId) {
+        if (freshProfile.photoId) {
           const photoUrl = await getProfilePhotoUrl(freshProfile.photoId);
           setProfilePhotoUrl(photoUrl);
         }
-
-        // Cache the combined data (friends and groups as arrays)
-        const cacheData = [...(userFriends || []), ...(userGroups || [])];
-        cacheScreenData('profile', cacheData);
-
-      } catch (error) {
-        console.error('Error loading user data:', error);
-      } finally {
-        setIsInitialMount(false);
       }
-    };
 
-    fetchProfileData();
+      setFriends(userFriends);
+      setGroups(userGroups || []);
+      setStats({
+        friends: userFriends.length,
+        groups: (userGroups || []).length,
+      });
+
+      // Cache the results
+      const cacheData = [...userFriends, ...(userGroups || [])];
+      await cacheScreenData('profile', cacheData);
+
+      console.log(`Profile: Loaded ${userFriends.length} friends, ${(userGroups || []).length} groups`);
+
+    } catch (error) {
+      console.error('Error loading profile data:', error);
+    } finally {
+      setIsInitialMount(false);
+    }
   }, [userId, isInitialMount]);
+
+  // Initial load
+  useEffect(() => {
+    loadProfileData(true);
+  }, [loadProfileData]);
 
   // Update local state when user profile changes (fallback for context updates)
   useEffect(() => {
-    // Only update if we don't have fresh data or if it's a context update after save
     if (user?.profile && (!firstName || !lastName)) {
       setFirstName(user.profile.firstName || '');
       setLastName(user.profile.lastName || '');
@@ -128,79 +132,24 @@ const Profile = () => {
       setNationality(user.profile.nationality || '');
       setAge(user.profile.age?.toString() || '');
     }
-  }, [user?.profile]);
+  }, [user?.profile, firstName, lastName]);
 
-  // Create a reusable loadUserData function
-  const loadUserData = useCallback(async () => {
-    if (!userId) return;
-
-    try {
-      // Load user profile, friends and groups
-      const [freshProfile, userFriendIds, userGroups] = await Promise.all([
-        getUserProfile(userId),
-        getUserFriends(userId),
-        getUserGroups(userId)
-      ]);
-
-      // Get full friend profiles from IDs
-      const userFriends = userFriendIds.length > 0 ? await getUsersByIds(userFriendIds) : [];
-
-      // Update profile information with fresh data
-      if (freshProfile) {
-        setFirstName(freshProfile.firstName || '');
-        setLastName(freshProfile.lastName || '');
-        setAbout(freshProfile.about || '');
-        setNationality(freshProfile.nationality || '');
-        setAge(freshProfile.age?.toString() || '');
-      }
-
-      setFriends(userFriends || []);
-      setGroups(userGroups || []);
-      setStats({
-        friends: userFriends?.length || 0,
-        groups: userGroups?.length || 0,
-      });
-
-      // Load profile photo if available
-      if (freshProfile?.photoId) {
-        const photoUrl = await getProfilePhotoUrl(freshProfile.photoId);
-        setProfilePhotoUrl(photoUrl);
-      }
-    } catch (error) {
-      console.error('Error loading user data:', error);
-    }
-  }, [userId]);
-
-  // Load data on mount
-  useEffect(() => {
-    loadUserData();
-  }, [loadUserData]);
-
-  // Refresh data when screen comes into focus - using optimized strategy
+  // Refresh data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      const checkAndRefresh = async () => {
-        const fetchResult = await shouldFetchData('profile', false);
-        if (fetchResult.shouldFetch) {
-          loadUserData();
-        }
-      };
-      checkAndRefresh();
-    }, [loadUserData])
+      loadProfileData();
+    }, [loadProfileData])
   );
 
-  // Listen for global group membership changes and reload
+  // Listen for global group membership changes
   useEffect(() => {
-    const cb = (_payload: any) => {
-      // Record the action and trigger refresh
+    const handleGroupChange = () => {
       recordAction('joinGroup');
-      loadUserData();
+      loadProfileData(true); // Force refresh
     };
-    const unsubscribe = onEvent('groups:changed', cb);
-    return () => {
-      unsubscribe && unsubscribe();
-    };
-  }, [loadUserData, recordAction]);
+    const unsubscribe = onEvent('groups:changed', handleGroupChange);
+    return unsubscribe;
+  }, [loadProfileData, recordAction]);
 
   const handleUpdateProfilePhoto = async () => {
     try {

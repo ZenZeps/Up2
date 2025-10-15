@@ -21,4 +21,7 @@ export interface UserProfile {
   popularityScore?: number;
   lastLocationLat?: number;
   lastLocationLng?: number;
+  // Business account fields
+  accountType?: 'personal' | 'business'; // Optional for backwards compatibility
+  businessId?: string; // Links to BusinessProfile if business account
 }

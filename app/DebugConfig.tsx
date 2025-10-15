@@ -1,6 +1,6 @@
 import { config } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 // Small debug screen to inspect runtime Appwrite config values.
@@ -10,15 +10,8 @@ export default function DebugConfig() {
     const { colors } = useTheme();
     const allowed = __DEV__ || process.env.EXPO_PUBLIC_SHOW_CONFIG_SCREEN === '1';
 
-    if (!allowed) {
-        return (
-            <View style={[styles.container, { backgroundColor: colors.background }]}>
-                <Text style={{ color: colors.text }}>DebugConfig is disabled. Set EXPO_PUBLIC_SHOW_CONFIG_SCREEN=1 or run in dev mode.</Text>
-            </View>
-        );
-    }
-
-    const safeConfig = {
+    // Memoized safe config to prevent re-creation
+    const safeConfig = useMemo(() => ({
         endpoint: config.endpoint,
         projectID: config.projectID,
         databaseID: config.databaseID,
@@ -28,7 +21,15 @@ export default function DebugConfig() {
         eventAttendancesCollectionID: config.eventAttendancesCollectionID,
         groupMembershipsCollectionID: config.groupMembershipsCollectionID,
         profilePhotosBucketID: config.profilePhotosBucketID,
-    };
+    }), []);
+
+    if (!allowed) {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <Text style={{ color: colors.text }}>DebugConfig is disabled. Set EXPO_PUBLIC_SHOW_CONFIG_SCREEN=1 or run in dev mode.</Text>
+            </View>
+        );
+    }
 
     return (
         <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.content}>

@@ -61,6 +61,12 @@ export const config = {
   messagesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_MESSAGES_ID || "temp_messages_id",
   // ✅ NEW: Notification system
   notificationTokensCollectionID: process.env.EXPO_PUBLIC_APPWRITE_NOTIFICATION_TOKENS_ID || "notification_tokens",
+  // ✅ NEW: Business platform collections for hostel/travel partnerships
+  businessProfilesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_BUSINESS_PROFILES_ID || "business_profiles",
+  qrCodeScansCollectionID: process.env.EXPO_PUBLIC_APPWRITE_QR_CODE_SCANS_ID || "qr_code_scans",
+  ticketTypesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_TICKET_TYPES_ID || "ticket_types",
+  ticketPurchasesCollectionID: process.env.EXPO_PUBLIC_APPWRITE_TICKET_PURCHASES_ID || "ticket_purchases",
+  businessPhotosBucketID: process.env.EXPO_PUBLIC_APPWRITE_BUSINESS_PHOTOS_BUCKET_ID || "business_photos",
 };
 
 const client = new Client()

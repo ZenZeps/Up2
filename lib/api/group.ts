@@ -221,55 +221,7 @@ export const createGroup = async (
     }
 };
 
-/**
- * Remove user from group
- */
-export const removeUserFromGroup = async (groupId: string, userId: string): Promise<boolean> => {
-    try {
-        console.log(`removeUserFromGroup: Removing user ${userId} from group ${groupId}`);
-
-        // Use junction table to remove user
-        const success = await removeGroupMember(groupId, userId);
-
-        if (success) {
-            console.log(`removeUserFromGroup: User ${userId} successfully removed from group ${groupId}`);
-        } else {
-            console.error(`removeUserFromGroup: Failed to remove user ${userId} from group ${groupId}`);
-        }
-
-        return success;
-    } catch (error) {
-        console.error('Error removing user from group:', error);
-        // Fallback to legacy implementation
-        return await removeUserFromGroupLegacy(groupId, userId);
-    }
-};
-
-/**
- * Legacy remove user from group implementation as fallback
- */
-const removeUserFromGroupLegacy = async (groupId: string, userId: string): Promise<boolean> => {
-    try {
-        const group = await getGroupById(groupId);
-        if (!group) return false;
-
-        const currentUsers = group.users || [];
-        const updatedUsers = currentUsers.filter(id => id !== userId);
-
-        await databases.updateDocument(
-            config.databaseID!,
-            config.groupsCollectionID!,
-            groupId,
-            {
-                users: updatedUsers
-            }
-        );
-        return true;
-    } catch (error) {
-        console.error('Error removing user from group (legacy):', error);
-        return false;
-    }
-};
+// Removed removeUserFromGroup - use removeGroupMember from groupMembership.ts directly
 
 /**
  * Get all groups in the system
@@ -759,30 +711,7 @@ export const getGroupEvents = async (groupId: string) => {
     }
 };
 
-/**
- * Add a user to a group
- * UPDATED: Now uses junction table
- */
-export const addUserToGroup = async (groupId: string, userId: string): Promise<boolean> => {
-    try {
-        console.log(`addUserToGroup: Adding user ${userId} to group ${groupId}`);
-
-        // Use junction table to add user
-        const success = await addGroupMember(groupId, userId, 'member');
-
-        if (success) {
-            console.log(`addUserToGroup: User ${userId} successfully added to group ${groupId}`);
-        } else {
-            console.error(`addUserToGroup: Failed to add user ${userId} to group ${groupId}`);
-        }
-
-        return success;
-    } catch (error) {
-        console.error('Error adding user to group:', error);
-        // Fallback to legacy implementation
-        return await addUserToGroupLegacy(groupId, userId);
-    }
-};
+// Removed addUserToGroup - use addGroupMember from groupMembership.ts directly
 
 /**
  * Legacy add user to group implementation as fallback
@@ -906,8 +835,14 @@ export const updateGroupDescription = async (
 // Re-export the new unified invite functions from groupMembership
 export { acceptGroupInvite, declineGroupInvite, getUserGroupInvites, sendGroupInvite } from './groupMembership';
 
-// Re-export the new role management functions
+// Re-export the new role management and membership functions
 export {
-    approveJoinRequest, banGroupMember, checkGroupPermission, getGroupJoinRequests, getGroupMemberRole, rejectJoinRequest, requestToJoinGroup, updateGroupMemberRole
+    addGroupMember, approveJoinRequest,
+    banGroupMember,
+    checkGroupPermission,
+    getGroupJoinRequests,
+    getGroupMemberRole,
+    rejectJoinRequest, removeGroupMember, requestToJoinGroup,
+    updateGroupMemberRole
 } from './groupMembership';
 

@@ -16,6 +16,7 @@ import { useUserLocation } from '@/lib/hooks/useUserLocation';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { sendFriendRequestNotification } from '@/lib/notifications/notificationUtils';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
+import { useCreatorInfo } from '@/lib/utils/creatorInfoManager';
 import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
 import { emit as emitEvent } from '@/lib/utils/eventBus';
 import { realTimeUI } from '@/lib/utils/realTimeUI';
@@ -70,6 +71,18 @@ const Explore = () => {
   const [requestedUsers, setRequestedUsers] = useState<string[]>([]); // Users who have sent friend requests
   const [baseEventsWithCreatorNames, setBaseEventsWithCreatorNames] = useState<any[]>([]);
   const [eventsWithCreatorNames, setEventsWithCreatorNames] = useState<any[]>([]);
+  // Extract creator IDs for unified creator info management
+  const creatorIds = useMemo(() => {
+    if (!baseEventsWithCreatorNames || baseEventsWithCreatorNames.length === 0) return [];
+    const ids = baseEventsWithCreatorNames
+      .map((event: any) => event.creatorId)
+      .filter(Boolean);
+    return [...new Set(ids)] as string[];
+  }, [baseEventsWithCreatorNames]);
+
+  // Use unified creator info management instead of manual photo fetching
+  const { getCreatorName, getCreatorPhotoUrl } = useCreatorInfo(creatorIds, 20);
+
   // Re-render when real-time UI pending actions change
   const rtTick = useRealTimeUI();
 
@@ -83,15 +96,10 @@ const Explore = () => {
     const pendingAttendIds = new Set(realTimeUI.getEventIdsByAction('attend'));
     const pendingUnattendIds = new Set(realTimeUI.getEventIdsByAction('unattend'));
 
-    // Explore shows non-attending events (like Feed)
-    // Remove events with pending 'attend' (user is joining)
-    // Add back events with pending 'unattend' (user is leaving) - though less likely in Explore
     let filteredEvents = baseEventsWithCreatorNames.filter((ev: any) => !pendingAttendIds.has(ev.$id));
 
-    // Add back events with pending unattend if any (from global context)
     if (pendingUnattendIds.size > 0) {
       try {
-        // Using events from hook instead of requiring context
         const globalEvents = events;
         if (Array.isArray(globalEvents)) {
           const additionalEvents = globalEvents.filter((ev: any) => pendingUnattendIds.has(ev.$id));
@@ -110,8 +118,6 @@ const Explore = () => {
 
     setEventsWithCreatorNames(filteredEvents);
   }, [rtTick, baseEventsWithCreatorNames, userId]);
-  // Cache for creator photos (used by horizontal cards)
-  const [creatorPhotoUrls, setCreatorPhotoUrls] = useState<Record<string, string | null>>({});
   // Groups state
   const [groups, setGroups] = useState<any[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
@@ -244,150 +250,42 @@ const Explore = () => {
     }, [isInitialMount])
   );
 
+  // Single optimized event processing effect
   useEffect(() => {
-    const addCreatorNames = async () => {
-      // Build Explore event set from all app events (global discovery), then filter out attended/past/private as needed
-      const now = new Date();
-
-      // Fetch events via fetchEventsWithGroupNames which handles caching and server-side filters
-      let allEvents: any[] = [];
-      try {
-        allEvents = await fetchEventsWithGroupNames();
-      } catch (err) {
-        console.error('Explore: failed to fetch events via fetchEventsWithGroupNames, falling back to raw DB or context', err);
-        try {
-          const res = await databases.listDocuments(
-            config.databaseID!,
-            config.eventsCollectionID!,
-            [Query.limit(500)]
-          );
-          allEvents = res.documents || [];
-        } catch (err2) {
-          console.error('Explore: raw DB fallback failed, using events context', err2);
-          allEvents = events || [];
-        }
+    const fetchExploreEvents = async () => {
+      if (!userId) {
+        setBaseEventsWithCreatorNames([]);
+        setLoading(false);
+        return;
       }
 
-      // First filter out basic criteria (past events, user's own events)
-      const basicFilteredEvents = allEvents.filter(event => {
-        // Filter out past events
-        if (new Date(event.endTime) <= now) return false;
-
-        // Filter out events created by current user (we want events from OTHER users)
-        if (event.creatorId === userId) return false;
-
-        return true;
-      });
-
-      // Now check attendance status using junction table for remaining events
-      const eventsWithAttendanceCheck = await Promise.all(
-        basicFilteredEvents.map(async (event) => {
-          // Check if user is attending using junction table
-          const isAttending = await isUserAttendingEvent(userId, event.$id);
-
-          return { event, isAttending };
-        })
-      );
-
-      // Diagnostic logging: show up to 20 sample events and their attending flag
-      try {
-        const sampleCount = Math.min(20, eventsWithAttendanceCheck.length);
-        const samples = eventsWithAttendanceCheck.slice(0, sampleCount).map(({ event, isAttending }) => ({
-          id: event.$id,
-          title: event.title,
-          startTime: event.startTime,
-          endTime: event.endTime,
-          inviteCount: (event as any).inviteCount,
-          isAttending
-        }));
-        console.log('Explore: attendance samples:', samples);
-      } catch (e) {
-        console.warn('Explore: failed to log attendance samples', e);
+      // Try cache first
+      const exploreCache = getScreenEvents('explore');
+      if (Array.isArray(exploreCache) && exploreCache.length > 0 && !refreshTrigger) {
+        setBaseEventsWithCreatorNames(exploreCache);
+        setLoading(false);
+        return;
       }
 
-      // Filter out events the user is attending
-      const finalFilteredEvents = eventsWithAttendanceCheck
-        .filter(({ isAttending }) => !isAttending)
-        .map(({ event }) => event)
-        .filter(event => {
-          // For private events, only show if user has access (invited but not attending)
-          if (event.isPrivate) {
-            // Prefer denormalized inviteCount or junction-based invite checks server-side; fallback to legacy inviteeIds if present
-            if (typeof event.inviteCount === 'number') return event.inviteCount > 0 && (Array.isArray(event.inviteeIds) ? event.inviteeIds.includes(userId) : true);
-            // Fallback to heuristic that includes inviteeIds/attendees when server-side checks aren't available
-            return isUserAttendingHeuristic(event, userId) || (Array.isArray(event.inviteeIds) && event.inviteeIds.includes(userId));
-          }
-
-          // Show all public events from other users that user is not attending
-          return true;
-        });
-
-      console.log('Explore Events Filter:', {
-        allEventsCount: allEvents.length,
-        totalEventsContext: events.length,
-        basicFiltered: basicFilteredEvents.length,
-        finalFiltered: finalFilteredEvents.length,
-        userId,
-        sampleEvent: finalFilteredEvents[0] ? {
-          title: finalFilteredEvents[0].title,
-          creator: finalFilteredEvents[0].creatorId,
-        } : null
-      });
-
-      // Enrich events with group names
-      const eventsWithGroupNames = await enrichEventsWithGroupNames(finalFilteredEvents);
-
-      const uniqueCreatorIds = [...new Set(eventsWithGroupNames.map(event => event.creatorId))];
-      const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
-      const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, userDisplayUtils.getFullName(profile)]));
-
-      // Fetch creator photos in parallel (small batches)
-      const photoMap: Record<string, string | null> = {};
-      await Promise.all(uniqueCreatorIds.map(async (cid) => {
-        try {
-          photoMap[cid] = await getUserProfilePhotoUrl(cid);
-        } catch (_err) {
-          photoMap[cid] = null;
-        }
-      }));
-      setCreatorPhotoUrls(photoMap);
-
-      const eventsWithNames = eventsWithGroupNames.map(event => ({
-        ...event,
-        creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
-      }));
-      setBaseEventsWithCreatorNames(eventsWithNames);
-      try {
-        setScreenEvents('explore', eventsWithNames);
-        try { markScreenLoadedFromDb?.('explore', true); } catch { }
-      } catch (err) {
-        console.warn('Explore: failed to persist explore cache', err);
-      }
+      console.log('Explore: Fetching fresh events data');
+      // Continue to consolidated processing function
     };
 
-    // Try to reuse an explore-scoped session cache first
-    const exploreCache = getScreenEvents('explore');
-    if (Array.isArray(exploreCache) && exploreCache.length > 0) {
-      setBaseEventsWithCreatorNames(exploreCache);
-      setLoading(false);
-      return;
-    }
+    fetchExploreEvents();
+  }, [userId, refreshTrigger, getScreenEvents]);
 
-    // Run enrichment once we have a userId; don't require `events` context to contain items
-    if (userId) {
-      addCreatorNames();
-    }
-  }, [events, userId, refreshTrigger]);
-
-  // Optimized data fetching with smart caching strategy
+  // Consolidated and optimized event processing
   useEffect(() => {
-    const fetchExploreData = async () => {
-      if (!userId) return;
+    const processExploreEvents = async () => {
+      if (!userId) {
+        setBaseEventsWithCreatorNames([]);
+        setLoading(false);
+        return;
+      }
 
-      const shouldRefresh = shouldFetchData('explore', isInitialMount);
-
-      // Try cache first unless we need to refresh
-      if (!shouldRefresh) {
+      // Smart caching strategy
+      const strategy = await shouldFetchData('explore', isInitialMount);
+      if (!strategy.shouldFetch && !refreshTrigger) {
         const exploreCache = getScreenEvents('explore');
         if (Array.isArray(exploreCache) && exploreCache.length > 0) {
           setBaseEventsWithCreatorNames(exploreCache);
@@ -397,152 +295,99 @@ const Explore = () => {
         }
       }
 
-      // Continue with the original addCreatorNames logic for fresh data
-      const addCreatorNames = async () => {
-        // Build Explore event set from all app events (global discovery), then filter out attended/past/private as needed
+      console.log('Explore: Processing fresh events data');
 
-        // Fetch events via fetchEventsWithGroupNames which handles caching and server-side filters
+      try {
+        // Single API call for events with fallback chain
         let allEvents: any[] = [];
         try {
           allEvents = await fetchEventsWithGroupNames();
         } catch (err) {
-          console.error('Explore: failed to fetch events via fetchEventsWithGroupNames, falling back to raw DB or context', err);
-          try {
-            const res = await databases.listDocuments(
-              config.databaseID!,
-              config.eventsCollectionID!,
-              [Query.limit(500)]
-            );
-            allEvents = res.documents || [];
-          } catch (err2) {
-            console.error('Explore: raw DB fallback failed, using events context', err2);
-            allEvents = events || [];
-          }
+          console.error('Explore: fetchEventsWithGroupNames failed, using fallback', err);
+          allEvents = events || [];
         }
-        const now = new Date();
 
-        console.log('Explore Events Loading:', {
-          totalEvents: allEvents.length,
-          hasUserId: !!userId,
-          sampleTitles: allEvents.slice(0, 3).map(e => e.title)
-        });
-
-        if (!userId || allEvents.length === 0) {
-          console.log('Explore: No userId or events available, setting empty');
+        if (allEvents.length === 0) {
           setBaseEventsWithCreatorNames([]);
           setLoading(false);
+          setIsInitialMount(false);
           return;
         }
 
-        // First filter out basic criteria (past events, user's own events)
-        const basicFilteredEvents = allEvents.filter(event => {
-          // Filter out past events
-          if (new Date(event.endTime) <= now) return false;
+        const now = new Date();
 
-          // Filter out events created by current user (we want events from OTHER users)
-          if (event.creatorId === userId) return false;
+        // Filter out past events and user's own events
+        const relevantEvents = allEvents.filter(event =>
+          new Date(event.endTime) > now && event.creatorId !== userId
+        );
 
-          return true;
-        });
-
-        // Now check attendance status using junction table for remaining events
-        const eventsWithAttendanceCheck = await Promise.all(
-          basicFilteredEvents.map(async (event) => {
-            // Check if user is attending using junction table
+        // Batch check attendance status for all events
+        const eventsWithAttendance = await Promise.all(
+          relevantEvents.map(async (event) => {
             const isAttending = await isUserAttendingEvent(userId, event.$id);
-
             return { event, isAttending };
           })
         );
 
-        // Diagnostic logging: show up to 20 sample events and their attending flag
-        try {
-          const sampleCount = Math.min(20, eventsWithAttendanceCheck.length);
-          const samples = eventsWithAttendanceCheck.slice(0, sampleCount).map(({ event, isAttending }) => ({
-            id: event.$id,
-            title: event.title,
-            startTime: event.startTime,
-            endTime: event.endTime,
-            inviteCount: (event as any).inviteCount,
-            isAttending
-          }));
-          console.log('Explore: attendance samples:', samples);
-        } catch (e) {
-          console.warn('Explore: failed to log attendance samples', e);
-        }
-
-        // Filter out events the user is attending
-        const finalFilteredEvents = eventsWithAttendanceCheck
+        // Filter out attending events and apply privacy rules
+        const nonAttendingEvents = eventsWithAttendance
           .filter(({ isAttending }) => !isAttending)
           .map(({ event }) => event)
           .filter(event => {
-            // For private events, only show if user has access (invited but not attending)
             if (event.isPrivate) {
-              // Prefer denormalized inviteCount or junction-based invite checks server-side; fallback to legacy inviteeIds if present
-              if (typeof event.inviteCount === 'number') return event.inviteCount > 0 && (Array.isArray(event.inviteeIds) ? event.inviteeIds.includes(userId) : true);
-              // Fallback to heuristic that includes inviteeIds/attendees when server-side checks aren't available
-              return isUserAttendingHeuristic(event, userId) || (Array.isArray(event.inviteeIds) && event.inviteeIds.includes(userId));
+              return Array.isArray(event.inviteeIds) && event.inviteeIds.includes(userId);
             }
-
-            // Show all public events from other users that user is not attending
             return true;
           });
 
-        console.log('Explore Events Filter:', {
-          allEventsCount: allEvents.length,
-          totalEventsContext: events.length,
-          basicFiltered: basicFilteredEvents.length,
-          finalFiltered: finalFilteredEvents.length,
-          userId,
-          sampleEvent: finalFilteredEvents[0] ? {
-            title: finalFilteredEvents[0].title,
-            creator: finalFilteredEvents[0].creatorId,
-          } : null
-        });
+        // Single enrichment call
+        const eventsWithGroupNames = await enrichEventsWithGroupNames(nonAttendingEvents);
 
-        // Enrich events with group names
-        const eventsWithGroupNames = await enrichEventsWithGroupNames(finalFilteredEvents);
-
+        // Single batch creator processing
         const uniqueCreatorIds = [...new Set(eventsWithGroupNames.map(event => event.creatorId))];
-        const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
+        const [creatorProfiles, creatorPhotos] = await Promise.all([
+          getUsersByIds(uniqueCreatorIds),
+          Promise.all(uniqueCreatorIds.map(async (cid) => {
+            try {
+              return [cid, await getUserProfilePhotoUrl(cid)];
+            } catch {
+              return [cid, null];
+            }
+          }))
+        ]);
+
         const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, userDisplayUtils.getFullName(profile)]));
+        const photoMap = Object.fromEntries(creatorPhotos);
+        // Photos now managed by useCreatorInfo hook
 
-        // Fetch creator photos in parallel (small batches)
-        const photoMap: Record<string, string | null> = {};
-        await Promise.all(uniqueCreatorIds.map(async (cid) => {
-          try {
-            photoMap[cid] = await getUserProfilePhotoUrl(cid);
-          } catch (_err) {
-            photoMap[cid] = null;
-          }
-        }));
-        setCreatorPhotoUrls(photoMap);
-
-        const eventsWithNames = eventsWithGroupNames.map(event => ({
+        const finalEvents = eventsWithGroupNames.map(event => ({
           ...event,
           creatorName: creatorMap.get(event.creatorId) || 'Unknown Creator',
         }));
-        setBaseEventsWithCreatorNames(eventsWithNames);
+
+        setBaseEventsWithCreatorNames(finalEvents);
+
+        // Cache the results
         try {
-          setScreenEvents('explore', eventsWithNames);
-          try { markScreenLoadedFromDb?.('explore', true); } catch { }
+          setScreenEvents('explore', finalEvents);
+          markScreenLoadedFromDb?.('explore', true);
+          await cacheScreenData('explore', finalEvents);
         } catch (err) {
-          console.warn('Explore: failed to persist explore cache', err);
+          console.warn('Explore: failed to persist cache', err);
         }
 
-        // Cache the screen data after successful fetch
-        cacheScreenData('explore', eventsWithNames);
-      };
+        console.log(`Explore: Processed ${finalEvents.length} events successfully`);
 
-      // Run enrichment once we have a userId; don't require `events` context to contain items
-      if (userId) {
-        await addCreatorNames();
+      } catch (error) {
+        console.error('Explore: Error processing events:', error);
+        setBaseEventsWithCreatorNames([]);
+      } finally {
+        setLoading(false);
+        setIsInitialMount(false);
       }
-
-      setIsInitialMount(false);
     };
 
-    fetchExploreData();
+    processExploreEvents();
   }, [events, userId, isInitialMount, refreshTrigger, getScreenEvents, markScreenLoadedFromDb, setScreenEvents]);
 
   // Load public groups when entering groups mode (or on mount)
@@ -1527,8 +1372,8 @@ const Explore = () => {
                       </View>
 
                       <View style={styles.feedSubRow}>
-                        <UserAvatar photoUrl={creatorPhotoUrls[event.creatorId] || null} name={event.creatorName} size={28} />
-                        <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{event.creatorName || 'Unknown'}</Text>
+                        <UserAvatar photoUrl={getCreatorPhotoUrl(event.creatorId)} name={getCreatorName(event.creatorId)} size={28} />
+                        <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(event.creatorId) || 'Unknown'}</Text>
                       </View>
                     </View>
 
@@ -1595,7 +1440,7 @@ const Explore = () => {
                         </View>
 
                         <View style={styles.feedSubRow}>
-                          <UserAvatar photoUrl={creatorPhotoUrls[event.creatorId] || null} name={event.creatorName} size={28} />
+                          <UserAvatar photoUrl={getCreatorPhotoUrl(event.creatorId)} name={getCreatorName(event.creatorId)} size={28} />
                           <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{event.creatorName || 'Unknown'}</Text>
                         </View>
                       </View>

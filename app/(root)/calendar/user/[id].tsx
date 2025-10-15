@@ -1,7 +1,7 @@
 import EventImage from '@/components/EventImage';
 import { getEventColor } from '@/constants/categories';
 import { getTravelDaysInMonth, getUserTravelAnnouncements } from '@/lib/api';
-import { addEventAttendee, getAllEvents, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
+import { addEventAttendee, fetchEvents, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
 import { account } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
@@ -44,22 +44,39 @@ export default function UserCalendar() {
     const { refetchEvents } = useEvents();
     const insets = useSafeAreaInsets();
 
-    // State variables
-    const [activeTab, setActiveTab] = useState<TabType>('agenda'); // Default to agenda like homescreen
-    const [viewMode, setViewMode] = useState<Mode>('week');
-    const [date, setDate] = useState(new Date());
-    const [startHour, setStartHour] = useState(new Date().getHours() - 4);
-    const [endHour, setEndHour] = useState(new Date().getHours() + 4);
-    const [userName, setUserName] = useState('');
-    const [events, setEvents] = useState<AppEvent[]>([]);
+    // Consolidated state for better performance
+    const [calendarState, setCalendarState] = useState(() => ({
+        activeTab: 'agenda' as TabType,
+        viewMode: 'week' as Mode,
+        date: new Date(),
+        startHour: new Date().getHours() - 4,
+        endHour: new Date().getHours() + 4,
+        userName: '',
+        events: [] as AppEvent[],
+        currentUserId: null as string | null,
+        calendarHeight: 0,
+        userTravel: [] as TravelAnnouncement[],
+        travelDays: new Set<string>()
+    }));
+
     const [selectedEvent, setSelectedEvent] = useState<AppEvent | null>(null);
     const [detailsModalVisible, setDetailsModalVisible] = useState(false);
-    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-    const [calendarHeight, setCalendarHeight] = useState(0);
 
-    // Travel state
-    const [userTravel, setUserTravel] = useState<TravelAnnouncement[]>([]);
-    const [travelDays, setTravelDays] = useState<Set<string>>(new Set());
+    // Memoized destructuring
+    const { activeTab, viewMode, date, startHour, endHour, userName, events, currentUserId, calendarHeight, userTravel, travelDays } = calendarState;
+
+    // Memoized setters for performance
+    const setActiveTab = React.useCallback((tab: TabType) => {
+        setCalendarState(prev => ({ ...prev, activeTab: tab }));
+    }, []);
+
+    const setViewMode = React.useCallback((mode: Mode) => {
+        setCalendarState(prev => ({ ...prev, viewMode: mode }));
+    }, []);
+
+    const setDate = React.useCallback((newDate: Date) => {
+        setCalendarState(prev => ({ ...prev, date: newDate }));
+    }, []);
 
     // Additional hooks for Home-style rendering
     const { getAttendeeCount } = useEventAttendeeCount(events, true);
@@ -75,84 +92,92 @@ export default function UserCalendar() {
 
     const { getCreatorPhotoUrl, getCreatorName } = useCreatorInfo(creatorIds, 20);
 
-    // Calendar events - transform events for BigCalendar component
+    // Memoized calendar events transformation
     const calendarEvents = React.useMemo(() => {
+        if (!events?.length) return [];
         return events.map(event => ({
             title: event.title,
             start: new Date(event.startTime),
             end: new Date(event.endTime),
             location: event.location,
-            color: getEventColor(event.tags || []), // Add color based on first tag
-            rawEvent: event, // Store the original event for access in renderEvent
+            color: getEventColor(event.tags || []),
+            rawEvent: event,
         }));
     }, [events]);
 
-    // Agenda events - only show upcoming events for the friends calendar
+    // Memoized agenda events with optimized filtering
     const agendaEvents = React.useMemo(() => {
+        if (!events?.length) return [];
         const now = new Date();
         return events
-            .filter(event => {
-                const eventDate = new Date(event.startTime);
-                return eventDate >= now; // Only show upcoming events
-            })
+            .filter(event => new Date(event.startTime) >= now)
             .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-    }, [events]);    // Fetch user's profile and events
+    }, [events]);    // Optimized data fetching with parallel loading
     useEffect(() => {
         const fetchUserData = async () => {
             try {
-                // Get current user
-                const user = await account.get();
-                setCurrentUserId(user.$id);
+                // Parallel loading for better performance
+                const [user, profile, allEvents, travel] = await Promise.all([
+                    account.get(),
+                    getUserProfile(userId),
+                    fetchEvents(true),
+                    getUserTravelAnnouncements(userId)
+                ]);
 
-                // Get user's profile
-                const profile = await getUserProfile(userId);
                 if (!profile) {
                     console.error('User profile not found');
                     return;
                 }
-                setUserName(userDisplayUtils.getFullName(profile));
 
-                // Get all events
-                const allEvents = await getAllEvents(true);
+                const displayName = userDisplayUtils.getFullName(profile);
 
-                // Filter events for this user (created by them or they're attending)
-                // Use junction table to check attendance
-                const userEventPromises = allEvents.map(async (event) => {
-                    const isEventRelatedToUser = event.creatorId === userId ||
-                        await isUserAttendingEvent(userId, event.$id);
-
-                    if (!isEventRelatedToUser) return null;
-
-                    // If event is private, only show if the target user has access. Prefer junction checks for invitations/attendance.
-                    if (event.isPrivate) {
-                        // Prefer junction-based access checks; fallback to legacy invite array only if necessary
-                        let hasAccess = event.creatorId === user.$id;
+                // Optimized event filtering with better parallel processing
+                const eventFilterResults = await Promise.all(
+                    allEvents.map(async (event) => {
                         try {
-                            const attending = await isUserAttendingEvent(user.$id, event.$id);
-                            hasAccess = hasAccess || Boolean(attending);
-                        } catch (e) {
-                            // ignore and fallback to legacy invites
+                            // Check if event is related to user (created by them or attending)
+                            const isCreator = event.creatorId === userId;
+                            const isAttending = isCreator || await isUserAttendingEvent(userId, event.$id);
+
+                            if (!isAttending) return null;
+
+                            // Private event access check for current user
+                            if (event.isPrivate) {
+                                let hasAccess = event.creatorId === user.$id;
+                                if (!hasAccess) {
+                                    try {
+                                        hasAccess = await isUserAttendingEvent(user.$id, event.$id);
+                                    } catch {
+                                        // Fallback to legacy checks
+                                        const isInvitedLegacy = Array.isArray((event as any).inviteeIds) &&
+                                            (event as any).inviteeIds.includes(user.$id);
+                                        hasAccess = isInvitedLegacy || isUserAttendingHeuristic(event, user.$id);
+                                    }
+                                }
+                                if (!hasAccess) return null;
+                            }
+
+                            return event;
+                        } catch {
+                            return null;
                         }
+                    })
+                );
 
-                        if (!hasAccess) {
-                            const isInvitedLegacy = Array.isArray((event as any).inviteeIds) && (event as any).inviteeIds.includes(user.$id);
-                            // fallback to heuristic which safely checks legacy attendees/invitee arrays
-                            if (!isInvitedLegacy && !isUserAttendingHeuristic(event, user.$id)) return null;
-                        }
-                    }
+                const userEvents = eventFilterResults.filter((event): event is AppEvent => event !== null);
 
-                    return event;
-                });
-
-                const userEventsResults = await Promise.all(userEventPromises);
-                const userEvents = userEventsResults.filter((event): event is AppEvent => event !== null);
-
-                // Add creator names to events
+                // Parallel processing for creator info and attendance
                 const uniqueCreatorIds = [...new Set(userEvents.map(event => event.creatorId))];
-                const creatorProfiles = await getUsersByIds(uniqueCreatorIds);
-                const creatorMap = new Map(creatorProfiles.map(profile => [profile.$id, userDisplayUtils.getFullName(profile)]));
+                const [creatorProfiles, currentTravelDays] = await Promise.all([
+                    getUsersByIds(uniqueCreatorIds),
+                    getTravelDaysInMonth(userId, date.getFullYear(), date.getMonth() + 1)
+                ]);
 
-                // Check attendance for each event using junction table
+                const creatorMap = new Map(creatorProfiles.map(profile =>
+                    [profile.$id, userDisplayUtils.getFullName(profile)]
+                ));
+
+                // Process events with attendance in parallel
                 const eventsWithAttendance = await Promise.all(
                     userEvents.map(async (event) => {
                         const isAttending = await isUserAttendingEvent(user.$id, event.$id);
@@ -164,20 +189,15 @@ export default function UserCalendar() {
                     })
                 );
 
-                setEvents(eventsWithAttendance);
-
-                // Fetch user's travel data
-                const travel = await getUserTravelAnnouncements(userId);
-                setUserTravel(travel);
-
-                // Get travel days for the current month (for highlighting)
-                const currentDate = new Date();
-                const travelDaysInMonth = await getTravelDaysInMonth(
-                    userId,
-                    currentDate.getFullYear(),
-                    currentDate.getMonth() + 1
-                );
-                setTravelDays(new Set(travelDaysInMonth));
+                // Single state update for all data
+                setCalendarState(prev => ({
+                    ...prev,
+                    currentUserId: user.$id,
+                    userName: displayName,
+                    events: eventsWithAttendance,
+                    userTravel: travel,
+                    travelDays: new Set(currentTravelDays)
+                }));
             } catch (error) {
                 console.error('Error fetching user data:', error);
             }
@@ -188,7 +208,7 @@ export default function UserCalendar() {
         }
     }, [userId]);
 
-    // Update travel days when date changes (for month view highlighting)
+    // Optimized travel days update when date changes
     useEffect(() => {
         const updateTravelDays = async () => {
             if (!userId) return;
@@ -197,7 +217,10 @@ export default function UserCalendar() {
                 const year = date.getFullYear();
                 const month = date.getMonth() + 1;
                 const travelDaysInMonth = await getTravelDaysInMonth(userId, year, month);
-                setTravelDays(new Set(travelDaysInMonth));
+                setCalendarState(prev => ({
+                    ...prev,
+                    travelDays: new Set(travelDaysInMonth)
+                }));
             } catch (error) {
                 console.error('Error updating travel days:', error);
             }
@@ -247,13 +270,14 @@ export default function UserCalendar() {
             await recordUserAction('attend', 'user_calendar_event_attended');
 
             // Update local state
-            setEvents(prevEvents =>
-                prevEvents.map(e =>
+            setCalendarState(prev => ({
+                ...prev,
+                events: prev.events.map((e: AppEvent) =>
                     e.$id === event.$id
                         ? { ...e, attendeeCount: (typeof e.attendeeCount === 'number' ? e.attendeeCount + 1 : ((Array.isArray((e as any).attendees) ? (e as any).attendees.length + 1 : 1))), isAttending: true }
                         : e
                 )
-            );
+            }));
 
             Alert.alert('Success', 'You are now attending this event!');
             refetchEvents();
@@ -275,13 +299,14 @@ export default function UserCalendar() {
             await recordUserAction('unattend', 'user_calendar_event_unattended');
 
             // Update local state
-            setEvents(prevEvents =>
-                prevEvents.map(e =>
+            setCalendarState(prev => ({
+                ...prev,
+                events: prev.events.map((e: AppEvent) =>
                     e.$id === event.$id
                         ? { ...e, attendeeCount: Math.max(0, (typeof e.attendeeCount === 'number' ? e.attendeeCount - 1 : ((Array.isArray((e as any).attendees) ? (e as any).attendees.length - 1 : 0)))), isAttending: false }
                         : e
                 )
-            );
+            }));
 
             Alert.alert('Success', 'You are no longer attending this event.');
             refetchEvents();
@@ -696,7 +721,7 @@ export default function UserCalendar() {
                             style={styles.calendarWrapper}
                             onLayout={(event) => {
                                 const { height } = event.nativeEvent.layout;
-                                setCalendarHeight(height);
+                                setCalendarState(prev => ({ ...prev, calendarHeight: height }));
                             }}
                         >
                             {calendarHeight > 0 && (

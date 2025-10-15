@@ -1,6 +1,22 @@
 /**
  * Data Preloader Service
- * Preloads essential data during splash screen to improve app startup perfor            console.log('🌐 Calling getPublicEvents API...');
+ * Preloads essential data during splash screen to improve app startup perfor      private async preloadPublicEvents(userId?: string, skipCache = false): Promise<void> {
+        try {
+            console.log(`🎉 Starting preloadPublicEvents - userId: ${userId}, skipCache: ${skipCache}`);
+
+            // Check cache first unless skipping
+            if (!skipCache) {
+                const cachedEvents = cacheManager.get('all-events');
+                if (cachedEvents && Array.isArray(cachedEvents) && cachedEvents.length > 0) {
+                    console.log(`📦 Using cached events for preload - ${cachedEvents.length} events - Home/Feed ready instantly`);
+                    return;
+                }
+                console.log('📦 No cached events found, loading from API...');
+            }
+
+            console.log('🌐 Calling getPublicEvents API...');
+            const events = await getPublicEvents(false, userId);
+            console.log(`🌐 getPublicEvents returned: ${events ? events.length : 0} events`);.log('🌐 Calling getPublicEvents API...');
             console.log('🌐 Appwrite config check:', {
                 endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT ? 'configured' : 'missing',
                 projectId: process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID ? 'configured' : 'missing',

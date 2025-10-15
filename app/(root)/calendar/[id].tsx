@@ -1,6 +1,6 @@
 import EventImage from '@/components/EventImage';
 import { getEventColor } from '@/constants/categories';
-import { addEventAttendee, getAllEvents, getEventInvitees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
+import { addEventAttendee, fetchEvents, getEventInvitees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
 import { getUserProfile } from '@/lib/api/user';
 import { account } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
@@ -31,19 +31,26 @@ export default function FriendCalendar() {
     const params = ({} as any);
     const friendId = (params as any).id as string || '';
 
-    const [friendName, setFriendName] = useState('Friend');
-    const [events, setEvents] = useState<AppEvent[]>([]);
+    // Consolidated state for better performance
+    const [calendarData, setCalendarData] = useState(() => ({
+        friendName: 'Friend',
+        events: [] as AppEvent[],
+        currentUserId: null as string | null
+    }));
+
     const [selectedEvent, setSelectedEvent] = useState<AppEvent | null>(null);
     const [detailsModalVisible, setDetailsModalVisible] = useState(false);
-    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'agenda'>('agenda');
 
-    // Additional hooks needed for Home-style rendering
+    // Memoized destructuring
+    const { friendName, events, currentUserId } = calendarData;
+
+    // Optimized hooks with memoization
     const { getAttendeeCount } = useEventAttendeeCount(events, true);
 
-    // Get unique creator IDs from events
+    // Memoized creator IDs computation
     const creatorIds = React.useMemo(() => {
-        if (!events || events.length === 0) return [];
+        if (!events?.length) return [];
         const ids = events
             .map((event: AppEvent) => event.creatorId)
             .filter(Boolean);
@@ -57,63 +64,71 @@ export default function FriendCalendar() {
         const load = async () => {
             try {
                 const user = await account.get();
-                setCurrentUserId(user.$id);
+                if (!friendId || !mounted) return;
 
-                if (!friendId) return;
-                const profile = await getUserProfile(friendId);
-                if (mounted && profile) setFriendName(userDisplayUtils.getFullName(profile) || 'Friend');
+                const [profile, allEvents] = await Promise.all([
+                    getUserProfile(friendId),
+                    fetchEvents(true)
+                ]);
 
-                const all = await getAllEvents(true);
-                const out: AppEvent[] = [];
+                const friendDisplayName = profile ? userDisplayUtils.getFullName(profile) || 'Friend' : 'Friend';
+                const filteredEvents: AppEvent[] = [];
 
-                for (const e of all) {
-                    if (e.creatorId === friendId) {
-                        if (e.isPrivate) {
-                            let allowed = e.creatorId === user.$id;
-                            if (!allowed) {
-                                try {
-                                    const invitees = await getEventInvitees(e.$id);
-                                    allowed = Array.isArray(invitees) && invitees.includes(user.$id);
-                                } catch {
-                                    // Fallback to heuristic when junction invite lookup fails
-                                    allowed = isUserAttendingHeuristic(e, user.$id);
-                                }
-                                if (!allowed) {
-                                    try { allowed = await isUserAttendingEvent(user.$id, e.$id); } catch { allowed = false; }
+                // Optimized event filtering with better logic
+                const eventChecks = allEvents.map(async (event) => {
+                    // Friend's own events
+                    if (event.creatorId === friendId) {
+                        if (!event.isPrivate) return event;
+
+                        // Private event access check
+                        let hasAccess = event.creatorId === user.$id;
+                        if (!hasAccess) {
+                            try {
+                                const invitees = await getEventInvitees(event.$id);
+                                hasAccess = Array.isArray(invitees) && invitees.includes(user.$id);
+                            } catch {
+                                hasAccess = isUserAttendingHeuristic(event, user.$id);
+                                if (!hasAccess) {
+                                    try { hasAccess = await isUserAttendingEvent(user.$id, event.$id); } catch { /* ignore */ }
                                 }
                             }
-                            if (!allowed) continue;
                         }
-                        out.push(e);
-                        continue;
+                        return hasAccess ? event : null;
                     }
 
+                    // Events friend is attending
                     try {
-                        const attending = await isUserAttendingEvent(friendId, e.$id);
-                        if (attending) {
-                            if (e.isPrivate) {
-                                let allowed = e.creatorId === user.$id;
-                                if (!allowed) {
-                                    try {
-                                        const invitees = await getEventInvitees(e.$id);
-                                        allowed = Array.isArray(invitees) && invitees.includes(user.$id);
-                                    } catch {
-                                        allowed = false;
-                                    }
-                                    if (!allowed) {
-                                        try { allowed = await isUserAttendingEvent(user.$id, e.$id); } catch { allowed = false; }
-                                    }
-                                }
-                                if (!allowed) continue;
-                            }
-                            out.push(e);
-                        }
-                    } catch (err) {
-                        console.warn('check attending failed', err);
-                    }
-                }
+                        const attending = await isUserAttendingEvent(friendId, event.$id);
+                        if (!attending) return null;
 
-                if (mounted) setEvents(out);
+                        if (!event.isPrivate) return event;
+
+                        // Private event access check for current user
+                        let hasAccess = event.creatorId === user.$id;
+                        if (!hasAccess) {
+                            try {
+                                const invitees = await getEventInvitees(event.$id);
+                                hasAccess = Array.isArray(invitees) && invitees.includes(user.$id);
+                            } catch {
+                                try { hasAccess = await isUserAttendingEvent(user.$id, event.$id); } catch { /* ignore */ }
+                            }
+                        }
+                        return hasAccess ? event : null;
+                    } catch {
+                        return null;
+                    }
+                });
+
+                const eventResults = await Promise.all(eventChecks);
+                const validEvents = eventResults.filter((event): event is AppEvent => event !== null);
+
+                if (mounted) {
+                    setCalendarData({
+                        friendName: friendDisplayName,
+                        events: validEvents,
+                        currentUserId: user.$id
+                    });
+                }
             } catch (err) {
                 console.error('Friend Calendar load failed', err);
             }
@@ -151,10 +166,13 @@ export default function FriendCalendar() {
         }
     };
 
-    // Group events by day for agenda view using homeHelpers function
-    const groupedEventsRecord = groupEventsByDay(events);
+    // Memoized grouped events computation
+    const groupedEventsRecord = React.useMemo(() => {
+        return groupEventsByDay(events);
+    }, [events]);
 
-    const handlePressEvent = (eventData: {
+    // Memoized event press handler
+    const handlePressEvent = React.useCallback((eventData: {
         id: string;
         title: string;
         start: Date;
@@ -165,7 +183,7 @@ export default function FriendCalendar() {
     }) => {
         setSelectedEvent(eventData.rawEvent);
         setDetailsModalVisible(true);
-    };
+    }, []);
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>

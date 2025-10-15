@@ -33,30 +33,31 @@ const UserProfile = () => {
     const insets = useSafeAreaInsets();
     const userIdString = Array.isArray(userId) ? userId[0] : userId;
 
-    // Debug logging
-    console.log('UserProfile: Route params:', { userId, userIdString });
+    // Consolidated state for better performance
+    const [profileData, setProfileData] = useState<{
+        userProfile: UserProfileType | null;
+        friends: any[];
+        groups: Group[];
+        profilePhotoUrl: string | null;
+        stats: { friends: number; groups: number };
+        loading: boolean;
+    }>(() => ({
+        userProfile: null,
+        friends: [],
+        groups: [],
+        profilePhotoUrl: null,
+        stats: { friends: 0, groups: 0 },
+        loading: true
+    }));
 
-    // Track where user came from for better navigation
-    const [previousRoute, setPreviousRoute] = useState<string | null>(null);
-
-    const [userProfile, setUserProfile] = useState<UserProfileType | null>(null);
-    const [friends, setFriends] = useState<any[]>([]);
-    const [groups, setGroups] = useState<Group[]>([]);
-    const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [stats, setStats] = useState({
-        friends: 0,
-        groups: 0,
-    });
     const [friendshipState, setFriendshipState] = useState<'none' | 'requested' | 'friends'>('none');
 
-    // Create a reusable loadUserData function with smart caching
+    // Memoized destructuring for performance
+    const { userProfile, friends, groups, profilePhotoUrl, stats, loading } = profileData;
+
+    // Optimized loadUserData function with consolidated state updates
     const loadUserData = useCallback(async (forceRefresh: boolean = false) => {
-        console.log('UserProfile: loadUserData called with userIdString:', userIdString, 'forceRefresh:', forceRefresh);
-        if (!userIdString) {
-            console.log('UserProfile: No userIdString, returning early');
-            return;
-        }
+        if (!userIdString) return;
 
         // Check cache first if not forcing refresh
         if (!forceRefresh) {
@@ -70,53 +71,52 @@ const UserProfile = () => {
             }>(cacheKey);
 
             if (cachedData) {
-                console.log('UserProfile: Using cached profile data for:', userIdString);
-                setUserProfile(cachedData.data.profile);
-                setFriends(cachedData.data.friends);
-                setGroups(cachedData.data.groups);
-                setProfilePhotoUrl(cachedData.data.profilePhotoUrl);
-                setStats(cachedData.data.stats);
-                setLoading(false);
+                setProfileData({
+                    userProfile: cachedData.data.profile,
+                    friends: cachedData.data.friends,
+                    groups: cachedData.data.groups,
+                    profilePhotoUrl: cachedData.data.profilePhotoUrl,
+                    stats: cachedData.data.stats,
+                    loading: false
+                });
                 return;
             }
         }
 
         try {
-            setLoading(true);
-            console.log('UserProfile: Loading user profile from API for:', userIdString);
+            setProfileData(prev => ({ ...prev, loading: true }));
 
             // Load user profile (getUserProfile already has caching with 10-minute TTL)
             const profile = await getUserProfile(userIdString);
-            console.log('UserProfile: Profile loaded:', profile ? 'success' : 'null');
             if (!profile) {
-                console.log('UserProfile: No profile found, going back');
                 router.back();
                 return;
             }
-            setUserProfile(profile);
 
-            // Load groups and friends in parallel for better performance
-            const [userGroups, friendIds] = await Promise.all([
+            // Load groups, friends, and photo in parallel for better performance
+            const [userGroups, friendIds, photoUrl] = await Promise.all([
                 getUserGroups(userIdString),
-                getUserFriends(userIdString)
+                getUserFriends(userIdString),
+                profile?.photoId ? getProfilePhotoUrl(profile.photoId) : Promise.resolve(null)
             ]);
 
-            const userFriends = friendIds && friendIds.length > 0 ? await getUsersByIds(friendIds) : [];
-
-            setFriends(userFriends || []);
-            setGroups(userGroups || []);
+            const userFriends = friendIds?.length > 0 ? await getUsersByIds(friendIds) : [];
             const statsData = {
                 friends: userFriends?.length || 0,
                 groups: userGroups?.length || 0,
             };
-            setStats(statsData);
 
-            // Load profile photo if available
-            let photoUrl: string | null = null;
-            if (profile?.photoId) {
-                photoUrl = await getProfilePhotoUrl(profile.photoId);
-                setProfilePhotoUrl(photoUrl);
-            }
+            // Single state update for better performance
+            const completeData = {
+                userProfile: profile,
+                friends: userFriends || [],
+                groups: userGroups || [],
+                profilePhotoUrl: photoUrl,
+                stats: statsData,
+                loading: false
+            };
+
+            setProfileData(completeData);
 
             // Cache the complete profile data for 5 minutes to reduce redundant calls
             const cacheKey = `user-profile-data-${userIdString}`;
@@ -126,33 +126,27 @@ const UserProfile = () => {
                 groups: userGroups || [],
                 profilePhotoUrl: photoUrl,
                 stats: statsData
-            }, 5 * 60 * 1000); // 5 minute cache
-
-            console.log('UserProfile: Profile data loaded and cached for:', userIdString);
+            }, 5 * 60 * 1000);
         } catch (error) {
             console.error('Error loading user profile:', error);
-        } finally {
-            setLoading(false);
+            setProfileData(prev => ({ ...prev, loading: false }));
         }
     }, [userIdString, router]);
 
     // Load data on mount only
     useEffect(() => {
-        loadUserData(false); // Use cache if available
+        loadUserData(false);
     }, [loadUserData]);
 
-    // Only refresh data when screen comes into focus if cache is stale or user navigated back
+    // Optimized focus effect with cache staleness check
     useFocusEffect(
         useCallback(() => {
-            // Check if we have fresh data (loaded within last 2 minutes)
             const cacheKey = `user-profile-data-${userIdString}`;
             const cachedData = cacheManager.getEntry(cacheKey);
 
+            // Refresh if cache is stale (older than 2 minutes)
             if (!cachedData || (Date.now() - cachedData.timestamp) > 2 * 60 * 1000) {
-                console.log('UserProfile: Cache stale or missing, refreshing on focus');
-                loadUserData(false); // Still use cache-first approach
-            } else {
-                console.log('UserProfile: Fresh cache available, skipping focus refresh');
+                loadUserData(false);
             }
         }, [loadUserData, userIdString])
     );

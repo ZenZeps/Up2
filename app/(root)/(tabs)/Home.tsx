@@ -1,6 +1,6 @@
 import { Background } from '@/components/ui/Background';
 import { getEventColor } from '@/constants/categories';
-import { enrichEventsWithGroupNames, getEventInvitees, getUserAttendingEvents, isUserAttendingEvent } from '@/lib/api/event';
+import { enrichEventsWithGroupNames, getUserAttendingEvents } from '@/lib/api/event';
 import { getUserGroupInvites } from '@/lib/api/group';
 // Removed static import of getActiveTravelForUser - using dynamic import instead
 import EventImage from '@/components/EventImage';
@@ -13,7 +13,6 @@ import { useActionTracker } from '@/lib/hooks/useOptimizedData';
 import { useRealTimeUI } from '@/lib/hooks/useRealTimeUI';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { Event as AppEvent } from '@/lib/types/Events';
-import { TravelAnnouncement } from '@/lib/types/Travel';
 import { isUserAttendingHeuristic } from '@/lib/utils/attendance';
 import { processCalendarEvents } from '@/lib/utils/calendarHelpers';
 import { useCreatorInfo } from '@/lib/utils/creatorInfoManager';
@@ -121,7 +120,6 @@ export default function Home() {
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<AppEvent | null>(null);
   const [calendarHeight, setCalendarHeight] = useState(0);
-  const [userTravelData, setUserTravelData] = useState<TravelAnnouncement[]>([]);
   const [groupInvites, setGroupInvites] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('agenda');
   const [enrichedEvents, setEnrichedEvents] = useState<AppEvent[]>([]);
@@ -225,12 +223,8 @@ export default function Home() {
     skip: !currentUser?.$id,
   });
 
-  // Update userTravelData when travelData changes
-  useEffect(() => {
-    if (travelData) {
-      setUserTravelData(travelData);
-    }
-  }, [travelData]);
+  // Use travel data directly from the useAppwrite hook
+  const userTravelData = travelData || [];
 
   // Remove problematic useEffect that caused infinite loops
   // displayedMonth will be managed directly where needed
@@ -332,112 +326,65 @@ export default function Home() {
     fetchUserAttendingEvents();
   }, [fetchUserAttendingEvents]);
 
-  // Check for pending invites (both event and group invites)
+  // Consolidated invites processing (both events and groups)
   const [hasInvites, setHasInvites] = useState<boolean>(false);
   useEffect(() => {
     let mounted = true;
-    const computeInvites = async () => {
+
+    const processInvites = async () => {
       if (!currentUser?.$id) {
-        if (mounted) setHasInvites(false);
+        if (mounted) {
+          setHasInvites(false);
+          setGroupInvites([]);
+        }
         return;
       }
 
-      // Prefer to compute invites from home-scoped cache when present to avoid DB calls on remount
       try {
-        const cacheTs = (eventsContext && (eventsContext as any).getScreenCacheTimestamp) ? (eventsContext as any).getScreenCacheTimestamp('home') : 0;
-        const lastFetched = (eventsContext && (eventsContext as any).getLastFetchedAt) ? (eventsContext as any).getLastFetchedAt() : 0;
-        const homeCache = getScreenEvents ? getScreenEvents('home') : undefined;
-        authDebug.debug('Home: computeInvites - cache check', { userId: currentUser?.$id, cacheTs, lastFetched, homeCacheCount: Array.isArray(homeCache) ? homeCache.length : 0 });
-        if (cacheTs >= lastFetched && Array.isArray(homeCache) && homeCache.length > 0) {
-          const hasEventInvites = (homeCache as AppEvent[]).some(event => {
-            if (event.creatorId === currentUser.$id) return false;
-            if (typeof (event as any).inviteCount === 'number' && (event as any).inviteCount === 0) return false;
-            // Check for pending invitations, not attendance
-            const anyEv: any = event as any;
-            return (Array.isArray(anyEv.inviteeIds) && anyEv.inviteeIds.includes(currentUser.$id)) ||
-              (Array.isArray(anyEv.pendingInvitees) && anyEv.pendingInvitees.includes(currentUser.$id));
-          });
-          if (mounted) setHasInvites(hasEventInvites || groupInvites.length > 0);
-          return;
-        }
-      } catch (err) {
-        console.warn('Home: failed to compute invites from cache', err);
-      }
+        // Fetch group invites and check for event invites in parallel
+        const [groupInvitesList] = await Promise.all([
+          getUserGroupInvites(currentUser.$id).catch(() => [])
+        ]);
 
-      let hasEventInvites = false;
-      try {
-        for (const event of events) {
-          if (event.creatorId === currentUser.$id) continue;
-          if (typeof event.inviteCount === 'number' && event.inviteCount === 0) continue;
-          try {
-            const invitees = await getEventInvitees(event.$id);
-            if (Array.isArray(invitees) && invitees.includes(currentUser.$id)) {
-              // Check if user is invited but hasn't accepted yet
-              const isAlreadyAttending = await isUserAttendingEvent(currentUser.$id, event.$id);
-              if (!isAlreadyAttending) {
-                // User has a genuine pending invitation
-                hasEventInvites = true;
-                break;
-              }
-            }
-          } catch (_err) {
-            // Fallback to legacy fields for pending invitations
-            const anyEv: any = event as any;
-            if ((Array.isArray(anyEv.inviteeIds) && anyEv.inviteeIds.includes(currentUser.$id)) ||
-              (Array.isArray(anyEv.pendingInvitees) && anyEv.pendingInvitees.includes(currentUser.$id))) {
-              // Also check if they haven't accepted in the fallback case
-              try {
-                const isAlreadyAttending = await isUserAttendingEvent(currentUser.$id, event.$id);
-                if (!isAlreadyAttending) {
-                  hasEventInvites = true;
-                  break;
-                }
-              } catch (err) {
-                // If we can't check attendance, assume it's a pending invitation
-                hasEventInvites = true;
-                break;
-              }
-            }
+        if (!mounted) return;
+
+        setGroupInvites(Array.isArray(groupInvitesList) ? groupInvitesList : []);
+
+        // Quick event invite check from cache if available
+        let hasEventInvites = false;
+        try {
+          const homeCache = getScreenEvents ? getScreenEvents('home') : undefined;
+          if (Array.isArray(homeCache) && homeCache.length > 0) {
+            hasEventInvites = (homeCache as AppEvent[]).some(event => {
+              if (event.creatorId === currentUser.$id) return false;
+              const anyEv: any = event as any;
+              return (Array.isArray(anyEv.inviteeIds) && anyEv.inviteeIds.includes(currentUser.$id)) ||
+                (Array.isArray(anyEv.pendingInvitees) && anyEv.pendingInvitees.includes(currentUser.$id));
+            });
           }
+        } catch (err) {
+          console.warn('Home: failed to check event invites from cache', err);
         }
-      } catch (err) {
-        console.warn('Home: failed to compute event invites via junctions', err);
-        hasEventInvites = false;
-      }
 
-      const hasGroupInvites = groupInvites.length > 0;
-      if (mounted) setHasInvites(hasEventInvites || hasGroupInvites);
-    };
-
-    computeInvites();
-    return () => { mounted = false; };
-  }, [events, currentUser, groupInvites, eventsContext, getScreenEvents]);
-
-  // Fetch group invites
-  useEffect(() => {
-    const fetchGroupInvites = async () => {
-      if (!currentUser?.$id) return;
-
-      try {
-        const invites = await getUserGroupInvites(currentUser.$id);
-        setGroupInvites(Array.isArray(invites) ? invites : []);
+        const hasGroupInvites = Array.isArray(groupInvitesList) && groupInvitesList.length > 0;
+        if (mounted) {
+          setHasInvites(hasEventInvites || hasGroupInvites);
+          authDebug.debug('Home: invites processed', { hasEventInvites, hasGroupInvites });
+        }
       } catch (error) {
-        console.error('Error fetching group invites:', error);
-        setGroupInvites([]);
+        console.error('Error processing invites:', error);
+        if (mounted) {
+          setHasInvites(false);
+          setGroupInvites([]);
+        }
       }
     };
 
-    fetchGroupInvites();
-  }, [currentUser]);
+    processInvites();
+    return () => { mounted = false; };
+  }, [currentUser, events, getScreenEvents]);
 
-  // Diagnostic: log whenever agendaEvents changes so we can trace UI updates
-  useEffect(() => {
-    try {
-      authDebug.debug('Home: agendaEvents changed', { count: agendaEvents.length, ids: agendaEvents.map(e => e.$id).slice(0, 10) });
-    } catch (_err) {
-      /* ignore */
-    }
-  }, [agendaEvents]);
+  // Removed redundant diagnostic useEffect - logging moved to where agendaEvents is set
 
   // Enrich events with group names AND set agenda events
   useEffect(() => {

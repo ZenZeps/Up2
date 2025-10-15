@@ -1,7 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import images from '../constants/images';
@@ -25,72 +25,83 @@ export default function PublicInviteLanding() {
         inviter: string;
     }>();
 
-    const [loading, setLoading] = useState(true);
-    const [event, setEvent] = useState<EventDetails | null>(null);
+    // Consolidated state for better performance
+    const [inviteState, setInviteState] = useState(() => ({
+        loading: true,
+        event: null as EventDetails | null
+    }));
+
+    const { loading, event } = inviteState;
 
     useEffect(() => {
         loadInviteData();
     }, [eventId]);
 
-    const loadInviteData = async () => {
+    const loadInviteData = useCallback(async () => {
         try {
-            setLoading(true);
+            setInviteState(prev => ({ ...prev, loading: true }));
 
             if (!eventId) {
                 Alert.alert('Invalid Invite', 'This invite link appears to be invalid.');
                 return;
             }
 
-            // Fetch event details (this should work even without authentication)
-            const eventData = await databases.getDocument(
-                config.databaseID!,
-                config.eventsCollectionID!,
-                eventId
-            );
+            // Parallel fetch of event data and attendees
+            const [eventData, attendeesResult] = await Promise.allSettled([
+                databases.getDocument(
+                    config.databaseID!,
+                    config.eventsCollectionID!,
+                    eventId
+                ),
+                (async () => {
+                    try {
+                        const { getEventAttendees } = await import('../lib/api/event');
+                        return await getEventAttendees(eventId);
+                    } catch {
+                        return null;
+                    }
+                })()
+            ]);
 
-            // Prefer junction-based attendee lookup when available, but keep legacy fallback
-            let combinedEvent = eventData as unknown as EventDetails & { attendeeCount?: number };
-            try {
-                const { getEventAttendees } = await import('../lib/api/event');
-                const attendees = await getEventAttendees(eventId);
-                if (Array.isArray(attendees)) {
-                    combinedEvent = { ...combinedEvent, attendeeCount: attendees.length };
-                }
-            } catch (e) {
-                // Ignore - fall back to legacy attendees array on the event doc if present
+            if (eventData.status === 'fulfilled') {
+                const combinedEvent = {
+                    ...eventData.value,
+                    attendeeCount: attendeesResult.status === 'fulfilled' && Array.isArray(attendeesResult.value)
+                        ? attendeesResult.value.length
+                        : (eventData.value as any).attendees?.length || 0
+                } as unknown as EventDetails;
+
+                setInviteState({ loading: false, event: combinedEvent });
+            } else {
+                throw eventData.reason;
             }
-
-            setEvent(combinedEvent as EventDetails);
 
         } catch (error) {
             console.error('Error loading invite data:', error);
             Alert.alert('Error', 'Failed to load event details. Please try again.');
-        } finally {
-            setLoading(false);
+            setInviteState({ loading: false, event: null });
         }
-    };
+    }, [eventId]);
 
-    const handleDownloadApp = () => {
-        const appStoreUrl = 'https://apps.apple.com/app/up2'; // Replace with your actual App Store URL
-        const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.nikolajszeps.up2'; // Replace with your actual Play Store URL
-
+    const handleDownloadApp = useCallback(() => {
+        const appStoreUrl = 'https://apps.apple.com/app/up2';
+        const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.nikolajszeps.up2';
         const url = Platform.OS === 'ios' ? appStoreUrl : playStoreUrl;
 
         Linking.openURL(url).catch(() => {
             Alert.alert('Error', 'Unable to open app store. Please search for "Up2" in your app store.');
         });
-    };
+    }, []);
 
-    const handleOpenInApp = () => {
+    const handleOpenInApp = useCallback(() => {
         const deepLink = `up2://invite?eventId=${eventId}&inviter=${inviter}&type=event-invite`;
 
         Linking.openURL(deepLink).catch(() => {
-            // If app is not installed, redirect to download
             handleDownloadApp();
         });
-    };
+    }, [eventId, inviter, handleDownloadApp]);
 
-    const formatEventDate = (startTime: string, endTime: string) => {
+    const formatEventDate = useCallback((startTime: string, endTime: string) => {
         const start = new Date(startTime);
         const end = new Date(endTime);
 
@@ -110,7 +121,7 @@ export default function PublicInviteLanding() {
         })}`;
 
         return { dateStr, timeStr };
-    };
+    }, []);
 
     if (loading) {
         return (

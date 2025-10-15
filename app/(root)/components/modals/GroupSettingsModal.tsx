@@ -1,6 +1,6 @@
 import { getUserFriends } from '@/lib/api/friendship';
 import {
-    addUserToGroup,
+    addGroupMember,
     approveJoinRequest,
     deleteGroup,
     getGroupJoinRequests,
@@ -208,7 +208,7 @@ const GroupSettingsModal: React.FC<GroupSettingsModalProps> = ({
             }
 
             // Add user to group
-            await addUserToGroup(group.$id, userToAdd.$id);
+            await addGroupMember(group.$id, userToAdd.$id);
 
             Alert.alert('Success', `${userToAdd.firstName} ${userToAdd.lastName} has been added to the group`);
             setAddMemberName('');

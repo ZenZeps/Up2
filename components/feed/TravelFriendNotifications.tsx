@@ -21,52 +21,79 @@ interface TravelFriendNotificationsProps {
     userFriends: string[];
 }
 
+// Shared location mock data for consistency
+const LOCATION_MOCKS: Record<string, { lat: number; lng: number }> = {
+    'sydney': { lat: -33.8688, lng: 151.2093 },
+    'melbourne': { lat: -37.8136, lng: 144.9631 },
+    'brisbane': { lat: -27.4698, lng: 153.0251 },
+    'perth': { lat: -31.9505, lng: 115.8605 },
+    'adelaide': { lat: -34.9285, lng: 138.6007 },
+    'new york': { lat: 40.7128, lng: -74.0060 },
+    'london': { lat: 51.5074, lng: -0.1278 },
+    'tokyo': { lat: 35.6762, lng: 139.6503 },
+    'paris': { lat: 48.8566, lng: 2.3522 },
+    'bali': { lat: -8.3405, lng: 115.0920 },
+    'bangkok': { lat: 13.7563, lng: 100.5018 },
+    'singapore': { lat: 1.3521, lng: 103.8198 },
+    'hong kong': { lat: 22.3193, lng: 114.1694 }
+};
+
 const TravelFriendNotifications: React.FC<TravelFriendNotificationsProps> = ({
     currentUser,
     userFriends
 }) => {
-    // Form state
-    const [destination, setDestination] = useState('');
-    const [destinationLat, setDestinationLat] = useState<number>();
-    const [destinationLng, setDestinationLng] = useState<number>();
-    const [startDate, setStartDate] = useState(new Date());
-    const [endDate, setEndDate] = useState(new Date());
-    const [description, setDescription] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
+    // Consolidated form state
+    const [formState, setFormState] = useState(() => ({
+        destination: '',
+        destinationLat: undefined as number | undefined,
+        destinationLng: undefined as number | undefined,
+        startDate: new Date(),
+        endDate: new Date(),
+        description: '',
+        isLoading: false
+    }));
 
     // Friends travel state
-    const [friendsCurrentlyTraveling, setFriendsCurrentlyTraveling] = useState<TravelAnnouncement[]>([]);
-    const [friendsInLocation, setFriendsInLocation] = useState<TravelAnnouncement[]>([]);
-    const [loadingFriends, setLoadingFriends] = useState(false);
+    const [friendsData, setFriendsData] = useState(() => ({
+        currentlyTraveling: [] as TravelAnnouncement[],
+        inLocation: [] as TravelAnnouncement[],
+        loading: false
+    }));
+
+    // Memoized destructuring
+    const { destination, destinationLat, destinationLng, startDate, endDate, description, isLoading } = formState;
+    const { currentlyTraveling: friendsCurrentlyTraveling, loading: loadingFriends } = friendsData;
 
     useEffect(() => {
         loadFriendsTravel();
     }, [userFriends]);
 
-    const loadFriendsTravel = async () => {
-        if (!userFriends || userFriends.length === 0) return;
+    const loadFriendsTravel = React.useCallback(async () => {
+        if (!userFriends?.length) return;
 
-        setLoadingFriends(true);
+        setFriendsData(prev => ({ ...prev, loading: true }));
         try {
-            // Get friends who are currently traveling
             const currentlyTraveling = await getFriendsCurrentlyTraveling(userFriends);
-            setFriendsCurrentlyTraveling(currentlyTraveling);
+            setFriendsData(prev => ({
+                ...prev,
+                currentlyTraveling,
+                loading: false
+            }));
         } catch (error) {
             console.error('Error loading friends travel:', error);
-        } finally {
-            setLoadingFriends(false);
+            setFriendsData(prev => ({ ...prev, loading: false }));
         }
-    };
+    }, [userFriends]);
 
-    const handleCreateTravel = async () => {
+    const handleCreateTravel = React.useCallback(async () => {
         if (!destination.trim()) {
             Alert.alert('Error', 'Please enter a destination');
             return;
         }
 
-        setIsLoading(true);
+        setFormState(prev => ({ ...prev, isLoading: true }));
         try {
-            const travel = await createTravelAnnouncementWithFriendNotifications(
+            await createTravelAnnouncementWithFriendNotifications(
                 {
                     userId: currentUser.$id,
                     destination: destination.trim(),
@@ -88,14 +115,16 @@ const TravelFriendNotifications: React.FC<TravelFriendNotificationsProps> = ({
                     {
                         text: 'OK',
                         onPress: () => {
-                            // Reset form
-                            setDestination('');
-                            setDescription('');
-                            setDestinationLat(undefined);
-                            setDestinationLng(undefined);
-                            setStartDate(new Date());
-                            setEndDate(new Date());
-
+                            // Reset form state
+                            setFormState({
+                                destination: '',
+                                destinationLat: undefined,
+                                destinationLng: undefined,
+                                startDate: new Date(),
+                                endDate: new Date(),
+                                description: '',
+                                isLoading: false
+                            });
                             // Reload friends travel
                             loadFriendsTravel();
                         }
@@ -106,9 +135,9 @@ const TravelFriendNotifications: React.FC<TravelFriendNotificationsProps> = ({
             console.error('Error creating travel:', error);
             Alert.alert('Error', 'Failed to create travel announcement');
         } finally {
-            setIsLoading(false);
+            setFormState(prev => ({ ...prev, isLoading: false }));
         }
-    };
+    }, [destination, startDate, endDate, description, destinationLat, destinationLng, currentUser.$id, userFriends, loadFriendsTravel]);
 
     const checkLocationOverlap = async (friendTravel: TravelAnnouncement) => {
         if (!friendTravel.destinationLat || !friendTravel.destinationLng) {
@@ -147,31 +176,18 @@ const TravelFriendNotifications: React.FC<TravelFriendNotificationsProps> = ({
         }
     };
 
-    // Simple location search (you can replace with Google Places Autocomplete)
-    const searchLocation = (query: string) => {
-        setDestination(query);
-
-        // Mock coordinates for demo (replace with actual location service)
-        const locationMocks: Record<string, { lat: number; lng: number }> = {
-            'sydney': { lat: -33.8688, lng: 151.2093 },
-            'melbourne': { lat: -37.8136, lng: 144.9631 },
-            'brisbane': { lat: -27.4698, lng: 153.0251 },
-            'perth': { lat: -31.9505, lng: 115.8605 },
-            'adelaide': { lat: -34.9285, lng: 138.6007 },
-            'new york': { lat: 40.7128, lng: -74.0060 },
-            'london': { lat: 51.5074, lng: -0.1278 },
-            'tokyo': { lat: 35.6762, lng: 139.6503 },
-            'paris': { lat: 48.8566, lng: 2.3522 },
-            'bali': { lat: -8.3405, lng: 115.0920 },
-        };
-
+    // Optimized location search with shared mock data
+    const searchLocation = React.useCallback((query: string) => {
         const normalizedQuery = query.toLowerCase();
-        const location = locationMocks[normalizedQuery];
-        if (location) {
-            setDestinationLat(location.lat);
-            setDestinationLng(location.lng);
-        }
-    };
+        const location = LOCATION_MOCKS[normalizedQuery];
+
+        setFormState(prev => ({
+            ...prev,
+            destination: query,
+            destinationLat: location?.lat,
+            destinationLng: location?.lng
+        }));
+    }, []);
 
     return (
         <ScrollView className="flex-1 bg-gray-50">
@@ -237,7 +253,7 @@ const TravelFriendNotifications: React.FC<TravelFriendNotificationsProps> = ({
                         className="border border-gray-300 rounded-lg p-3 text-gray-800"
                         placeholder="Business trip, vacation, visiting friends..."
                         value={description}
-                        onChangeText={setDescription}
+                        onChangeText={(text) => setFormState(prev => ({ ...prev, description: text }))}
                         multiline
                         numberOfLines={3}
                     />

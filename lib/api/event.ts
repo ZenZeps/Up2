@@ -214,12 +214,7 @@ export async function fetchEventById(id: string): Promise<Event | null> {
   }
 }
 
-/**
- * Get all events (alias for fetchEvents)
- */
-export async function getAllEvents(includePast: boolean = false) {
-  return fetchEvents(includePast);
-}
+// Removed getAllEvents - use fetchEvents() directly
 
 /**
  * Get only public events for feeds (excludes private events unless user is creator/invitee)
@@ -263,12 +258,7 @@ export async function getPublicEvents(includePast: boolean = false, userId?: str
   return filteredEvents;
 }
 
-/**
- * Get event by ID (alias for fetchEventById)
- */
-export async function getEventById(id: string) {
-  return fetchEventById(id);
-}
+// Removed getEventById - use fetchEventById() directly
 
 /**
  * Create a new event with comprehensive error handling

@@ -1,8 +1,11 @@
 import { AuthDebugger } from '@/components/debug/AuthDebugger';
-import React from 'react';
+import React, { memo } from 'react';
 
-const AuthDebug = () => {
+// Memoized component for better performance
+const AuthDebug = memo(() => {
     return <AuthDebugger />;
-};
+});
+
+AuthDebug.displayName = 'AuthDebug';
 
 export default AuthDebug;

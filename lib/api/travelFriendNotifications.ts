@@ -20,32 +20,12 @@ export async function createTravelAnnouncementWithFriendNotifications(
     userFriends: string[] = []
 ): Promise<TravelAnnouncement> {
     try {
-        console.log('🧳 ===== TRAVEL ANNOUNCEMENT CREATION STARTED =====');
-        console.log('🧳 Input data:', {
-            userId: travel.userId,
-            destination: travel.destination,
-            startDate: travel.startDate,
-            endDate: travel.endDate,
-            isPublic: travel.isPublic,
-            hasCoordinates: !!(travel.destinationLat && travel.destinationLng),
-            userFriendsCount: userFriends.length
-        });
-
-        // Debug configuration values
-        console.log('🔧 Appwrite Configuration:', {
-            databaseID: config.databaseID,
-            travelCollectionID: config.travelCollectionID,
-            endpoint: config.endpoint,
-            projectID: config.projectID
-        });
-
         // Validate required fields
         if (!travel.userId || travel.userId.trim() === '') {
             throw new Error('User ID is required to create travel announcement');
         }
 
         const travelId = ID.unique();
-        console.log('🧳 Generated travel ID:', travelId);
 
         // Find friends who will be in the same location during the same time
         const friendsToNotify = await findFriendsInSameLocation(
@@ -55,10 +35,6 @@ export async function createTravelAnnouncementWithFriendNotifications(
             travel.endDate,
             userFriends
         );
-
-        console.log('🧳 Friends to notify:', friendsToNotify.length);
-        console.log('🧳 Friends to notify array:', friendsToNotify);
-        console.log('🧳 Friends array type check:', Array.isArray(friendsToNotify));
 
         // Create travel data with only valid fields
         const travelData: any = {
@@ -77,26 +53,11 @@ export async function createTravelAnnouncementWithFriendNotifications(
         }
 
         // Add friends notification array
-        if (Array.isArray(friendsToNotify) && friendsToNotify.length > 0) {
-            travelData.friendsNotified = friendsToNotify;
-        } else {
-            travelData.friendsNotified = [];
-        }
-
-        console.log('🧳 Final travel data structure:', {
-            ...travelData,
-            startDate: travelData.startDate.toISOString(),
-            endDate: travelData.endDate.toISOString()
-        });
+        travelData.friendsNotified = Array.isArray(friendsToNotify) && friendsToNotify.length > 0
+            ? friendsToNotify
+            : [];
 
         const { stripSystemTimestamps } = await import('@/lib/utils/appwriteSanitizer');
-
-        console.log('🧳 Creating travel announcement in collection:', config.travelCollectionID);
-        console.log('🧳 Travel data to save:', {
-            destination: travelData.destination,
-            userId: travelData.userId,
-            dates: `${travelData.startDate} to ${travelData.endDate}`
-        });
 
         // Log the complete data being sent to database
         const sanitizedData = stripSystemTimestamps(travelData);

@@ -27,6 +27,25 @@ interface TravelFormProps {
     editingTravel?: TravelAnnouncement | null;
 }
 
+// Shared location mock data for consistency across components
+const LOCATION_MOCKS: Record<string, { lat: number; lng: number }> = {
+    'sydney': { lat: -33.8688, lng: 151.2093 },
+    'melbourne': { lat: -37.8136, lng: 144.9631 },
+    'brisbane': { lat: -27.4698, lng: 153.0251 },
+    'perth': { lat: -31.9505, lng: 115.8605 },
+    'adelaide': { lat: -34.9285, lng: 138.6007 },
+    'new york': { lat: 40.7128, lng: -74.0060 },
+    'london': { lat: 51.5074, lng: -0.1278 },
+    'tokyo': { lat: 35.6762, lng: 139.6503 },
+    'paris': { lat: 48.8566, lng: 2.3522 },
+    'bali': { lat: -8.3405, lng: 115.0920 },
+    'bangkok': { lat: 13.7563, lng: 100.5018 },
+    'singapore': { lat: 1.3521, lng: 103.8198 },
+    'hong kong': { lat: 22.3193, lng: 114.1694 },
+    'los angeles': { lat: 34.0522, lng: -118.2437 },
+    'san francisco': { lat: 37.7749, lng: -122.4194 },
+};
+
 const TravelForm: React.FC<TravelFormProps> = ({
     visible,
     onClose,
@@ -35,60 +54,40 @@ const TravelForm: React.FC<TravelFormProps> = ({
     userFriends,
     editingTravel
 }) => {
-    // Form state
-    const [destination, setDestination] = useState(editingTravel?.destination || '');
-    const [description, setDescription] = useState(editingTravel?.description || '');
-    const [startDate, setStartDate] = useState(
-        editingTravel ? new Date(editingTravel.startDate) : new Date()
-    );
-    const [endDate, setEndDate] = useState(
-        editingTravel ? new Date(editingTravel.endDate) : new Date()
-    );
-    const [isPublic, setIsPublic] = useState(editingTravel?.isPublic ?? true);
-    const [isLoading, setIsLoading] = useState(false);
+    // Consolidated form state
+    const [formState, setFormState] = useState(() => ({
+        destination: editingTravel?.destination || '',
+        description: editingTravel?.description || '',
+        startDate: editingTravel ? new Date(editingTravel.startDate) : new Date(),
+        endDate: editingTravel ? new Date(editingTravel.endDate) : new Date(),
+        isPublic: editingTravel?.isPublic ?? true,
+        isLoading: false,
+        destinationLat: editingTravel?.destinationLat,
+        destinationLng: editingTravel?.destinationLng
+    }));
 
     // Date picker state
-    const [showStartDatePicker, setShowStartDatePicker] = useState(false);
-    const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+    const [datePickerState, setDatePickerState] = useState(() => ({
+        showStartDatePicker: false,
+        showEndDatePicker: false
+    }));
 
-    // Location coordinates (for friend matching)
-    const [destinationLat, setDestinationLat] = useState<number | undefined>(
-        editingTravel?.destinationLat
-    );
-    const [destinationLng, setDestinationLng] = useState<number | undefined>(
-        editingTravel?.destinationLng
-    );
+    // Memoized destructuring
+    const { destination, description, startDate, endDate, isPublic, isLoading, destinationLat, destinationLng } = formState;
+    const { showStartDatePicker, showEndDatePicker } = datePickerState;
 
-    // Simple location search (you can enhance with Google Places later)
-    const searchLocation = (query: string) => {
-        setDestination(query);
-
-        // Mock coordinates for demo (replace with actual location service)
-        const locationMocks: Record<string, { lat: number; lng: number }> = {
-            'sydney': { lat: -33.8688, lng: 151.2093 },
-            'melbourne': { lat: -37.8136, lng: 144.9631 },
-            'brisbane': { lat: -27.4698, lng: 153.0251 },
-            'perth': { lat: -31.9505, lng: 115.8605 },
-            'adelaide': { lat: -34.9285, lng: 138.6007 },
-            'new york': { lat: 40.7128, lng: -74.0060 },
-            'london': { lat: 51.5074, lng: -0.1278 },
-            'tokyo': { lat: 35.6762, lng: 139.6503 },
-            'paris': { lat: 48.8566, lng: 2.3522 },
-            'bali': { lat: -8.3405, lng: 115.0920 },
-            'bangkok': { lat: 13.7563, lng: 100.5018 },
-            'singapore': { lat: 1.3521, lng: 103.8198 },
-            'hong kong': { lat: 22.3193, lng: 114.1694 },
-            'los angeles': { lat: 34.0522, lng: -118.2437 },
-            'san francisco': { lat: 37.7749, lng: -122.4194 },
-        };
-
+    // Optimized location search with shared logic
+    const searchLocation = React.useCallback((query: string) => {
         const normalizedQuery = query.toLowerCase();
-        const location = locationMocks[normalizedQuery];
-        if (location) {
-            setDestinationLat(location.lat);
-            setDestinationLng(location.lng);
-        }
-    };
+        const location = LOCATION_MOCKS[normalizedQuery];
+
+        setFormState(prev => ({
+            ...prev,
+            destination: query,
+            destinationLat: location?.lat,
+            destinationLng: location?.lng
+        }));
+    }, []);
 
     const handleSave = async () => {
         if (!currentUserId || currentUserId.trim() === '') {
@@ -106,56 +105,49 @@ const TravelForm: React.FC<TravelFormProps> = ({
             return;
         }
 
-        setIsLoading(true);
+        setFormState(prev => ({ ...prev, isLoading: true }));
         try {
-            console.log('🧳 TravelForm: Starting travel creation...');
-            console.log('🧳 TravelForm: User ID:', currentUserId);
-            console.log('🧳 TravelForm: Destination:', destination.trim());
-            console.log('🧳 TravelForm: User friends:', userFriends?.length || 0);
-
             if (editingTravel) {
-                // TODO: Implement update functionality
                 Alert.alert('Info', 'Editing travel announcements will be available soon');
                 return;
-            } else {
-                // Create new travel with friend notifications
-                const travelData = {
-                    userId: currentUserId,
-                    destination: destination.trim(),
-                    startDate: startDate.toISOString(),
-                    endDate: endDate.toISOString(),
-                    description: description.trim(),
-                    isPublic,
-                    destinationLat,
-                    destinationLng,
-                    locationName: destination.trim(),
-                };
-
-                console.log('🧳 TravelForm: About to create travel with data:', travelData);
-
-                const result = await createTravelAnnouncementWithFriendNotifications(
-                    travelData,
-                    userFriends
-                );
-
-                console.log('🧳 TravelForm: Travel creation result:', result);
-
-                Alert.alert(
-                    'Travel Created! 🌍',
-                    `Your travel to ${destination} has been created and friends have been notified!`
-                );
             }
+
+            const travelData = {
+                userId: currentUserId,
+                destination: destination.trim(),
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString(),
+                description: description.trim(),
+                isPublic,
+                destinationLat,
+                destinationLng,
+                locationName: destination.trim(),
+            };
+
+            await createTravelAnnouncementWithFriendNotifications(
+                travelData,
+                userFriends
+            );
+
+            Alert.alert(
+                'Travel Created! 🌍',
+                `Your travel to ${destination} has been created and friends have been notified!`
+            );
 
             onSuccess();
             onClose();
 
             // Reset form
-            setDestination('');
-            setDescription('');
-            setStartDate(new Date());
-            setEndDate(new Date());
-            setDestinationLat(undefined);
-            setDestinationLng(undefined);
+            setFormState({
+                destination: '',
+                description: '',
+                startDate: new Date(),
+                endDate: new Date(),
+                isPublic: true,
+                isLoading: false,
+                destinationLat: undefined,
+                destinationLng: undefined
+            });
         } catch (error) {
             console.error('🧳 TravelForm: Error saving travel:', error);
 
@@ -175,7 +167,7 @@ const TravelForm: React.FC<TravelFormProps> = ({
 
             Alert.alert('Error', `Failed to save travel announcement: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
-            setIsLoading(false);
+            setFormState(prev => ({ ...prev, isLoading: false }));
         }
     };
 
@@ -247,7 +239,7 @@ const TravelForm: React.FC<TravelFormProps> = ({
                             <Text style={styles.dateLabel}>From:</Text>
                             <TouchableOpacity
                                 style={styles.dateButton}
-                                onPress={() => setShowStartDatePicker(true)}
+                                onPress={() => setDatePickerState(prev => ({ ...prev, showStartDatePicker: true }))}
                                 disabled={isLoading}
                             >
                                 <Text style={styles.dateText}>
@@ -267,7 +259,7 @@ const TravelForm: React.FC<TravelFormProps> = ({
                             <Text style={styles.dateLabel}>To:</Text>
                             <TouchableOpacity
                                 style={styles.dateButton}
-                                onPress={() => setShowEndDatePicker(true)}
+                                onPress={() => setDatePickerState(prev => ({ ...prev, showEndDatePicker: true }))}
                                 disabled={isLoading}
                             >
                                 <Text style={styles.dateText}>
@@ -290,7 +282,7 @@ const TravelForm: React.FC<TravelFormProps> = ({
                             style={[styles.textInput, styles.textArea]}
                             placeholder="Business trip, vacation, visiting friends..."
                             value={description}
-                            onChangeText={setDescription}
+                            onChangeText={(text) => setFormState(prev => ({ ...prev, description: text }))}
                             multiline
                             numberOfLines={4}
                             textAlignVertical="top"
@@ -309,7 +301,7 @@ const TravelForm: React.FC<TravelFormProps> = ({
                             </View>
                             <Switch
                                 value={isPublic}
-                                onValueChange={setIsPublic}
+                                onValueChange={(value) => setFormState(prev => ({ ...prev, isPublic: value }))}
                                 disabled={isLoading}
                                 trackColor={{ false: '#E5E5E5', true: '#007AFF' }}
                                 thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
@@ -358,13 +350,16 @@ const TravelForm: React.FC<TravelFormProps> = ({
                         mode="date"
                         display="default"
                         onChange={(event, selectedDate) => {
-                            setShowStartDatePicker(false);
+                            setDatePickerState(prev => ({ ...prev, showStartDatePicker: false }));
                             if (selectedDate) {
-                                setStartDate(selectedDate);
-                                // Auto-adjust end date if it's before start date
-                                if (selectedDate > endDate) {
-                                    setEndDate(selectedDate);
-                                }
+                                setFormState(prev => {
+                                    const newState = { ...prev, startDate: selectedDate };
+                                    // Auto-adjust end date if it's before the new start date
+                                    if (selectedDate > prev.endDate) {
+                                        newState.endDate = selectedDate;
+                                    }
+                                    return newState;
+                                });
                             }
                         }}
                     />
@@ -377,9 +372,9 @@ const TravelForm: React.FC<TravelFormProps> = ({
                         display="default"
                         minimumDate={startDate}
                         onChange={(event, selectedDate) => {
-                            setShowEndDatePicker(false);
+                            setDatePickerState(prev => ({ ...prev, showEndDatePicker: false }));
                             if (selectedDate) {
-                                setEndDate(selectedDate);
+                                setFormState(prev => ({ ...prev, endDate: selectedDate }));
                             }
                         }}
                     />

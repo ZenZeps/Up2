@@ -1,5 +1,5 @@
 import EventImage from '@/components/EventImage';
-import { addEventAttendee, addEventInvitation, getEventAttendees, getEventById, getEventInvitees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
+import { addEventAttendee, addEventInvitation, fetchEventById, getEventAttendees, getEventInvitees, isUserAttendingEvent, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUserProfile, getUsersByIds } from '@/lib/api/user';
@@ -54,7 +54,7 @@ const EventDetail = () => {
       try {
         // Use the proper API function instead of direct database call
         console.log('🔍 Fetching event by ID:', eventId);
-        const res = await getEventById(String(eventId));
+        const res = await fetchEventById(String(eventId));
         if (!res) {
           console.error('Event not found');
           return;
