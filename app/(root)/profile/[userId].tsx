@@ -1,4 +1,5 @@
 import { Background } from '@/components/ui/Background';
+import { getUserAttendingEvents } from '@/lib/api/event';
 import { blockUser, cancelFriendRequest, getPendingFriendRequests, getUserFriends, sendFriendRequest, unfriendUser } from '@/lib/api/friendship';
 import { getUserGroups } from '@/lib/api/group';
 import { getProfilePhotoUrl } from '@/lib/api/profilePhoto';
@@ -14,8 +15,11 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
+    Alert,
+    Animated,
     FlatList,
     Image,
+    Modal,
     ScrollView,
     StyleSheet,
     Text,
@@ -41,19 +45,27 @@ const UserProfile = () => {
         profilePhotoUrl: string | null;
         stats: { friends: number; groups: number };
         loading: boolean;
+        userEvents: any[];
     }>(() => ({
         userProfile: null,
         friends: [],
         groups: [],
         profilePhotoUrl: null,
+        userEvents: [],
         stats: { friends: 0, groups: 0 },
         loading: true
     }));
 
     const [friendshipState, setFriendshipState] = useState<'none' | 'requested' | 'friends'>('none');
+    const [showFriendsModal, setShowFriendsModal] = useState(false);
+    const [showGroupsModal, setShowGroupsModal] = useState(false);
+    const [loadingFriends, setLoadingFriends] = useState(false);
 
-    // Memoized destructuring for performance
-    const { userProfile, friends, groups, profilePhotoUrl, stats, loading } = profileData;
+    // Simplified animations for better performance
+    const headerOpacity = useState(new Animated.Value(1))[0];
+
+    // Memoized destructuring for performance  
+    const { userProfile, friends, groups, profilePhotoUrl, stats, loading, userEvents } = profileData;
 
     // Optimized loadUserData function with consolidated state updates
     const loadUserData = useCallback(async (forceRefresh: boolean = false) => {
@@ -77,6 +89,7 @@ const UserProfile = () => {
                     groups: cachedData.data.groups,
                     profilePhotoUrl: cachedData.data.profilePhotoUrl,
                     stats: cachedData.data.stats,
+                    userEvents: [],
                     loading: false
                 });
                 return;
@@ -93,43 +106,87 @@ const UserProfile = () => {
                 return;
             }
 
-            // Load groups, friends, and photo in parallel for better performance
+            // Load essential data first, then events in background
             const [userGroups, friendIds, photoUrl] = await Promise.all([
                 getUserGroups(userIdString),
                 getUserFriends(userIdString),
                 profile?.photoId ? getProfilePhotoUrl(profile.photoId) : Promise.resolve(null)
             ]);
 
-            const userFriends = friendIds?.length > 0 ? await getUsersByIds(friendIds) : [];
+            // Load events in background for better performance
+            const userEventsPromise = getUserAttendingEvents(userIdString).catch(err => {
+                console.warn('Failed to load user events:', err);
+                return [];
+            });
+
+            // Get friend count only for stats - don't load actual friend data for better performance
             const statsData = {
-                friends: userFriends?.length || 0,
+                friends: friendIds?.length || 0,
                 groups: userGroups?.length || 0,
             };
 
-            // Single state update for better performance
-            const completeData = {
+            // Set initial data quickly
+            const initialData = {
                 userProfile: profile,
-                friends: userFriends || [],
+                friends: [], // Load friends data only when modal is opened
                 groups: userGroups || [],
                 profilePhotoUrl: photoUrl,
                 stats: statsData,
+                userEvents: [], // Will be loaded shortly
                 loading: false
             };
 
-            setProfileData(completeData);
+            setProfileData(initialData);
 
-            // Cache the complete profile data for 5 minutes to reduce redundant calls
+            // Load events in background and update state
+            const userEvents = await userEventsPromise;
+            if (userEvents && userEvents.length > 0) {
+                // Filter events to get upcoming 5 events
+                const now = new Date();
+                const upcomingEvents = userEvents
+                    .filter(event => {
+                        try {
+                            if (!event.startTime) return false;
+                            const eventDate = new Date(event.startTime);
+                            return eventDate >= now && !isNaN(eventDate.getTime());
+                        } catch {
+                            return false;
+                        }
+                    })
+                    .sort((a, b) => {
+                        try {
+                            const aTime = new Date(a.startTime).getTime();
+                            const bTime = new Date(b.startTime).getTime();
+                            return aTime - bTime;
+                        } catch {
+                            return 0;
+                        }
+                    })
+                    .slice(0, 5);
+
+                // Update state with events
+                setProfileData(prev => ({
+                    ...prev,
+                    userEvents: upcomingEvents
+                }));
+            }
+
+            // Cache the complete profile data for 10 minutes to reduce redundant calls
             const cacheKey = `user-profile-data-${userIdString}`;
             cacheManager.set(cacheKey, {
                 profile,
-                friends: userFriends || [],
+                friends: [],
                 groups: userGroups || [],
                 profilePhotoUrl: photoUrl,
                 stats: statsData
-            }, 5 * 60 * 1000);
+            }, 10 * 60 * 1000);
         } catch (error) {
             console.error('Error loading user profile:', error);
-            setProfileData(prev => ({ ...prev, loading: false }));
+            setProfileData(prev => ({
+                ...prev,
+                loading: false,
+                userEvents: [] // Ensure events are empty on error
+            }));
         }
     }, [userIdString, router]);
 
@@ -138,17 +195,20 @@ const UserProfile = () => {
         loadUserData(false);
     }, [loadUserData]);
 
-    // Optimized focus effect with cache staleness check
+    // Simple header animation only
+    useEffect(() => {
+        if (!loading && userProfile) {
+            headerOpacity.setValue(1);
+        }
+    }, [loading, userProfile, headerOpacity]);
+
+    // Simplified focus effect - only reload if no data
     useFocusEffect(
         useCallback(() => {
-            const cacheKey = `user-profile-data-${userIdString}`;
-            const cachedData = cacheManager.getEntry(cacheKey);
-
-            // Refresh if cache is stale (older than 2 minutes)
-            if (!cachedData || (Date.now() - cachedData.timestamp) > 2 * 60 * 1000) {
+            if (!userProfile) {
                 loadUserData(false);
             }
-        }, [loadUserData, userIdString])
+        }, [loadUserData, userProfile])
     );
 
     // Load friendship state between current user and this profile
@@ -183,6 +243,27 @@ const UserProfile = () => {
 
         loadFriendship();
     }, [currentUser?.$id, userIdString]);
+
+    // Lazy load friends data when modal is opened
+    const loadFriendsData = useCallback(async () => {
+        if (!userIdString || friends.length > 0 || loadingFriends) return;
+
+        try {
+            setLoadingFriends(true);
+            const friendIds = await getUserFriends(userIdString);
+            if (friendIds?.length > 0) {
+                const userFriends = await getUsersByIds(friendIds);
+                setProfileData(prev => ({
+                    ...prev,
+                    friends: userFriends || []
+                }));
+            }
+        } catch (error) {
+            console.error('Error loading friends:', error);
+        } finally {
+            setLoadingFriends(false);
+        }
+    }, [userIdString, friends.length, loadingFriends]);
 
     const handleViewCalendar = () => {
         try {
@@ -262,6 +343,36 @@ const UserProfile = () => {
     const handleBack = () => {
         router.back();
     };
+
+    // Hook-based handlers (must be before early returns to follow Rules of Hooks)
+    const handleShowFriends = useCallback(() => {
+        if (!userProfile) return;
+        setShowFriendsModal(true);
+        loadFriendsData(); // Load friends data when modal opens
+    }, [userProfile, loadFriendsData]);
+
+    const handleShowGroups = useCallback(() => {
+        if (!userProfile) return;
+        setShowGroupsModal(true);
+    }, [userProfile]);
+
+
+
+    const handleShowPopularity = useCallback(() => {
+        if (!userProfile) return;
+        const { firstName = '', lastName = '' } = userProfile;
+        const popularityScore = userProfile.popularityScore || 0;
+        let popularityLevel = 'New';
+        if (popularityScore >= 100) popularityLevel = 'Popular';
+        else if (popularityScore >= 50) popularityLevel = 'Active';
+        else if (popularityScore >= 20) popularityLevel = 'Growing';
+
+        Alert.alert(
+            'Popularity Score',
+            `${userDisplayUtils.getFirstName({ firstName, lastName })} has a popularity score of ${popularityScore}\n\nLevel: ${popularityLevel}\n\nPopularity is based on activity, events, and community engagement.`
+        );
+    }, [userProfile]);
+
     if (loading) {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -280,249 +391,373 @@ const UserProfile = () => {
                 </View>
             </SafeAreaView>
         );
-    } const { firstName = '', lastName = '' } = userProfile || {};
+    }
+
+    const { firstName = '', lastName = '' } = userProfile || {};
 
     return (
         <Background>
-            <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
+            <View style={[styles.container, { backgroundColor: 'transparent' }]}>
                 <ScrollView
                     style={styles.scrollContainer}
-                    contentContainerStyle={[styles.scrollContent, { paddingBottom: 70 + insets.bottom }]}
+                    contentContainerStyle={{ flexGrow: 1 }}
                     showsVerticalScrollIndicator={false}
                 >
-                    {/* Simple Profile Header like main Profile page */}
-                    <View style={[styles.profileHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-                        {/* Header Actions */}
-                        <View style={styles.headerActions}>
-                            <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-                                <MaterialIcons name="arrow-back" size={24} color={colors.text} />
-                            </TouchableOpacity>
+                    {/* Beautiful Header with Cover Image */}
+                    <Animated.View style={[styles.headerContainer, { opacity: headerOpacity }]}>
+                        {/* Cover Image/Background */}
+                        <View style={[styles.coverImage, { backgroundColor: 'white' }]}>
+                            {/* Header Controls */}
+                            <View style={styles.headerControls}>
+                                <TouchableOpacity style={styles.headerButtonWhite} onPress={handleBack}>
+                                    <MaterialIcons name="arrow-back" size={24} color="black" />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </Animated.View>
 
-                            {/* Action buttons moved to top right */}
-                            {currentUser && currentUser.$id !== userIdString && (
-                                <View style={styles.topRightActions}>
-                                    {friendshipState === 'friends' && (
-                                        <>
-                                            <TouchableOpacity
-                                                style={[styles.topRightButton, { backgroundColor: colors.error }]}
-                                                onPress={handleUnfriend}
-                                            >
-                                                <MaterialIcons name="person-remove" size={18} color="white" />
-                                            </TouchableOpacity>
-                                            <TouchableOpacity
-                                                style={[styles.topRightButton, { backgroundColor: '#dc3545', marginLeft: 8 }]}
-                                                onPress={handleBlockUser}
-                                            >
-                                                <MaterialIcons name="block" size={18} color="white" />
-                                            </TouchableOpacity>
-                                        </>
-                                    )}
-                                    {friendshipState !== 'friends' && (
-                                        <TouchableOpacity
-                                            style={[styles.topRightButton, { backgroundColor: '#dc3545' }]}
-                                            onPress={handleBlockUser}
-                                        >
-                                            <MaterialIcons name="block" size={18} color="white" />
-                                        </TouchableOpacity>
-                                    )}
-                                </View>
-                            )}
-
+                    {/* Profile Content */}
+                    <View style={styles.newProfileContent}>
+                        {/* Profile Avatar */}
+                        <View style={styles.newAvatarSection}>
+                            <View style={[styles.newAvatarContainer, { borderColor: colors.background }]}>
+                                {profilePhotoUrl ? (
+                                    <Image source={{ uri: profilePhotoUrl }} style={styles.newAvatar} />
+                                ) : (
+                                    <View style={[styles.newAvatarPlaceholder, { backgroundColor: colors.primary }]}>
+                                        <Text style={styles.newAvatarText}>{userDisplayUtils.getInitials({ firstName, lastName })}</Text>
+                                    </View>
+                                )}
+                            </View>
                         </View>
 
-                        {/* Profile Content */}
-                        <View style={styles.profileContent}>
-                            <View style={styles.avatarContainer}>
-                                {profilePhotoUrl ? (
-                                    <Image source={{ uri: profilePhotoUrl }} style={[styles.profileAvatar, { borderColor: colors.border }]} />
-                                ) : (
-                                    <View style={[styles.avatarPlaceholder, { backgroundColor: colors.primary, borderColor: colors.border }]}>
-                                        <Text style={styles.avatarText}>{userDisplayUtils.getInitials({ firstName, lastName })}</Text>
+                        {/* Profile Info */}
+                        <View style={styles.newProfileInfo}>
+                            <Text style={[styles.newProfileName, { color: colors.text }]}>
+                                {userDisplayUtils.getFullName({ firstName, lastName })}
+                            </Text>
+
+                            {/* Personal Info Row */}
+                            <View style={styles.personalInfoRow}>
+                                {userProfile?.age && (
+                                    <View style={styles.infoItem}>
+                                        <MaterialIcons name="cake" size={16} color={colors.textSecondary} />
+                                        <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                                            {userProfile.age} years old
+                                        </Text>
+                                    </View>
+                                )}
+                                {userProfile?.nationality && (
+                                    <View style={styles.infoItem}>
+                                        <MaterialIcons name="place" size={16} color={colors.textSecondary} />
+                                        <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                                            {userProfile.nationality}
+                                        </Text>
                                     </View>
                                 )}
                             </View>
 
-                            <Text style={[styles.profileName, { color: colors.text }]}>{userDisplayUtils.getFullName({ firstName, lastName })}</Text>
-                            <Text style={[styles.profileTitle, { color: colors.textSecondary }]}>
-                                {userProfile?.about ? userProfile.about.slice(0, 80) + (userProfile.about.length > 80 ? '...' : '') : 'No bio yet'}
+                            {/* Bio Section - Always show with default if empty */}
+                            <Text style={[styles.newBio, { color: colors.text }]}>
+                                {userProfile?.about || `${userDisplayUtils.getFirstName({ firstName, lastName })} is exploring the world and meeting new people through Up2!`}
                             </Text>
 
-                            {/* Simple Stats Row */}
-                            <View style={styles.statsContainer}>
-                                <TouchableOpacity style={styles.statItem}>
-                                    <Text style={[styles.statNumber, { color: colors.text }]}>{stats.friends}</Text>
-                                    <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Friends</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={styles.statItem}>
-                                    <Text style={[styles.statNumber, { color: colors.text }]}>{stats.groups}</Text>
-                                    <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Groups</Text>
-                                </TouchableOpacity>
-                            </View>
+                            {/* Preferences/Interests */}
+                            {userProfile?.preferences && userProfile.preferences.length > 0 && (
+                                <View style={styles.interestsContainer}>
+                                    <Text style={[styles.interestsTitle, { color: colors.text }]}>Interests</Text>
+                                    <View style={styles.interestsTags}>
+                                        {userProfile.preferences.slice(0, 5).map((preference, index) => (
+                                            <View key={index} style={[styles.interestTag, { backgroundColor: colors.primary + '20' }]}>
+                                                <Text style={[styles.interestTagText, { color: colors.primary }]}>
+                                                    {preference}
+                                                </Text>
+                                            </View>
+                                        ))}
+                                        {userProfile.preferences.length > 5 && (
+                                            <View style={[styles.interestTag, { backgroundColor: colors.border }]}>
+                                                <Text style={[styles.interestTagText, { color: colors.textSecondary }]}>
+                                                    +{userProfile.preferences.length - 5} more
+                                                </Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                </View>
+                            )}
+                        </View>
 
-                            {/* Action Buttons - simplified, removed duplicate remove/block buttons */}
-                            <View style={styles.actionButtons}>
-                                <TouchableOpacity
-                                    style={[styles.modernButton, styles.primaryButton, { backgroundColor: colors.primary }]}
-                                    onPress={handleViewCalendar}
-                                >
-                                    <MaterialIcons name="calendar-today" size={18} color={colors.buttonText} />
-                                    <Text style={[styles.modernButtonText, { color: colors.buttonText }]}>Calendar</Text>
-                                </TouchableOpacity>
+                        {/* Stats */}
+                        <View style={[styles.newStatsContainer, { backgroundColor: colors.card }]}>
+                            <TouchableOpacity
+                                style={styles.newStatItem}
+                                onPress={handleShowFriends}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={[styles.newStatNumber, { color: colors.text }]}>{stats.friends}</Text>
+                                <Text style={[styles.newStatLabel, { color: colors.textSecondary }]}>Friends</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.newStatItem}
+                                onPress={handleShowGroups}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={[styles.newStatNumber, { color: colors.text }]}>{stats.groups}</Text>
+                                <Text style={[styles.newStatLabel, { color: colors.textSecondary }]}>Groups</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.newStatItem}
+                                onPress={handleShowPopularity}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={[styles.newStatNumber, { color: colors.text }]}>{userProfile?.popularityScore || 0}</Text>
+                                <Text style={[styles.newStatLabel, { color: colors.textSecondary }]}>Popularity</Text>
+                            </TouchableOpacity>
+                        </View>
 
-                                {currentUser && currentUser.$id !== userIdString && (
+                        {/* Action Buttons */}
+                        {currentUser && currentUser.$id !== userIdString && (
+                            <View style={styles.newActionButtonsContainer}>
+                                {friendshipState === 'none' && (
                                     <>
-                                        {friendshipState === 'none' && (
-                                            <TouchableOpacity
-                                                style={[styles.modernButton, styles.secondaryButton, { borderColor: colors.border, backgroundColor: colors.card }]}
-                                                onPress={handleSendFriendRequest}
-                                            >
-                                                <MaterialIcons name="person-add" size={18} color={colors.primary} />
-                                                <Text style={[styles.modernButtonText, { color: colors.primary }]}>Add Friend</Text>
-                                            </TouchableOpacity>
-                                        )}
-                                        {friendshipState === 'requested' && (
-                                            <TouchableOpacity
-                                                style={[styles.modernButton, styles.warningButton]}
-                                                onPress={handleCancelFriendRequest}
-                                            >
-                                                <MaterialIcons name="schedule" size={18} color="white" />
-                                                <Text style={[styles.modernButtonText, { color: 'white' }]}>Pending</Text>
-                                            </TouchableOpacity>
-                                        )}
+                                        <TouchableOpacity
+                                            style={[styles.newPrimaryButton, { backgroundColor: colors.primary }]}
+                                            onPress={handleSendFriendRequest}
+                                        >
+                                            <MaterialIcons name="person-add" size={20} color="white" />
+                                            <Text style={styles.newPrimaryButtonText}>Follow</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={[styles.newSecondaryButton, { borderColor: '#ff4444', backgroundColor: '#ffebee' }]}
+                                            onPress={handleBlockUser}
+                                        >
+                                            <MaterialIcons name="block" size={20} color="#ff4444" />
+                                            <Text style={[styles.newSecondaryButtonText, { color: '#ff4444' }]}>Block</Text>
+                                        </TouchableOpacity>
+                                    </>
+                                )}
 
+                                {friendshipState === 'requested' && (
+                                    <>
+                                        <TouchableOpacity
+                                            style={[styles.newSecondaryButton, { borderColor: colors.border }]}
+                                            onPress={handleCancelFriendRequest}
+                                        >
+                                            <MaterialIcons name="schedule" size={20} color={colors.textSecondary} />
+                                            <Text style={[styles.newSecondaryButtonText, { color: colors.textSecondary }]}>Pending</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={[styles.newSecondaryButton, { borderColor: '#ff4444', backgroundColor: '#ffebee' }]}
+                                            onPress={handleBlockUser}
+                                        >
+                                            <MaterialIcons name="block" size={20} color="#ff4444" />
+                                            <Text style={[styles.newSecondaryButtonText, { color: '#ff4444' }]}>Block</Text>
+                                        </TouchableOpacity>
+                                    </>
+                                )}
+
+                                {friendshipState === 'friends' && (
+                                    <>
+                                        <TouchableOpacity
+                                            style={[styles.newSecondaryButton, { borderColor: colors.border }]}
+                                            onPress={handleUnfriend}
+                                        >
+                                            <MaterialIcons name="person-remove" size={20} color={colors.textSecondary} />
+                                            <Text style={[styles.newSecondaryButtonText, { color: colors.textSecondary }]}>Unfollow</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={[styles.newSecondaryButton, { borderColor: '#ff4444', backgroundColor: '#ffebee' }]}
+                                            onPress={handleBlockUser}
+                                        >
+                                            <MaterialIcons name="block" size={20} color="#ff4444" />
+                                            <Text style={[styles.newSecondaryButtonText, { color: '#ff4444' }]}>Block</Text>
+                                        </TouchableOpacity>
                                     </>
                                 )}
                             </View>
-                        </View>
+                        )}
                     </View>
 
-                    {/* Bio Section (combine about + personal details) */}
-                    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 8 }]}>
-                        <View style={styles.cardHeader}>
-                            <View style={styles.cardTitleContainer}>
-                                <MaterialIcons name="info" size={20} color={colors.primary} />
-                                <Text style={[styles.cardTitle, { color: colors.text }]}>Bio</Text>
-                            </View>
+                    {/* Upcoming Events Section */}
+                    <View style={styles.newActivitiesSection}>
+                        <View style={styles.newSectionHeader}>
+                            <Text style={[styles.newSectionTitle, { color: colors.text }]}>Upcoming Events</Text>
+                            <TouchableOpacity
+                                style={[styles.newCalendarButton, { backgroundColor: colors.primary }]}
+                                onPress={() => router.push(`/(root)/calendar/user/${userIdString}`)}
+                            >
+                                <MaterialIcons name="calendar-today" size={16} color="white" />
+                                <Text style={styles.newCalendarButtonText}>View Calendar</Text>
+                            </TouchableOpacity>
                         </View>
 
-                        <View style={[styles.contentContainer, { backgroundColor: colors.background }]}>
-                            <View style={styles.detailsContainer}>
-                                <View style={styles.detailRow}>
-                                    <MaterialIcons name="flag" size={18} color={colors.textSecondary} />
-                                    <View style={styles.detailContent}>
-                                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Nationality</Text>
-                                        <Text style={[styles.detailValue, { color: colors.text }]}>{userProfile?.nationality || 'Not specified'}</Text>
-                                    </View>
-                                </View>
-
-                                <View style={styles.detailRow}>
-                                    <MaterialIcons name="cake" size={18} color={colors.textSecondary} />
-                                    <View style={styles.detailContent}>
-                                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Age</Text>
-                                        <Text style={[styles.detailValue, { color: colors.text }]}>{userProfile?.age ? `${userProfile.age} years old` : 'Not specified'}</Text>
-                                    </View>
-                                </View>
-                            </View>
-                        </View>
-                    </View>
-
-                    {/* Friends Section */}
-                    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <View style={styles.cardHeader}>
-                            <View style={styles.cardTitleContainer}>
-                                <MaterialIcons name="people" size={20} color={colors.primary} />
-                                <Text style={[styles.cardTitle, { color: colors.text }]}>
-                                    Friends ({stats.friends})
-                                </Text>
-                            </View>
-                        </View>
-
-                        <View style={styles.horizontalList}>
-                            <FlatList
-                                data={friends}
-                                horizontal
-                                showsHorizontalScrollIndicator={false}
-                                keyExtractor={(item) => item.$id}
-                                contentContainerStyle={styles.friendsList}
-                                renderItem={({ item }) => (
-                                    <TouchableOpacity
-                                        style={styles.friendItem}
-                                        onPress={() => router.push(`/(root)/profile/${item.$id}` as any)}
-                                    >
-                                        <UserAvatar
-                                            photoUrl={item.photoId ? getProfilePhotoUrl(item.photoId) : null}
-                                            firstName={item.firstName}
-                                            lastName={item.lastName}
-                                            size={56}
-                                        />
-                                        <Text style={[styles.friendName, { color: colors.text }]} numberOfLines={1}>
-                                            {userDisplayUtils.getFirstName(item)}
-                                        </Text>
-                                    </TouchableOpacity>
-                                )}
-                                ListEmptyComponent={
-                                    <View style={styles.emptyContainer}>
-                                        <MaterialIcons name="person-add" size={32} color={colors.textSecondary} />
-                                        <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                                            No friends yet
-                                        </Text>
-                                    </View>
-                                }
-                            />
-                        </View>
-                    </View>
-
-                    {/* Groups Section */}
-                    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <View style={styles.cardHeader}>
-                            <View style={styles.cardTitleContainer}>
-                                <MaterialIcons name="group" size={20} color={colors.primary} />
-                                <Text style={[styles.cardTitle, { color: colors.text }]}>
-                                    Groups ({stats.groups})
-                                </Text>
-                            </View>
-                        </View>
-
-                        <View style={styles.horizontalList}>
-                            <FlatList
-                                data={groups}
-                                horizontal
-                                showsHorizontalScrollIndicator={false}
-                                keyExtractor={(item) => item.$id}
-                                contentContainerStyle={styles.groupsList}
-                                renderItem={({ item }) => (
-                                    <TouchableOpacity
-                                        style={styles.groupItem}
-                                        onPress={() => router.push(`/(root)/groups/${item.$id}`)}
-                                    >
-                                        <View style={[styles.groupAvatar, { backgroundColor: colors.primary }]}>
-                                            <Text style={styles.groupAvatarText}>
-                                                {item.title.charAt(0).toUpperCase()}
+                        {userEvents && userEvents.length > 0 ? (
+                            userEvents.map((event, index) => (
+                                <TouchableOpacity
+                                    key={event.$id || index}
+                                    style={[styles.newActivityCard, { backgroundColor: colors.card }]}
+                                    onPress={() => router.push(`/(root)/events/${event.$id}`)}
+                                >
+                                    <View style={styles.newActivityHeader}>
+                                        <MaterialIcons name="event" size={24} color={colors.primary} />
+                                        <View style={styles.newActivityInfo}>
+                                            <Text style={[styles.newActivityTitle, { color: colors.text }]} numberOfLines={1}>
+                                                {event.title}
                                             </Text>
+                                            <Text style={[styles.newActivityDate, { color: colors.textSecondary }]}>
+                                                {new Date(event.startTime).toLocaleDateString('en-US', {
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                })}
+                                            </Text>
+                                            {event.location && (
+                                                <Text style={[styles.newEventLocation, { color: colors.textSecondary }]} numberOfLines={1}>
+                                                    <Text>📍 </Text>{event.location}
+                                                </Text>
+                                            )}
                                         </View>
-                                        <Text style={[styles.groupName, { color: colors.text }]} numberOfLines={1}>
+                                        <MaterialIcons name="arrow-forward-ios" size={16} color={colors.textSecondary} />
+                                    </View>
+                                </TouchableOpacity>
+                            ))
+                        ) : (
+                            <View style={styles.newEmptyEventsContainer}>
+                                <MaterialIcons name="event" size={48} color={colors.textSecondary} />
+                                <Text style={[styles.newEmptyEventsText, { color: colors.text }]}>
+                                    No Upcoming Events
+                                </Text>
+                                <Text style={[styles.newEmptyEventsSubtext, { color: colors.textSecondary }]}>
+                                    {userProfile?.firstName || 'This user'} doesn't have any upcoming events
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+                </ScrollView>
+
+                {/* Friends List Modal */}
+                <Modal
+                    visible={showFriendsModal}
+                    animationType="slide"
+                    presentationStyle="pageSheet"
+                >
+                    <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+                        <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+                            <Text style={[styles.modalTitle, { color: colors.text }]}>
+                                {userDisplayUtils.getFirstName({ firstName, lastName })}'s Friends
+                            </Text>
+                            <TouchableOpacity
+                                style={styles.modalCloseButton}
+                                onPress={() => setShowFriendsModal(false)}
+                            >
+                                <MaterialIcons name="close" size={24} color={colors.text} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <FlatList
+                            data={friends}
+                            keyExtractor={(item) => item.$id}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity
+                                    style={[styles.friendItem, { borderBottomColor: colors.border }]}
+                                    onPress={() => {
+                                        setShowFriendsModal(false);
+                                        router.push(`/(root)/profile/${item.$id}`);
+                                    }}
+                                >
+                                    <UserAvatar
+                                        firstName={item.firstName}
+                                        lastName={item.lastName}
+                                        photoUrl={null} // Individual photo loading handled by UserAvatar
+                                        size={50}
+                                    />
+                                    <View style={styles.friendInfo}>
+                                        <Text style={[styles.friendName, { color: colors.text }]}>
+                                            {userDisplayUtils.getFullName(item)}
+                                        </Text>
+                                        {item.nationality && (
+                                            <Text style={[styles.friendLocation, { color: colors.textSecondary }]}>
+                                                <Text>📍 </Text>{item.nationality}
+                                            </Text>
+                                        )}
+                                    </View>
+                                    <MaterialIcons name="arrow-forward-ios" size={16} color={colors.textSecondary} />
+                                </TouchableOpacity>
+                            )}
+                            ListEmptyComponent={
+                                <View style={styles.emptyListContainer}>
+                                    <MaterialIcons name="people" size={64} color={colors.textSecondary} />
+                                    <Text style={[styles.emptyListTitle, { color: colors.text }]}>
+                                        No Friends
+                                    </Text>
+                                    <Text style={[styles.emptyListSubtitle, { color: colors.textSecondary }]}>
+                                        {userDisplayUtils.getFirstName({ firstName, lastName })} hasn't added any friends yet
+                                    </Text>
+                                </View>
+                            }
+                        />
+                    </View>
+                </Modal>
+
+                {/* Groups List Modal */}
+                <Modal
+                    visible={showGroupsModal}
+                    animationType="slide"
+                    presentationStyle="pageSheet"
+                >
+                    <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+                        <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+                            <Text style={[styles.modalTitle, { color: colors.text }]}>
+                                {userDisplayUtils.getFirstName({ firstName, lastName })}'s Groups
+                            </Text>
+                            <TouchableOpacity
+                                style={styles.modalCloseButton}
+                                onPress={() => setShowGroupsModal(false)}
+                            >
+                                <MaterialIcons name="close" size={24} color={colors.text} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <FlatList
+                            data={groups}
+                            keyExtractor={(item) => item.$id}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity
+                                    style={[styles.friendItem, { borderBottomColor: colors.border }]}
+                                    onPress={() => {
+                                        setShowGroupsModal(false);
+                                        router.push(`/(root)/groups/${item.$id}`);
+                                    }}
+                                >
+                                    <View style={[styles.groupIcon, { backgroundColor: colors.primary }]}>
+                                        <MaterialIcons name="group" size={24} color="white" />
+                                    </View>
+                                    <View style={styles.friendInfo}>
+                                        <Text style={[styles.friendName, { color: colors.text }]}>
                                             {item.title}
                                         </Text>
-                                        <Text style={[styles.groupMembers, { color: colors.textSecondary }]}>
-                                            {item.memberCount ?? (Array.isArray(item.users) ? item.users.length : 0)} members
-                                        </Text>
-                                    </TouchableOpacity>
-                                )}
-                                ListEmptyComponent={
-                                    <View style={styles.emptyContainer}>
-                                        <MaterialIcons name="group-add" size={32} color={colors.textSecondary} />
-                                        <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                                            No groups yet
+                                        <Text style={[styles.friendLocation, { color: colors.textSecondary }]}>
+                                            {item.memberCount || 0} members
                                         </Text>
                                     </View>
-                                }
-                            />
-                        </View>
+                                    <MaterialIcons name="arrow-forward-ios" size={16} color={colors.textSecondary} />
+                                </TouchableOpacity>
+                            )}
+                            ListEmptyComponent={
+                                <View style={styles.emptyListContainer}>
+                                    <MaterialIcons name="group" size={64} color={colors.textSecondary} />
+                                    <Text style={[styles.emptyListTitle, { color: colors.text }]}>
+                                        No Groups
+                                    </Text>
+                                    <Text style={[styles.emptyListSubtitle, { color: colors.textSecondary }]}>
+                                        {userDisplayUtils.getFirstName({ firstName, lastName })} hasn't joined any groups yet
+                                    </Text>
+                                </View>
+                            }
+                        />
                     </View>
-
-                    {/* Calendar Action Section removed (moved above Bio) */}
-                </ScrollView>
-            </SafeAreaView>
+                </Modal>
+            </View>
         </Background>
     );
 };
@@ -530,6 +765,7 @@ const UserProfile = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+        paddingTop: 0,
     },
     loadingContainer: {
         flex: 1,
@@ -705,123 +941,529 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         paddingVertical: 14,
     },
-    emptyContainer: {
-        flex: 1,
+
+
+    // === MODERN CLEAN PROFILE STYLES ===
+
+    // Header Styles
+    headerContainer: {
+        position: 'relative',
+    },
+    coverImage: {
+        height: 120,
+        position: 'relative',
+        borderBottomLeftRadius: 0,
+        borderBottomRightRadius: 0,
+        backgroundColor: 'white',
+    },
+
+    headerControls: {
+        position: 'absolute',
+        top: 25,
+        left: 0,
+        right: 0,
+        flexDirection: 'row',
+        justifyContent: 'flex-start',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        zIndex: 10,
+    },
+    headerButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(0,0,0,0.3)',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 20,
     },
-    emptyText: {
-        fontSize: 16,
-        marginTop: 12,
+    headerButtonWhite: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(0,0,0,0.1)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    headerRightControls: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+
+    // Profile Content
+    newProfileContent: {
+        marginTop: -50,
+        paddingHorizontal: 20,
+        zIndex: 5,
+    },
+    newAvatarSection: {
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    newAvatarContainer: {
+        position: 'relative',
+        borderWidth: 4,
+        borderRadius: 80,
+        padding: 4,
+    },
+    newAvatar: {
+        width: 160,
+        height: 160,
+        borderRadius: 80,
+    },
+    newAvatarPlaceholder: {
+        width: 160,
+        height: 160,
+        borderRadius: 80,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    newAvatarText: {
+        fontSize: 48,
+        fontWeight: '700',
+        color: 'white',
+    },
+
+    // Profile Info
+    newProfileInfo: {
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    newProfileName: {
+        fontSize: 24,
+        fontWeight: '700',
+        marginBottom: 4,
         textAlign: 'center',
     },
-    card: {
+    newLocation: {
+        fontSize: 16,
         marginBottom: 12,
-        padding: 16,
-        borderRadius: 16,
-        borderWidth: 1,
+        textAlign: 'center',
+    },
+    newBio: {
+        fontSize: 16,
+        lineHeight: 22,
+        textAlign: 'center',
+        paddingHorizontal: 20,
+    },
+
+    // Stats Container
+    newStatsContainer: {
+        flexDirection: 'row',
+        marginBottom: 24,
+        borderRadius: 12,
+        paddingVertical: 20,
+        paddingHorizontal: 16,
         shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    newStatItem: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    newStatNumber: {
+        fontSize: 20,
+        fontWeight: '700',
+        marginBottom: 4,
+    },
+    newStatLabel: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
+
+    // Action Buttons
+    newActionButtonsContainer: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 32,
+    },
+    newPrimaryButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        borderRadius: 8,
+        gap: 8,
+    },
+    newPrimaryButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    newSecondaryButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        borderRadius: 8,
+        borderWidth: 1,
+        gap: 8,
+    },
+    newSecondaryButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+    },
+
+
+
+    // Events/Agenda Styles
+    eventsCard: {
+        marginHorizontal: 16,
+        marginBottom: 20,
+        padding: 20,
+        borderRadius: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
         shadowRadius: 8,
         elevation: 4,
     },
-    cardHeader: {
+    eventsHeader: {
         flexDirection: 'row',
-        alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 8,
+        alignItems: 'center',
+        marginBottom: 20,
     },
-    cardTitleContainer: {
+    eventsHeaderLeft: {
         flexDirection: 'row',
         alignItems: 'center',
+        gap: 12,
     },
-    cardTitle: {
-        fontSize: 18,
+    eventsTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+    },
+    viewAllButton: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        backgroundColor: 'rgba(0,0,0,0.05)',
+    },
+    viewAllText: {
+        fontSize: 14,
         fontWeight: '600',
-        marginLeft: 8,
     },
-    contentContainer: {
-        padding: 12,
-        borderRadius: 12,
-        marginTop: 0,
+    eventsContent: {
+        gap: 16,
     },
-    detailsContainer: {
-        gap: 12,
+    eventsList: {
+        gap: 16,
     },
-    detailRow: {
+    eventItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
+        padding: 16,
+        borderRadius: 16,
+        backgroundColor: 'rgba(0,0,0,0.02)',
+        borderLeftWidth: 4,
+        gap: 16,
     },
-    detailContent: {
+    eventDate: {
+        alignItems: 'center',
+        width: 50,
+    },
+    eventDay: {
+        fontSize: 20,
+        fontWeight: '700',
+    },
+    eventMonth: {
+        fontSize: 12,
+        fontWeight: '600',
+        marginTop: 2,
+    },
+    eventDetails: {
         flex: 1,
     },
-    detailLabel: {
-        fontSize: 12,
+    eventTitle: {
+        fontSize: 16,
         fontWeight: '600',
         marginBottom: 4,
     },
-    detailValue: {
-        fontSize: 16,
-        fontWeight: '400',
+    eventTime: {
+        fontSize: 14,
     },
-    horizontalList: {
-        height: 120,
-    },
-    friendsList: {
-        paddingHorizontal: 4,
-    },
-    friendItem: {
+    emptyEventsContainer: {
         alignItems: 'center',
-        marginHorizontal: 8,
-        width: 64,
+        paddingVertical: 40,
     },
-    friendName: {
-        fontSize: 12,
-        fontWeight: '500',
-        marginTop: 8,
+    emptyEventsText: {
+        fontSize: 18,
+        fontWeight: '600',
+        marginTop: 16,
         textAlign: 'center',
     },
-    groupsList: {
-        paddingHorizontal: 4,
+    emptyEventsSubtext: {
+        fontSize: 12,
+        textAlign: 'center',
+        marginTop: 4,
     },
-    groupItem: {
+
+    // Activities Section
+    activitiesSection: {
+        paddingHorizontal: 20,
+        paddingBottom: 20,
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        marginHorizontal: 8,
-        width: 80,
+        marginBottom: 20,
     },
-    groupAvatar: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+    },
+    activitiesList: {
+        gap: 16,
+    },
+    activityItem: {
+        flexDirection: 'row',
+        padding: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    activityImageContainer: {
+        position: 'relative',
+        marginRight: 16,
+    },
+    activityImagePlaceholder: {
+        width: 48,
+        height: 48,
+        borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    groupAvatarText: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: 'white',
+    activityStatus: {
+        position: 'absolute',
+        bottom: -2,
+        right: -2,
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        borderWidth: 2,
+        borderColor: 'white',
     },
-    groupName: {
+    activityInfo: {
+        flex: 1,
+    },
+    activityTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 4,
+    },
+    activityLocation: {
+        fontSize: 14,
+        marginBottom: 2,
+    },
+    activityDate: {
+        fontSize: 12,
+    },
+
+    // New Activity Section Styles
+    newActivitiesSection: {
+        padding: 20,
+    },
+    newSectionTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        marginBottom: 16,
+    },
+    newActivityCard: {
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    newActivityHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    newActivityInfo: {
+        flex: 1,
+    },
+    newActivityTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 4,
+    },
+    newActivityDate: {
+        fontSize: 14,
+    },
+    newActivityMeta: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    newActivityLikes: {
+        fontSize: 12,
+        marginLeft: 4,
+    },
+
+    // New Styles for Events Section
+    newSectionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    newCalendarButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+    },
+    newCalendarButtonText: {
+        color: 'white',
         fontSize: 12,
         fontWeight: '600',
-        marginTop: 8,
-        textAlign: 'center',
     },
-    groupMembers: {
-        fontSize: 10,
-        textAlign: 'center',
+    newEventLocation: {
+        fontSize: 12,
         marginTop: 2,
     },
-    emptyTextSecondary: {
+    newEmptyEventsContainer: {
+        alignItems: 'center',
+        paddingVertical: 40,
+    },
+    newEmptyEventsText: {
+        fontSize: 18,
+        fontWeight: '600',
+        marginTop: 12,
+    },
+    newEmptyEventsSubtext: {
+        fontSize: 14,
+        marginTop: 4,
+        textAlign: 'center',
+    },
+
+    // Personal Info Styles
+    personalInfoRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 12,
+        marginTop: 8,
+        marginBottom: 12,
+    },
+    infoItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    infoText: {
+        fontSize: 14,
+    },
+    interestsContainer: {
+        marginTop: 16,
+    },
+    interestsTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 8,
+    },
+    interestsTags: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    interestTag: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 16,
+    },
+    interestTagText: {
+        fontSize: 12,
+        fontWeight: '500',
+    },
+
+    // Modal Styles
+    modalContainer: {
+        flex: 1,
+        paddingTop: 0,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        paddingTop: 60,
+        borderBottomWidth: 1,
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: '600',
+    },
+    modalCloseButton: {
+        padding: 8,
+    },
+    friendItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+    },
+    friendInfo: {
+        flex: 1,
+        marginLeft: 12,
+    },
+    friendName: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 2,
+    },
+    friendLocation: {
+        fontSize: 14,
+    },
+    groupIcon: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    emptyListContainer: {
+        alignItems: 'center',
+        paddingVertical: 60,
+        paddingHorizontal: 40,
+    },
+    emptyListTitle: {
+        fontSize: 20,
+        fontWeight: '600',
+        marginTop: 16,
+        textAlign: 'center',
+    },
+    emptyListSubtitle: {
         fontSize: 16,
         marginTop: 8,
         textAlign: 'center',
+        lineHeight: 22,
+    },
+
+    // Loading Events Styles
+    loadingEventsContainer: {
+        alignItems: 'center',
+        paddingVertical: 20,
+    },
+    loadingEventsText: {
+        fontSize: 14,
+        fontStyle: 'italic',
     },
 });
 
