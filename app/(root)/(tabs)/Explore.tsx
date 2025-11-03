@@ -964,7 +964,7 @@ const Explore = () => {
           tags={item.tags}
           size={64}
           style={styles.eventMiniEmoji}
-          gradientColors={['#FF6B6B', '#FFD166']}
+          gradientColors={['#667eea', '#764ba2']}
         />
         <View style={styles.eventMiniContent}>
           {/* Title */}
@@ -1357,7 +1357,7 @@ const Explore = () => {
                       tags={event.tags}
                       size={72}
                       style={styles.feedThumb}
-                      gradientColors={["#FF6B6B", "#FFD166"]}
+                      gradientColors={["#667eea", "#764ba2"]}
                     />
 
                     <View style={styles.feedBody}>
@@ -1425,7 +1425,7 @@ const Explore = () => {
                         tags={event.tags}
                         size={72}
                         style={styles.feedThumb}
-                        gradientColors={["#FF6B6B", "#FFD166"]}
+                        gradientColors={["#667eea", "#764ba2"]}
                       />
 
                       <View style={styles.feedBody}>

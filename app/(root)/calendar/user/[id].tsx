@@ -634,7 +634,7 @@ export default function UserCalendar() {
                                             tags={item.tags}
                                             size={72}
                                             style={styles.feedThumb}
-                                            gradientColors={["#FF6B6B", "#FFD166"]}
+                                            gradientColors={["#667eea", "#764ba2"]}
                                         />
 
                                         <View style={styles.feedBody}>

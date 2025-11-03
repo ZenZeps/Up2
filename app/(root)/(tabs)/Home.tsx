@@ -1209,7 +1209,7 @@ export default function Home() {
                             tags={eventItem.tags}
                             size={72}
                             style={styles.feedThumb}
-                            gradientColors={["#FF6B6B", "#FFD166"]}
+                            gradientColors={["#667eea", "#764ba2"]}
                           />
 
                           <View style={styles.feedBody}>
@@ -1391,10 +1391,10 @@ export default function Home() {
                       });
 
                       return isTravel ? {
-                        backgroundColor: colors.primary + '20',
+                        backgroundColor: '#667eea20',
                         borderRadius: 4,
                         borderWidth: 1,
-                        borderColor: colors.primary,
+                        borderColor: '#667eea',
                       } : {};
                     }}
                   />

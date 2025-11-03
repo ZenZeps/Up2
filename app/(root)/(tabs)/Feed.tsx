@@ -517,7 +517,7 @@ export default function Feed() {
             tags={item.tags}
             size={48}
             style={styles.eventMiniEmoji}
-            gradientColors={["#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]}
+            gradientColors={["#667eea", "#764ba2"]}
           />
           <View style={styles.eventMiniContent}>
             <Text style={[styles.eventMiniTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>

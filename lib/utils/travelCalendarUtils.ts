@@ -49,7 +49,7 @@ export const generateTravelCalendarStyles = (travelData: TravelAnnouncement[]) =
             },
             // This will be applied to date headers when they match travel dates
             travelDateHeaderStyle: {
-                backgroundColor: '#e3f2fd', // Very light blue
+                backgroundColor: '#667eea20', // Gradient color with transparency
                 borderRadius: 4,
                 marginHorizontal: 2,
             }
@@ -57,11 +57,11 @@ export const generateTravelCalendarStyles = (travelData: TravelAnnouncement[]) =
         // Month view styles  
         monthView: {
             travelDateStyle: {
-                backgroundColor: '#e3f2fd', // Very light blue
+                backgroundColor: '#667eea20', // Gradient color with transparency
                 borderRadius: 4,
             },
             travelDateTextStyle: {
-                color: '#1976d2', // Slightly darker blue for text
+                color: '#667eea', // Main gradient color for text
                 fontWeight: '600',
             }
         }

@@ -17,7 +17,7 @@ const EventImage: React.FC<EventImageProps> = ({
     tags = [],
     size,
     style,
-    gradientColors = ["#c78aa5", "#db7d95", "#f2948f", "#f6b793"] as [string, string, ...string[]],
+    gradientColors = ["#667eea", "#764ba2"] as [string, string, ...string[]],
 }) => {
     // Debug logging only for size 120 (event details/form)
     if (size === 120) {
@@ -65,6 +65,8 @@ const EventImage: React.FC<EventImageProps> = ({
     return (
         <LinearGradient
             colors={gradientColors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={[
                 {
                     width: size,

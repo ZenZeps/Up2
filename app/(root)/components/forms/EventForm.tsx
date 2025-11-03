@@ -637,39 +637,106 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                 </View>
               </View>
 
-              {/* Date & Time - Google Calendar Style */}
+              {/* Enhanced Date & Time Section */}
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>{t('eventForm.dateTime')}</Text>
+
+                {/* Modern Date Time Card */}
                 <TouchableOpacity
                   onPress={() => {
                     if (editable) {
                       setShowGoogleDatePicker(true);
                     }
                   }}
-                  style={styles.googleDatePickerButton}
+                  style={styles.modernDateTimeCard}
                   disabled={!editable}
                 >
-                  <View style={styles.dateTimeDisplay}>
-                    <View style={styles.dateTimeRow}>
-                      <MaterialIcons name="event" size={20} color="rgba(255,255,255,0.7)" />
-                      <View style={styles.dateTimeInfo}>
-                        <Text style={styles.dateRangeText}>
-                          {dayjs(startDate).format('MMM D')}
-                          {!dayjs(startDate).isSame(endDate, 'day') &&
-                            ` - ${dayjs(endDate).format('MMM D')}`}
+                  <LinearGradient
+                    colors={['rgba(255,255,255,0.15)', 'rgba(255,255,255,0.05)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.dateTimeGradient}
+                  >
+                    {/* Header Row */}
+                    <View style={styles.dateTimeHeader}>
+                      <View style={styles.dateTimeIconWrapper}>
+                        <MaterialIcons name="event" size={24} color="#fff" />
+                      </View>
+                      <View style={styles.dateTimeHeaderText}>
+                        <Text style={styles.dateTimeTitle}>Event Schedule</Text>
+                        <Text style={styles.dateTimeSubtitle}>
+                          {dayjs(startDate).isSame(endDate, 'day') ? 'Same day event' : 'Multi-day event'}
                         </Text>
-                        {!isAllDay && (
-                          <Text style={styles.timeRangeText}>
-                            {dayjs(startDate).format('h:mm A')} - {dayjs(endDate).format('h:mm A')}
-                          </Text>
-                        )}
-                        {isAllDay && (
-                          <Text style={styles.allDayText}>{t('eventForm.allDay')}</Text>
-                        )}
+                      </View>
+                      <MaterialIcons name="chevron-right" size={24} color="rgba(255,255,255,0.6)" />
+                    </View>
+
+                    {/* Date Range Display */}
+                    <View style={styles.dateRangeContainer}>
+                      <View style={styles.dateBlock}>
+                        <Text style={styles.dateBlockLabel}>Start</Text>
+                        <Text style={styles.dateBlockDate}>
+                          {dayjs(startDate).format('ddd, MMM D')}
+                        </Text>
+                        <Text style={styles.dateBlockYear}>
+                          {dayjs(startDate).format('YYYY')}
+                        </Text>
+                      </View>
+
+                      {!dayjs(startDate).isSame(endDate, 'day') && (
+                        <>
+                          <View style={styles.dateArrowContainer}>
+                            <MaterialIcons name="arrow-forward" size={20} color="rgba(255,255,255,0.7)" />
+                          </View>
+                          <View style={styles.dateBlock}>
+                            <Text style={styles.dateBlockLabel}>End</Text>
+                            <Text style={styles.dateBlockDate}>
+                              {dayjs(endDate).format('ddd, MMM D')}
+                            </Text>
+                            <Text style={styles.dateBlockYear}>
+                              {dayjs(endDate).format('YYYY')}
+                            </Text>
+                          </View>
+                        </>
+                      )}
+                    </View>
+
+                    {/* Time Display */}
+                    <View style={styles.timeDisplayContainer}>
+                      {isAllDay ? (
+                        <View style={styles.allDayBadge}>
+                          <MaterialIcons name="wb-sunny" size={16} color="#FFB800" />
+                          <Text style={styles.allDayBadgeText}>All Day Event</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.timeRangeDisplay}>
+                          <View style={styles.timeBlock}>
+                            <MaterialIcons name="schedule" size={16} color="rgba(255,255,255,0.7)" />
+                            <Text style={styles.timeText}>
+                              {dayjs(startDate).format('h:mm A')}
+                            </Text>
+                          </View>
+                          <Text style={styles.timeToText}>to</Text>
+                          <View style={styles.timeBlock}>
+                            <Text style={styles.timeText}>
+                              {dayjs(endDate).format('h:mm A')}
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+
+                      {/* Duration Badge */}
+                      <View style={styles.durationBadge}>
+                        <MaterialIcons name="timer" size={14} color="rgba(255,255,255,0.8)" />
+                        <Text style={styles.durationText}>
+                          {isAllDay
+                            ? `${dayjs(endDate).diff(startDate, 'day') + 1} day${dayjs(endDate).diff(startDate, 'day') !== 0 ? 's' : ''}`
+                            : `${Math.ceil(dayjs(endDate).diff(startDate, 'minute') / 60)}h`
+                          }
+                        </Text>
                       </View>
                     </View>
-                    <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
-                  </View>
+                  </LinearGradient>
                 </TouchableOpacity>
               </View>
 
@@ -1173,28 +1240,97 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                 </View>
               </View>
 
-              {/* Date & Time */}
+              {/* Enhanced Date & Time Section */}
               <View style={styles.inputContainer}>
                 <Text style={[styles.inputLabel, { color: colors.text }]}>{t('eventForm.dateTime')}</Text>
+
+                {/* Modern Date Time Card */}
                 <TouchableOpacity
                   onPress={() => setShowGoogleDatePicker(true)}
-                  style={[styles.inputWrapper, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  style={[styles.modernDateTimeCard, { backgroundColor: colors.card }]}
                   disabled={!editable}
                 >
-                  <MaterialIcons name="schedule" size={20} color={colors.textSecondary} style={styles.inputIcon} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.dateTimeText, { color: colors.text }]}>
-                      {dayjs(startDate).format('MMM DD, YYYY • h:mm A')}
-                      {!isAllDay && ` - ${dayjs(endDate).format('h:mm A')}`}
-                    </Text>
-                    {isAllDay && (
-                      <View style={styles.allDayContainer}>
-                        <MaterialIcons name="wb-sunny" size={16} color={colors.textSecondary} />
-                        <Text style={[styles.allDayText, { color: colors.textSecondary }]}>{t('eventForm.allDay')}</Text>
+                  <View style={[styles.dateTimeGradient, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    {/* Header Row */}
+                    <View style={styles.dateTimeHeader}>
+                      <View style={[styles.dateTimeIconWrapper, { backgroundColor: colors.primary + '20' }]}>
+                        <MaterialIcons name="event" size={24} color={colors.primary} />
                       </View>
-                    )}
+                      <View style={styles.dateTimeHeaderText}>
+                        <Text style={[styles.dateTimeTitle, { color: colors.text }]}>Event Schedule</Text>
+                        <Text style={[styles.dateTimeSubtitle, { color: colors.textSecondary }]}>
+                          {dayjs(startDate).isSame(endDate, 'day') ? 'Same day event' : 'Multi-day event'}
+                        </Text>
+                      </View>
+                      <MaterialIcons name="chevron-right" size={24} color={colors.textSecondary} />
+                    </View>
+
+                    {/* Date Range Display */}
+                    <View style={styles.dateRangeContainer}>
+                      <View style={[styles.dateBlock, { backgroundColor: colors.background + '80' }]}>
+                        <Text style={[styles.dateBlockLabel, { color: colors.textSecondary }]}>Start</Text>
+                        <Text style={[styles.dateBlockDate, { color: colors.text }]}>
+                          {dayjs(startDate).format('ddd, MMM D')}
+                        </Text>
+                        <Text style={[styles.dateBlockYear, { color: colors.textSecondary }]}>
+                          {dayjs(startDate).format('YYYY')}
+                        </Text>
+                      </View>
+
+                      {!dayjs(startDate).isSame(endDate, 'day') && (
+                        <>
+                          <View style={styles.dateArrowContainer}>
+                            <MaterialIcons name="arrow-forward" size={20} color={colors.textSecondary} />
+                          </View>
+                          <View style={[styles.dateBlock, { backgroundColor: colors.background + '80' }]}>
+                            <Text style={[styles.dateBlockLabel, { color: colors.textSecondary }]}>End</Text>
+                            <Text style={[styles.dateBlockDate, { color: colors.text }]}>
+                              {dayjs(endDate).format('ddd, MMM D')}
+                            </Text>
+                            <Text style={[styles.dateBlockYear, { color: colors.textSecondary }]}>
+                              {dayjs(endDate).format('YYYY')}
+                            </Text>
+                          </View>
+                        </>
+                      )}
+                    </View>
+
+                    {/* Time Display */}
+                    <View style={styles.timeDisplayContainer}>
+                      {isAllDay ? (
+                        <View style={[styles.allDayBadge, { backgroundColor: '#FFB800' + '20', borderColor: '#FFB800' + '40' }]}>
+                          <MaterialIcons name="wb-sunny" size={16} color="#FFB800" />
+                          <Text style={[styles.allDayBadgeText, { color: '#FFB800' }]}>All Day Event</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.timeRangeDisplay}>
+                          <View style={[styles.timeBlock, { backgroundColor: colors.background + '60' }]}>
+                            <MaterialIcons name="schedule" size={16} color={colors.textSecondary} />
+                            <Text style={[styles.timeText, { color: colors.text }]}>
+                              {dayjs(startDate).format('h:mm A')}
+                            </Text>
+                          </View>
+                          <Text style={[styles.timeToText, { color: colors.textSecondary }]}>to</Text>
+                          <View style={[styles.timeBlock, { backgroundColor: colors.background + '60' }]}>
+                            <Text style={[styles.timeText, { color: colors.text }]}>
+                              {dayjs(endDate).format('h:mm A')}
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+
+                      {/* Duration Badge */}
+                      <View style={[styles.durationBadge, { backgroundColor: colors.background + '60' }]}>
+                        <MaterialIcons name="timer" size={14} color={colors.textSecondary} />
+                        <Text style={[styles.durationText, { color: colors.textSecondary }]}>
+                          {isAllDay
+                            ? `${dayjs(endDate).diff(startDate, 'day') + 1} day${dayjs(endDate).diff(startDate, 'day') !== 0 ? 's' : ''}`
+                            : `${Math.ceil(dayjs(endDate).diff(startDate, 'minute') / 60)}h`
+                          }
+                        </Text>
+                      </View>
+                    </View>
                   </View>
-                  <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
 
@@ -1458,7 +1594,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
         </Background>
       )}
 
-      {/* Enhanced Date & Time Picker Modal */}
+      {/* Premium Date & Time Picker Modal */}
       {showGoogleDatePicker && (
         <Modal
           visible={showGoogleDatePicker}
@@ -1466,87 +1602,190 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
           animationType="slide"
           onRequestClose={() => setShowGoogleDatePicker(false)}
         >
-          <View style={styles.enhancedPickerOverlay}>
-            <View style={styles.enhancedPickerContainer}>
-              {/* Header */}
-              <View style={styles.enhancedPickerHeader}>
-                <TouchableOpacity
-                  onPress={() => setShowGoogleDatePicker(false)}
-                  style={styles.pickerCloseButton}
-                >
-                  <MaterialIcons name="close" size={24} color="#6B7280" />
-                </TouchableOpacity>
-                <Text style={styles.enhancedPickerTitle}>Event Date & Time</Text>
-                <TouchableOpacity
-                  onPress={() => setShowGoogleDatePicker(false)}
-                  style={styles.pickerDoneButton}
-                >
-                  <Text style={styles.pickerDoneText}>Done</Text>
-                </TouchableOpacity>
-              </View>
+          <View style={styles.premiumPickerOverlay}>
+            <LinearGradient
+              colors={['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.8)']}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.premiumPickerContainer}>
+              <LinearGradient
+                colors={['#667eea', '#764ba2']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.pickerHeaderGradient}
+              >
+                {/* Header */}
+                <View style={styles.premiumPickerHeader}>
+                  <TouchableOpacity
+                    onPress={() => setShowGoogleDatePicker(false)}
+                    style={styles.premiumCloseButton}
+                  >
+                    <MaterialIcons name="close" size={24} color="#fff" />
+                  </TouchableOpacity>
+                  <View style={styles.pickerHeaderContent}>
+                    <Text style={styles.premiumPickerTitle}>Schedule Event</Text>
+                    <Text style={styles.premiumPickerSubtitle}>Set your perfect timing</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setShowGoogleDatePicker(false)}
+                    style={styles.premiumDoneButton}
+                  >
+                    <Text style={styles.premiumDoneText}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+              </LinearGradient>
 
               {/* Content */}
-              <View style={styles.enhancedPickerContent}>
-                {/* All Day Toggle */}
-                <TouchableOpacity
-                  onPress={() => setIsAllDay(!isAllDay)}
-                  style={styles.allDayToggleContainer}
-                >
-                  <Text style={styles.allDayToggleText}>All day</Text>
-                  <View style={[
-                    styles.toggleSwitch,
-                    { backgroundColor: isAllDay ? '#4ECDC4' : '#E5E7EB' }
-                  ]}>
-                    <View style={[
-                      styles.toggleThumb,
-                      {
-                        backgroundColor: '#fff',
-                        transform: [{ translateX: isAllDay ? 20 : 2 }]
-                      }
-                    ]} />
-                  </View>
-                </TouchableOpacity>
+              <View style={styles.premiumPickerContent}>
+                {/* Quick Presets */}
+                <View style={styles.quickPresetsContainer}>
+                  <Text style={styles.quickPresetsTitle}>Quick Options</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickPresetsScroll}>
+                    {[
+                      { label: 'This Evening', hours: 19, duration: 3, addDays: 0 },
+                      { label: 'Tomorrow', hours: 14, duration: 2, addDays: 1 },
+                      { label: 'This Weekend', hours: 10, duration: 8, addDays: dayjs().day() >= 6 ? 7 : (6 - dayjs().day()) },
+                      { label: 'All Day', hours: 0, duration: 24, addDays: 0, allDay: true },
+                    ].map((preset, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        onPress={() => {
+                          const baseDate = dayjs().add(preset.addDays, 'day');
+                          if (preset.allDay) {
+                            setIsAllDay(true);
+                            setStartDate(baseDate.startOf('day').toDate());
+                            setEndDate(baseDate.endOf('day').toDate());
+                          } else {
+                            setIsAllDay(false);
+                            setStartDate(baseDate.hour(preset.hours).minute(0).toDate());
+                            setEndDate(baseDate.hour(preset.hours).minute(0).add(preset.duration, 'hour').toDate());
+                          }
+                        }}
+                        style={styles.quickPresetButton}
+                      >
+                        <Text style={styles.quickPresetText}>{preset.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
 
-                {/* Start Date & Time */}
-                <View style={styles.dateTimeSection}>
-                  <Text style={styles.dateTimeSectionTitle}>Starts</Text>
+                {/* All Day Toggle */}
+                <View style={styles.premiumToggleContainer}>
                   <TouchableOpacity
-                    onPress={() => setShowStartPicker(true)}
-                    style={styles.dateTimeButton}
+                    onPress={() => {
+                      setIsAllDay(!isAllDay);
+                      if (!isAllDay) {
+                        // When enabling all day, set to full day
+                        setStartDate(dayjs(startDate).startOf('day').toDate());
+                        setEndDate(dayjs(startDate).endOf('day').toDate());
+                      } else {
+                        // When disabling all day, set reasonable times
+                        setStartDate(dayjs(startDate).hour(14).minute(0).toDate());
+                        setEndDate(dayjs(startDate).hour(16).minute(0).toDate());
+                      }
+                    }}
+                    style={styles.premiumToggleButton}
                   >
-                    <View>
-                      <Text style={styles.dateText}>
-                        {dayjs(startDate).format('dddd, MMMM D, YYYY')}
-                      </Text>
-                      {!isAllDay && (
-                        <Text style={styles.timeText}>
-                          {dayjs(startDate).format('h:mm A')}
-                        </Text>
-                      )}
+                    <View style={styles.toggleIconWrapper}>
+                      <MaterialIcons
+                        name={isAllDay ? "wb-sunny" : "schedule"}
+                        size={20}
+                        color={isAllDay ? "#FFB800" : "#6366F1"}
+                      />
                     </View>
-                    <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />
+                    <View style={styles.toggleTextContent}>
+                      <Text style={styles.premiumToggleText}>All Day Event</Text>
+                      <Text style={styles.premiumToggleSubtext}>
+                        {isAllDay ? 'Full day celebration' : 'Set specific times'}
+                      </Text>
+                    </View>
+                    <View style={[
+                      styles.premiumToggleSwitch,
+                      { backgroundColor: isAllDay ? '#4ECDC4' : '#E5E7EB' }
+                    ]}>
+                      <View style={[
+                        styles.premiumToggleThumb,
+                        {
+                          backgroundColor: '#fff',
+                          transform: [{ translateX: isAllDay ? 22 : 2 }]
+                        }
+                      ]} />
+                    </View>
                   </TouchableOpacity>
                 </View>
 
-                {/* End Date & Time */}
-                <View style={styles.dateTimeSection}>
-                  <Text style={styles.dateTimeSectionTitle}>Ends</Text>
-                  <TouchableOpacity
-                    onPress={() => setShowEndPicker(true)}
-                    style={styles.dateTimeButton}
+                {/* Date & Time Sections */}
+                <View style={styles.dateTimeSectionsContainer}>
+                  {/* Start Date & Time */}
+                  <View style={styles.premiumDateTimeSection}>
+                    <Text style={styles.premiumSectionTitle}>Event Starts</Text>
+                    <TouchableOpacity
+                      onPress={() => setShowStartPicker(true)}
+                      style={styles.premiumDateTimeButton}
+                    >
+                      <View style={styles.dateTimeButtonContent}>
+                        <View style={styles.dateTimeIconContainer}>
+                          <MaterialIcons name="play-arrow" size={20} color="#10B981" />
+                        </View>
+                        <View style={styles.dateTimeTextContainer}>
+                          <Text style={styles.premiumDateText}>
+                            {dayjs(startDate).format('dddd, MMM D')}
+                          </Text>
+                          {!isAllDay && (
+                            <Text style={styles.premiumTimeText}>
+                              {dayjs(startDate).format('h:mm A')}
+                            </Text>
+                          )}
+                        </View>
+                        <MaterialIcons name="edit" size={18} color="#9CA3AF" />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* End Date & Time */}
+                  <View style={styles.premiumDateTimeSection}>
+                    <Text style={styles.premiumSectionTitle}>Event Ends</Text>
+                    <TouchableOpacity
+                      onPress={() => setShowEndPicker(true)}
+                      style={styles.premiumDateTimeButton}
+                    >
+                      <View style={styles.dateTimeButtonContent}>
+                        <View style={styles.dateTimeIconContainer}>
+                          <MaterialIcons name="stop" size={20} color="#EF4444" />
+                        </View>
+                        <View style={styles.dateTimeTextContainer}>
+                          <Text style={styles.premiumDateText}>
+                            {dayjs(endDate).format('dddd, MMM D')}
+                          </Text>
+                          {!isAllDay && (
+                            <Text style={styles.premiumTimeText}>
+                              {dayjs(endDate).format('h:mm A')}
+                            </Text>
+                          )}
+                        </View>
+                        <MaterialIcons name="edit" size={18} color="#9CA3AF" />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Duration Summary */}
+                <View style={styles.durationSummaryContainer}>
+                  <LinearGradient
+                    colors={['rgba(99, 102, 241, 0.1)', 'rgba(139, 92, 246, 0.1)']}
+                    style={styles.durationSummaryGradient}
                   >
-                    <View>
-                      <Text style={styles.dateText}>
-                        {dayjs(endDate).format('dddd, MMMM D, YYYY')}
+                    <MaterialIcons name="timelapse" size={24} color="#6366F1" />
+                    <View style={styles.durationSummaryText}>
+                      <Text style={styles.durationSummaryTitle}>Duration</Text>
+                      <Text style={styles.durationSummaryValue}>
+                        {isAllDay
+                          ? `${dayjs(endDate).diff(startDate, 'day') + 1} day${dayjs(endDate).diff(startDate, 'day') !== 0 ? 's' : ''}`
+                          : `${Math.max(1, Math.ceil(dayjs(endDate).diff(startDate, 'minute') / 60))} hour${Math.ceil(dayjs(endDate).diff(startDate, 'minute') / 60) !== 1 ? 's' : ''}`
+                        }
                       </Text>
-                      {!isAllDay && (
-                        <Text style={styles.timeText}>
-                          {dayjs(endDate).format('h:mm A')}
-                        </Text>
-                      )}
                     </View>
-                    <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />
-                  </TouchableOpacity>
+                  </LinearGradient>
                 </View>
               </View>
             </View>
@@ -1558,7 +1797,372 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
 }
 
 const styles = StyleSheet.create({
-  // Enhanced DateTimePicker styles
+  // Modern Date Time Card Styles
+  modernDateTimeCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  dateTimeGradient: {
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 16,
+  },
+  dateTimeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  dateTimeIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  dateTimeHeaderText: {
+    flex: 1,
+  },
+  dateTimeTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  dateTimeSubtitle: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  dateRangeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  dateBlock: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+  },
+  dateBlockLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.6)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  dateBlockDate: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  dateBlockYear: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  dateArrowContainer: {
+    paddingHorizontal: 12,
+  },
+  timeDisplayContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  allDayBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,184,0,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,184,0,0.3)',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  allDayBadgeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFB800',
+    marginLeft: 6,
+  },
+  timeRangeDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  timeBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  timeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
+    marginLeft: 4,
+  },
+  timeToText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
+    marginHorizontal: 8,
+  },
+  durationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  durationText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.8)',
+    marginLeft: 4,
+  },
+
+  // Premium Date Time Picker Styles
+  premiumPickerOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  premiumPickerContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  pickerHeaderGradient: {
+    paddingBottom: 4,
+  },
+  premiumPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+  },
+  premiumCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickerHeaderContent: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  premiumPickerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  premiumPickerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  premiumDoneButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  premiumDoneText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  premiumPickerContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    paddingBottom: 40,
+  },
+  quickPresetsContainer: {
+    marginBottom: 24,
+  },
+  quickPresetsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  quickPresetsScroll: {
+    flexDirection: 'row',
+  },
+  quickPresetButton: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 12,
+  },
+  quickPresetText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#475569',
+  },
+  premiumToggleContainer: {
+    marginBottom: 24,
+  },
+  premiumToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 16,
+  },
+  toggleIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  toggleTextContent: {
+    flex: 1,
+  },
+  premiumToggleText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  premiumToggleSubtext: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  premiumToggleSwitch: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  premiumToggleThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    position: 'absolute',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  dateTimeSectionsContainer: {
+    marginBottom: 24,
+  },
+  premiumDateTimeSection: {
+    marginBottom: 16,
+  },
+  premiumSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  premiumDateTimeButton: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    backgroundColor: '#FAFBFC',
+  },
+  dateTimeButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  dateTimeIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  dateTimeTextContainer: {
+    flex: 1,
+  },
+  premiumDateText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  premiumTimeText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  durationSummaryContainer: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  durationSummaryGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.2)',
+  },
+  durationSummaryText: {
+    marginLeft: 12,
+  },
+  durationSummaryTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  durationSummaryValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#6366F1',
+  },
+
+  // Legacy Enhanced DateTimePicker styles (kept for fallback)
   enhancedPickerOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1658,7 +2262,7 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginBottom: 2,
   },
-  timeText: {
+  legacyTimeText: {
     fontSize: 14,
     color: '#6B7280',
   },
