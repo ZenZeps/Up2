@@ -32,10 +32,10 @@ class DataFetchingOptimizer {
 
     // Cache TTL for each screen (in milliseconds)
     private screenCacheTTL: Record<ScreenType, number> = {
-        home: 10 * 60 * 1000,     // 10 minutes
-        feed: 15 * 60 * 1000,     // 15 minutes  
-        explore: 20 * 60 * 1000,  // 20 minutes
-        profile: 30 * 60 * 1000   // 30 minutes (updates less frequently)
+        home: 2 * 60 * 1000,      // Reduced to 2 minutes for faster updates
+        feed: 3 * 60 * 1000,      // Reduced to 3 minutes
+        explore: 5 * 60 * 1000,   // Reduced to 5 minutes  
+        profile: 10 * 60 * 1000   // Reduced to 10 minutes
     };
 
     public static getInstance(): DataFetchingOptimizer {
@@ -146,13 +146,62 @@ class DataFetchingOptimizer {
             };
         }
 
-        // Initial mount always fetches from DB for fresh data
+        // On initial mount, try cache first for better performance
         if (isInitialMount) {
-            authDebug.debug(`DataFetchingOptimizer: Initial mount for ${screen} - fetching from database`);
+            // Check if we have recent cached data first
+            const memoryCache = this.getMemoryCache(screen);
+            const storageCache = await this.getStorageCache(screen);
+
+            if (memoryCache && memoryCache.length > 0) {
+                // For Home screen, perform smart change detection to ensure freshness
+                if (screen === 'home') {
+                    const shouldCheckChanges = await this.shouldCheckForChanges(memoryCache);
+                    if (shouldCheckChanges) {
+                        authDebug.debug(`DataFetchingOptimizer: Initial mount for ${screen} - checking for changes before using memory cache`);
+                        return {
+                            shouldFetch: false,
+                            reason: 'initial_mount_memory_cache_with_change_check',
+                            cacheStrategy: 'memory'
+                        };
+                    }
+                }
+
+                authDebug.debug(`DataFetchingOptimizer: Initial mount for ${screen} - using memory cache`);
+                return {
+                    shouldFetch: false,
+                    reason: 'initial_mount_memory_cache',
+                    cacheStrategy: 'memory'
+                };
+            }
+
+            if (storageCache && storageCache.length > 0) {
+                // For Home screen, perform smart change detection to ensure freshness
+                if (screen === 'home') {
+                    const shouldCheckChanges = await this.shouldCheckForChanges(storageCache);
+                    if (shouldCheckChanges) {
+                        authDebug.debug(`DataFetchingOptimizer: Initial mount for ${screen} - checking for changes before using storage cache`);
+                        return {
+                            shouldFetch: false,
+                            reason: 'initial_mount_storage_cache_with_change_check',
+                            cacheStrategy: 'storage'
+                        };
+                    }
+                }
+
+                authDebug.debug(`DataFetchingOptimizer: Initial mount for ${screen} - using storage cache`);
+                return {
+                    shouldFetch: false,
+                    reason: 'initial_mount_storage_cache',
+                    cacheStrategy: 'storage'
+                };
+            }
+
+            // Only fetch from DB if no cache available
+            authDebug.debug(`DataFetchingOptimizer: Initial mount for ${screen} - no cache, fetching from database`);
             await this.recordDbFetch(screen);
             return {
                 shouldFetch: true,
-                reason: 'initial_mount',
+                reason: 'initial_mount_no_cache',
                 cacheStrategy: 'database'
             };
         }
@@ -259,7 +308,7 @@ class DataFetchingOptimizer {
     }
 
     /**
-     * Get storage cache for a screen
+     * Get storage cache for a screen with metadata support
      */
     private async getStorageCache(screen: ScreenType): Promise<any[] | null> {
         try {
@@ -267,9 +316,20 @@ class DataFetchingOptimizer {
             const cached = await AsyncStorage.getItem(cacheKey);
             if (cached) {
                 const parsed = JSON.parse(cached);
+
+                // Handle both old and new cache formats
+                const cacheData = parsed.version === '2.0' ? parsed.data : parsed.data || parsed;
+                const cacheTimestamp = parsed.timestamp || 0;
+
                 // Check if cache is still valid based on timestamp
-                if (parsed.timestamp && (Date.now() - parsed.timestamp < this.screenCacheTTL[screen])) {
-                    return parsed.data;
+                if (cacheTimestamp && (Date.now() - cacheTimestamp < this.screenCacheTTL[screen])) {
+                    return Array.isArray(cacheData) ? cacheData : [];
+                }
+
+                // If cache expired but we have data, return it with a flag for potential background refresh
+                if (Array.isArray(cacheData) && cacheData.length > 0) {
+                    authDebug.debug(`Storage cache expired for ${screen} but returning stale data`);
+                    return cacheData.map(item => ({ ...item, _stale: true }));
                 }
             }
             return null;
@@ -280,17 +340,30 @@ class DataFetchingOptimizer {
     }
 
     /**
-     * Cache data to storage for a screen
+     * Cache data to storage for a screen with enhanced metadata
      */
     async cacheDataToStorage(screen: ScreenType, data: any[]) {
         try {
             const cacheKey = `@ScreenCache:${screen}`;
+            const now = Date.now();
+
+            // Add cache metadata to each item for better change detection
+            const dataWithMetadata = data.map(item => ({
+                ...item,
+                _cacheTimestamp: now,
+                _lastUpdated: item.$updatedAt || item.updatedAt || now
+            }));
+
             const cacheData = {
-                data,
-                timestamp: Date.now()
+                data: dataWithMetadata,
+                timestamp: now,
+                version: '2.0', // Version for cache format
+                eventIds: data.map(item => item.$id).filter(Boolean),
+                lastCheckTimestamp: now
             };
+
             await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
-            authDebug.debug(`DataFetchingOptimizer: Cached ${data.length} items to storage for ${screen}`);
+            authDebug.debug(`DataFetchingOptimizer: Cached ${data.length} items to storage for ${screen} with metadata`);
         } catch (error) {
             authDebug.error(`Failed to cache data to storage for ${screen}:`, error);
         }
@@ -334,6 +407,55 @@ class DataFetchingOptimizer {
             authDebug.debug('DataFetchingOptimizer: Cleared all states');
         } catch (error) {
             authDebug.error('Failed to clear all states:', error);
+        }
+    }
+
+    /**
+     * Smart change detection to determine if cached data should be validated
+     */
+    private async shouldCheckForChanges(cachedData: any[]): Promise<boolean> {
+        // Only perform change detection for events data
+        if (!cachedData || cachedData.length === 0) {
+            return false;
+        }
+
+        // Check if cached data looks like events (has $id and typical event fields)
+        const firstItem = cachedData[0];
+        if (!firstItem || !firstItem.$id) {
+            return false;
+        }
+
+        // If cache is older than 5 minutes, check for changes
+        const cacheAge = Date.now() - (firstItem.cacheTimestamp || 0);
+        if (cacheAge > 5 * 60 * 1000) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Perform progressive loading with change detection for Home screen
+     */
+    async performSmartEventLoading(
+        userId: string,
+        cachedEvents: any[] = [],
+        onCacheLoad?: (events: any[]) => void,
+        onUpdate?: (events: any[]) => void
+    ): Promise<any[]> {
+        try {
+            // Dynamically import the progressive loading function
+            const { loadEventsProgressively } = await import('../api/event');
+
+            return await loadEventsProgressively(
+                userId,
+                cachedEvents,
+                onCacheLoad,
+                onUpdate
+            );
+        } catch (error) {
+            authDebug.error('Error in smart event loading:', error);
+            return cachedEvents;
         }
     }
 

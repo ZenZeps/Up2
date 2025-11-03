@@ -1,3 +1,4 @@
+import { QUICK_SEARCH_CITIES, getLocationCoordinates } from '@/constants/locations';
 import {
     createTravelAnnouncementWithFriendNotifications,
     findFriendsInSameLocation,
@@ -5,7 +6,7 @@ import {
 } from '@/lib/api/travelFriendNotifications';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import dayjs from 'dayjs';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -21,77 +22,50 @@ interface TravelFriendNotificationsProps {
     userFriends: string[];
 }
 
-// Shared location mock data for consistency
-const LOCATION_MOCKS: Record<string, { lat: number; lng: number }> = {
-    'sydney': { lat: -33.8688, lng: 151.2093 },
-    'melbourne': { lat: -37.8136, lng: 144.9631 },
-    'brisbane': { lat: -27.4698, lng: 153.0251 },
-    'perth': { lat: -31.9505, lng: 115.8605 },
-    'adelaide': { lat: -34.9285, lng: 138.6007 },
-    'new york': { lat: 40.7128, lng: -74.0060 },
-    'london': { lat: 51.5074, lng: -0.1278 },
-    'tokyo': { lat: 35.6762, lng: 139.6503 },
-    'paris': { lat: 48.8566, lng: 2.3522 },
-    'bali': { lat: -8.3405, lng: 115.0920 },
-    'bangkok': { lat: 13.7563, lng: 100.5018 },
-    'singapore': { lat: 1.3521, lng: 103.8198 },
-    'hong kong': { lat: 22.3193, lng: 114.1694 }
-};
+
 
 const TravelFriendNotifications: React.FC<TravelFriendNotificationsProps> = ({
     currentUser,
     userFriends
 }) => {
-    // Consolidated form state
-    const [formState, setFormState] = useState(() => ({
-        destination: '',
-        destinationLat: undefined as number | undefined,
-        destinationLng: undefined as number | undefined,
-        startDate: new Date(),
-        endDate: new Date(),
-        description: '',
-        isLoading: false
-    }));
+    // Form state
+    const [destination, setDestination] = useState('');
+    const [destinationLat, setDestinationLat] = useState<number | undefined>();
+    const [destinationLng, setDestinationLng] = useState<number | undefined>();
+    const [startDate, setStartDate] = useState(new Date());
+    const [endDate, setEndDate] = useState(new Date());
+    const [description, setDescription] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
     // Friends travel state
-    const [friendsData, setFriendsData] = useState(() => ({
-        currentlyTraveling: [] as TravelAnnouncement[],
-        inLocation: [] as TravelAnnouncement[],
-        loading: false
-    }));
-
-    // Memoized destructuring
-    const { destination, destinationLat, destinationLng, startDate, endDate, description, isLoading } = formState;
-    const { currentlyTraveling: friendsCurrentlyTraveling, loading: loadingFriends } = friendsData;
+    const [friendsCurrentlyTraveling, setFriendsCurrentlyTraveling] = useState<TravelAnnouncement[]>([]);
+    const [loadingFriends, setLoadingFriends] = useState(false);
 
     useEffect(() => {
         loadFriendsTravel();
     }, [userFriends]);
 
-    const loadFriendsTravel = React.useCallback(async () => {
+    const loadFriendsTravel = useCallback(async () => {
         if (!userFriends?.length) return;
 
-        setFriendsData(prev => ({ ...prev, loading: true }));
+        setLoadingFriends(true);
         try {
             const currentlyTraveling = await getFriendsCurrentlyTraveling(userFriends);
-            setFriendsData(prev => ({
-                ...prev,
-                currentlyTraveling,
-                loading: false
-            }));
+            setFriendsCurrentlyTraveling(currentlyTraveling);
         } catch (error) {
             console.error('Error loading friends travel:', error);
-            setFriendsData(prev => ({ ...prev, loading: false }));
+        } finally {
+            setLoadingFriends(false);
         }
     }, [userFriends]);
 
-    const handleCreateTravel = React.useCallback(async () => {
+    const handleCreateTravel = useCallback(async () => {
         if (!destination.trim()) {
             Alert.alert('Error', 'Please enter a destination');
             return;
         }
 
-        setFormState(prev => ({ ...prev, isLoading: true }));
+        setIsLoading(true);
         try {
             await createTravelAnnouncementWithFriendNotifications(
                 {
@@ -115,16 +89,13 @@ const TravelFriendNotifications: React.FC<TravelFriendNotificationsProps> = ({
                     {
                         text: 'OK',
                         onPress: () => {
-                            // Reset form state
-                            setFormState({
-                                destination: '',
-                                destinationLat: undefined,
-                                destinationLng: undefined,
-                                startDate: new Date(),
-                                endDate: new Date(),
-                                description: '',
-                                isLoading: false
-                            });
+                            // Reset form
+                            setDestination('');
+                            setDestinationLat(undefined);
+                            setDestinationLng(undefined);
+                            setStartDate(new Date());
+                            setEndDate(new Date());
+                            setDescription('');
                             // Reload friends travel
                             loadFriendsTravel();
                         }
@@ -135,7 +106,7 @@ const TravelFriendNotifications: React.FC<TravelFriendNotificationsProps> = ({
             console.error('Error creating travel:', error);
             Alert.alert('Error', 'Failed to create travel announcement');
         } finally {
-            setFormState(prev => ({ ...prev, isLoading: false }));
+            setIsLoading(false);
         }
     }, [destination, startDate, endDate, description, destinationLat, destinationLng, currentUser.$id, userFriends, loadFriendsTravel]);
 
@@ -176,17 +147,13 @@ const TravelFriendNotifications: React.FC<TravelFriendNotificationsProps> = ({
         }
     };
 
-    // Optimized location search with shared mock data
-    const searchLocation = React.useCallback((query: string) => {
-        const normalizedQuery = query.toLowerCase();
-        const location = LOCATION_MOCKS[normalizedQuery];
+    // Optimized location search using centralized location data
+    const searchLocation = useCallback((query: string) => {
+        const location = getLocationCoordinates(query);
 
-        setFormState(prev => ({
-            ...prev,
-            destination: query,
-            destinationLat: location?.lat,
-            destinationLng: location?.lng
-        }));
+        setDestination(query);
+        setDestinationLat(location?.lat);
+        setDestinationLng(location?.lng);
     }, []);
 
     return (
@@ -253,7 +220,7 @@ const TravelFriendNotifications: React.FC<TravelFriendNotificationsProps> = ({
                         className="border border-gray-300 rounded-lg p-3 text-gray-800"
                         placeholder="Business trip, vacation, visiting friends..."
                         value={description}
-                        onChangeText={(text) => setFormState(prev => ({ ...prev, description: text }))}
+                        onChangeText={setDescription}
                         multiline
                         numberOfLines={3}
                     />
@@ -330,7 +297,7 @@ const TravelFriendNotifications: React.FC<TravelFriendNotificationsProps> = ({
                     Try typing: Sydney, Melbourne, Brisbane, Perth, Adelaide, New York, London, Tokyo, Paris, Bali
                 </Text>
                 <View className="flex-row flex-wrap">
-                    {['Sydney', 'Melbourne', 'New York', 'Tokyo', 'London', 'Bali'].map((city) => (
+                    {QUICK_SEARCH_CITIES.map((city) => (
                         <TouchableOpacity
                             key={city}
                             className="bg-blue-500 px-3 py-1 rounded-full mr-2 mb-2"

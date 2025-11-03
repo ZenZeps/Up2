@@ -6,7 +6,6 @@ import { getUserFriends } from '@/lib/api/friendship';
 import { addEventToGroup } from '@/lib/api/group';
 import { getUserProfilePhotoUrl } from '@/lib/api/profilePhoto';
 import { getUsersByIds } from '@/lib/api/user';
-import { config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { Event } from '@/lib/types/Events';
@@ -853,11 +852,10 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                           style: 'destructive',
                           onPress: async () => {
                             try {
-                              await databases.deleteDocument(
-                                config.databaseID!,
-                                config.eventsCollectionID!,
-                                event.$id
-                              );
+                              // 🚀 Use cascade deletion to remove event and ALL related data
+                              const { deleteEvent } = await import('@/lib/api/event');
+                              await deleteEvent(event.$id);
+                              // Refresh list and close modal after successful cascade deletion
                               await refetchEvents();
                               onClose(true);
                             } catch (err) {
@@ -1389,11 +1387,10 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                           style: 'destructive',
                           onPress: async () => {
                             try {
-                              await databases.deleteDocument(
-                                config.databaseID!,
-                                config.eventsCollectionID!,
-                                event.$id
-                              );
+                              // 🚀 Use cascade deletion to remove event and ALL related data
+                              const { deleteEvent } = await import('@/lib/api/event');
+                              await deleteEvent(event.$id);
+                              // Refresh list and close modal after successful cascade deletion
                               await refetchEvents();
                               onClose(true);
                             } catch (err) {

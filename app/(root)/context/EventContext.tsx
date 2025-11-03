@@ -1,6 +1,6 @@
 // context/EventContext.tsx
 import { createEvent as createEventAPI, fetchUserEvents, updateEvent as updateEventAPI } from '@/lib/api/event';
-import { config, databases, ID } from '@/lib/appwrite/appwrite';
+import { ID } from '@/lib/appwrite/appwrite';
 import { invalidateCache, useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { authDebug } from '@/lib/debug/authDebug';
 import { cacheManager } from '@/lib/debug/cacheManager';
@@ -70,7 +70,7 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
     fn: fetchEventsForUser,
     params: { userId: userId! }, // Pass userId as parameter
     cacheKey: userId ? `events-user-${userId}` : undefined, // User-specific cache key
-    cacheTTL: 5 * 60 * 1000, // 5 minute cache for events to reduce frequent reloads
+    cacheTTL: 30 * 1000, // Reduced to 30 seconds for faster initial loads
     dependencies: [userId], // Re-fetch when user changes
     skip: !userId // Skip if no user ID
   });
@@ -296,20 +296,17 @@ export const EventsProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // Delete event with optimistic update
+  // Delete event with optimistic update and cascade deletion
   const deleteEvent = async (eventId: string) => {
     try {
       // Optimistically update UI
       setEvents((prev) => prev.filter((e) => e.$id !== eventId));
 
-      // Delete from database
-      await databases.deleteDocument(
-        config.databaseID!,
-        config.eventsCollectionID!,
-        eventId
-      );
+      // Import and use the enhanced deleteEvent function with cascade deletion
+      const { deleteEvent: deleteEventWithCascade } = await import('@/lib/api/event');
+      await deleteEventWithCascade(eventId);
 
-      authDebug.info('Event deleted successfully', { eventId });
+      authDebug.info('Event deleted successfully with cascade', { eventId });
 
       // Invalidate user-specific event cache
       if (user?.$id) {

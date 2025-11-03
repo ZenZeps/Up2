@@ -203,7 +203,8 @@ export const queryMessagesBySender = async (senderId: string) => {
                 config.databaseID!,
                 config.messagesCollectionID!,
                 [
-                    Query.equal('sender', senderId),
+                    // Query.equal('sender', senderId), // REMOVED: Not in database schema - causes "Unknown attribute" error
+                    Query.equal('authorId', senderId), // Use string field instead
                     Query.orderDesc('$createdAt')
                 ]
             );
@@ -253,7 +254,8 @@ export const queryMessagesByChat = async (chatId: string) => {
                 config.databaseID!,
                 config.messagesCollectionID!,
                 [
-                    Query.equal('chat', chatId),
+                    // Query.equal('chat', chatId), // REMOVED: Not in database schema - causes "Unknown attribute" error
+                    Query.equal('chatId', chatId), // Use string field instead
                     Query.orderDesc('$createdAt')
                 ]
             );

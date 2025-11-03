@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import dayjs from 'dayjs';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import EventImage from '@/components/EventImage';
@@ -35,151 +35,129 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
   const [topPicks, setTopPicks] = useState<TopPickEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [recommendationSource, setRecommendationSource] = useState<'location' | 'fallback' | null>(null);
+  const generationRef = useRef<{ timeoutId?: ReturnType<typeof setTimeout>, lastGeneration: number }>({ lastGeneration: 0 });
 
-  console.log('🎯 TopPicks: Render', {
-    allEventsCount: allEvents?.length || 0,
-    userFriendsCount: userFriends?.length || 0,
-    currentUserId,
-    maxPicks
-  });
+  // Stable reference for events to prevent unnecessary effect runs
+  const eventIds = useMemo(() =>
+    allEvents?.map(e => e.$id).sort().join('|') || '',
+    [allEvents?.length, allEvents?.map(e => e.$id).join(',')]
+  );
 
-  // Memoize inputs to prevent unnecessary effect runs
-  const stableInputs = useMemo(() => ({
-    eventCount: allEvents?.length || 0,
-    eventIds: allEvents?.map(e => e.$id).sort().join('|') || '',
-    friendCount: userFriends?.length || 0,
-    userId: currentUserId || '',
-    maxPicks
-  }), [allEvents, userFriends, currentUserId, maxPicks]);
+  const friendIds = useMemo(() =>
+    userFriends?.map(f => f).sort().join('|') || '',
+    [userFriends?.length, userFriends?.join(',')]
+  );
 
-  // Load from cache initially
+  // Prevent component re-render when picks haven't changed
+  const stableTopPicks = useMemo(() => topPicks, [
+    topPicks.length,
+    topPicks.map(p => p.$id || p.id).join(',')
+  ]);
+
+  // Load from cache initially - only once per user
   useEffect(() => {
-    // Early return if no current user - but inside useEffect to maintain hook order
-    if (!currentUserId) {
-      console.log('🎯 TopPicks: No current user, skipping cache load');
-      return;
-    }
+    if (!currentUserId) return;
+
+    let mounted = true;
 
     const loadFromCache = async () => {
       try {
-        const cacheKey = `top_picks_${currentUserId || 'anonymous'}`;
+        const cacheKey = `top_picks_${currentUserId}`;
         const cached = await AsyncStorage.getItem(cacheKey);
-        if (cached) {
+        if (cached && mounted) {
           const cachedPicks = JSON.parse(cached);
-          if (cachedPicks && Array.isArray(cachedPicks) && cachedPicks.length > 0) {
-            // Validate cached picks have required fields
-            const validPicks = cachedPicks.filter(pick =>
-              pick &&
-              pick.$id &&
-              pick.title &&
-              pick.startTime
-            );
-            if (validPicks.length > 0) {
-              console.log('🎯 TopPicks: Loaded', validPicks.length, 'picks from cache for user', currentUserId);
-              setTopPicks(validPicks);
-              setIsLoading(false);
-            }
+          const validPicks = cachedPicks?.filter((pick: any) => pick?.$id && pick?.title) || [];
+          if (validPicks.length > 0) {
+            setTopPicks(validPicks);
+            setIsLoading(false);
           }
         }
       } catch (error) {
-        console.warn('TopPicks: Failed to load from cache:', error);
+        console.warn('TopPicks: Cache load failed:', error);
       }
     };
 
     loadFromCache();
-  }, []);
+
+    return () => {
+      mounted = false;
+    };
+  }, [currentUserId]);
 
   // Generate TopPicks when data changes
   useEffect(() => {
-    // Early return if no current user
-    if (!currentUserId) {
-      console.log('🎯 TopPicks: No current user, skipping generation');
+    if (!currentUserId || !allEvents?.length) {
       setIsLoading(false);
       setTopPicks([]);
       return;
     }
 
-    // Add timeout to prevent infinite loading
-    const timeoutId = setTimeout(() => {
-      console.warn('🎯 TopPicks: Generation timeout, setting loading to false');
-      setIsLoading(false);
-    }, 10000); // 10 second timeout
+    // Debounce generation to prevent rapid successive calls
+    if (generationRef.current.timeoutId) {
+      clearTimeout(generationRef.current.timeoutId);
+    }
+
+    // Rate limit: minimum 1 second between generations
+    const now = Date.now();
+    const timeSinceLastGeneration = now - generationRef.current.lastGeneration;
+    const delay = timeSinceLastGeneration < 1000 ? 1000 - timeSinceLastGeneration : 100;
+
+    generationRef.current.timeoutId = setTimeout(() => {
+      generateTopPicks();
+    }, delay);
+
+    const timeoutId = setTimeout(() => setIsLoading(false), 10000);
 
     const generateTopPicks = async () => {
-      console.log('🎯 TopPicks: Starting generation...', {
-        allEventsCount: allEvents?.length || 0,
-        hasEvents: Boolean(allEvents && allEvents.length > 0)
-      });
+      generationRef.current.lastGeneration = Date.now();
 
-      // If we have no events, only clear if we're not currently showing picks
-      if (!allEvents || allEvents.length === 0) {
-        console.log('🎯 TopPicks: No events available');
-        setTopPicks(currentPicks => {
-          if (currentPicks.length === 0) {
-            console.log('🎯 TopPicks: No existing picks, setting loading false');
-            setIsLoading(false);
-            return currentPicks;
-          } else {
-            console.log('🎯 TopPicks: Keeping existing picks during reload');
-            return currentPicks;
-          }
-        });
+      // Skip generation if we already have picks for the same event set
+      if (topPicks.length > 0 && topPicks.every(pick =>
+        allEvents?.some(event => event.$id === pick.$id)
+      )) {
+        setIsLoading(false);
         return;
       }
 
       setIsLoading(true);
 
       try {
-        console.log('🎯 TopPicks: Generating with', allEvents.length, 'events');
-
-        // Get user location (with fallback)
         const userLocation = await getUserLocation();
-
         let picks: TopPickEvent[];
+
         if (userLocation) {
-          console.log('📍 Using location-based algorithm');
           picks = await generateTopPicksAlgorithm(allEvents, userFriends || [], userLocation, maxPicks, currentUserId);
           setRecommendationSource('location');
         } else {
-          console.log('🔄 Using fallback algorithm');
           picks = await generateFallbackTopPicks(allEvents, userFriends || [], maxPicks, currentUserId);
           setRecommendationSource('fallback');
         }
 
-        console.log('✅ Generated', picks.length, 'top picks');
         setTopPicks(picks);
 
-        // Cache save with user-specific key to prevent cross-user cache conflicts
+        // Cache the results
         try {
-          const cacheKey = `top_picks_${currentUserId || 'anonymous'}`;
+          const cacheKey = `top_picks_${currentUserId}`;
           await AsyncStorage.setItem(cacheKey, JSON.stringify(picks));
-          console.log('💾 TopPicks: Cached', picks.length, 'picks for user', currentUserId);
         } catch (error) {
-          console.warn('TopPicks: Failed to cache picks:', error);
+          console.warn('TopPicks: Cache save failed:', error);
         }
 
-      } catch (error) {
-        console.error('❌ TopPicks generation failed:', error);
-        // Use functional update to avoid circular dependency
-        setTopPicks(currentPicks => {
-          if (currentPicks.length === 0) {
-            return [];
-          }
-          return currentPicks; // Keep existing picks on error
-        });
       } finally {
         setIsLoading(false);
-        clearTimeout(timeoutId); // Clear timeout on completion
+        clearTimeout(timeoutId);
       }
     };
 
     generateTopPicks();
 
-    // Cleanup timeout on unmount or dependency change
     return () => {
       clearTimeout(timeoutId);
+      if (generationRef.current.timeoutId) {
+        clearTimeout(generationRef.current.timeoutId);
+      }
     };
-  }, [stableInputs]);
+  }, [currentUserId, eventIds, friendIds, maxPicks]);
 
   // Handle event press
   const handleEventPress = (eventId: string) => {
@@ -199,8 +177,7 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
   };
 
   // Show loading state only if we have no picks to display
-  if (isLoading && topPicks.length === 0) {
-    console.log('🎯 TopPicks: Showing loading placeholders');
+  if (isLoading && stableTopPicks.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: 'transparent' }]}>
         <View style={styles.header}>
@@ -230,13 +207,11 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
 
   // Don't render if no current user
   if (!currentUserId) {
-    console.log('🎯 TopPicks: No current user, not rendering');
     return null;
   }
 
   // Don't render if no picks available
-  if (topPicks.length === 0) {
-    console.log('🎯 TopPicks: No picks to display');
+  if (stableTopPicks.length === 0) {
     return null;
   }
 
@@ -251,29 +226,24 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
         contentContainerStyle={styles.scrollContent}
         style={styles.scrollView}
       >
-        {Array.isArray(topPicks) && topPicks.length > 0 ? (
-          topPicks
-            .filter(event => event && event.$id && event.title)
+        {Array.isArray(stableTopPicks) && stableTopPicks.length > 0 ? (
+          stableTopPicks
+            .filter(event => {
+              // More thorough validation
+              if (!event || typeof event !== 'object') return false;
+              if (!event.$id || typeof event.$id !== 'string') return false;
+              if (!event.title || typeof event.title !== 'string') return false;
+              if (!event.startTime) return false;
+              return true;
+            })
             .map((event, index) => {
               try {
-                // Ensure all values are properly converted to safe strings
-                const rawEmoji = getEventEmoji(event.tags || ['other']);
-                const emoji = (rawEmoji && typeof rawEmoji === 'string') ? rawEmoji : '🎉';
+                const emoji = getEventEmoji(event.tags || ['other']) || '🎉';
+                const eventDate = dayjs(event.startTime).format('MMM D') || 'TBD';
+                const eventTitle = event.title || 'Untitled Event';
 
-                const rawEventDate = dayjs(event.startTime).format('MMM D');
-                const eventDate = (rawEventDate && typeof rawEventDate === 'string') ? rawEventDate : 'TBD';
-
-                const rawEventTitle = event.title;
-                const eventTitle = (rawEventTitle && typeof rawEventTitle === 'string') ? String(rawEventTitle) : 'Untitled Event';
-
-                // Final safety check - ensure ALL values are strings before proceeding
-                if (typeof emoji !== 'string' || typeof eventDate !== 'string' || typeof eventTitle !== 'string') {
-                  console.warn('TopPicks: Skipping event due to invalid data types after conversion', {
-                    emoji: typeof emoji,
-                    eventDate: typeof eventDate,
-                    eventTitle: typeof eventTitle,
-                    event: event
-                  });
+                // Early return null if essential data is missing
+                if (!event.$id || !eventTitle) {
                   return null;
                 }
 
@@ -291,25 +261,21 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
                         size={70}
                         style={{ borderRadius: 35 }}
                       />
-                      {(() => {
-                        const reasonIcon = getRecommendationIcon((event as any).recommendationReason);
-                        if ((event as any).recommendationReason && reasonIcon) {
-                          return (
-                            <View style={styles.reasonBadge}>
-                              <Text style={styles.reasonIcon}>{String(reasonIcon)}</Text>
-                            </View>
-                          );
-                        }
-                        return null;
-                      })()}
+                      {(event as any).recommendationReason && getRecommendationIcon((event as any).recommendationReason) && (
+                        <View style={styles.badge}>
+                          <Text style={{ fontSize: 10 }}>
+                            {getRecommendationIcon((event as any).recommendationReason) || ''}
+                          </Text>
+                        </View>
+                      )}
                       {/* Attending count bubble */}
                       {(() => {
                         const attendeeCount = (event as any).attendeeCount;
                         if (attendeeCount && attendeeCount > 0) {
                           return (
-                            <View style={styles.attendingBubble}>
+                            <View style={styles.badge}>
                               <Text style={styles.attendingCount}>
-                                {String(attendeeCount)}
+                                {attendeeCount}
                               </Text>
                             </View>
                           );
@@ -318,42 +284,36 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
                       })()}
                     </View>
                     <Text
-                      style={[styles.pickName, { color: colors.text || '#000000' }]}
+                      style={[styles.pickName, { color: colors.text }]}
                       numberOfLines={2}
                     >
-                      {String(eventTitle)}
+                      {eventTitle}
                     </Text>
-                    <Text style={[styles.pickDate, { color: colors.textSecondary || '#666666' }]}>
-                      {String(eventDate)}
+                    <Text style={[styles.pickDate, { color: colors.textSecondary }]}>
+                      {eventDate}
                     </Text>
-                    {(() => {
-                      if (event.distance && typeof event.distance === 'number' && event.distance > 0) {
-                        return (
-                          <Text style={[styles.pickDistance, { color: colors.textSecondary || '#666666' }]}>
-                            {String(event.distance.toFixed(1))}km
-                          </Text>
-                        );
-                      }
-                      return null;
-                    })()}
+                    {event.distance && event.distance > 0 && (
+                      <Text style={[styles.pickDistance, { color: colors.textSecondary }]}>
+                        {event.distance.toFixed(1)}km
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 );
               } catch (error) {
-                console.error('Error rendering TopPick item:', error);
+                console.warn('TopPicks: Error processing event:', event.$id, error);
                 return null;
               }
             })
+            .filter(Boolean) // Remove any null entries
         ) : (
-          // Fallback when no valid topPicks
-          Array.from({ length: 3 }).map((_, index) => (
+          Array.from({ length: 3 }, (_, index) => (
             <View key={`fallback-${index}`} style={styles.pickItem}>
-              <View style={styles.pickCircle}>
-                <EventImage
-                  tags={['social']}
-                  size={70}
-                  style={{ borderRadius: 35 }}
-                />
-              </View>
+              <LinearGradient
+                colors={[colors.primary + '30', colors.primary + '10']}
+                style={styles.pickCircle}
+              >
+                <Text style={styles.placeholderEmoji}>✨</Text>
+              </LinearGradient>
               <Text style={[styles.pickName, { color: colors.textSecondary }]}>Loading...</Text>
             </View>
           ))
@@ -365,11 +325,11 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 16,
+    paddingVertical: 8, // Reduced from 16 to 8
   },
   header: {
     paddingHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 8, // Reduced from 12 to 8
   },
   title: {
     fontSize: 20,
@@ -424,7 +384,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  reasonBadge: {
+  badge: {
     position: 'absolute',
     top: -6,
     right: -6,
@@ -434,27 +394,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  reasonIcon: {
-    fontSize: 10,
-  },
-  attendingBubble: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
     elevation: 2,
@@ -466,5 +407,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+TopPicks.displayName = 'TopPicks';
 
 export default TopPicks;

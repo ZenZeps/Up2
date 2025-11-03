@@ -60,6 +60,7 @@ const UserProfile = () => {
     const [showFriendsModal, setShowFriendsModal] = useState(false);
     const [showGroupsModal, setShowGroupsModal] = useState(false);
     const [loadingFriends, setLoadingFriends] = useState(false);
+    const [loadingEvents, setLoadingEvents] = useState(true);
 
     // Simplified animations for better performance
     const headerOpacity = useState(new Animated.Value(1))[0];
@@ -98,6 +99,7 @@ const UserProfile = () => {
 
         try {
             setProfileData(prev => ({ ...prev, loading: true }));
+            setLoadingEvents(true);
 
             // Load user profile (getUserProfile already has caching with 10-minute TTL)
             const profile = await getUserProfile(userIdString);
@@ -113,11 +115,24 @@ const UserProfile = () => {
                 profile?.photoId ? getProfilePhotoUrl(profile.photoId) : Promise.resolve(null)
             ]);
 
-            // Load events in background for better performance
-            const userEventsPromise = getUserAttendingEvents(userIdString).catch(err => {
-                console.warn('Failed to load user events:', err);
-                return [];
-            });
+            // Load events in background for better performance with retry logic
+            const userEventsPromise = (async () => {
+                try {
+                    const events = await getUserAttendingEvents(userIdString);
+                    return events || [];
+                } catch (err) {
+                    console.warn('Failed to load user events (first attempt):', err);
+                    // Retry once after a brief delay
+                    try {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        const retryEvents = await getUserAttendingEvents(userIdString);
+                        return retryEvents || [];
+                    } catch (retryErr) {
+                        console.error('Failed to load user events (retry failed):', retryErr);
+                        return [];
+                    }
+                }
+            })();
 
             // Get friend count only for stats - don't load actual friend data for better performance
             const statsData = {
@@ -139,37 +154,38 @@ const UserProfile = () => {
             setProfileData(initialData);
 
             // Load events in background and update state
+            setLoadingEvents(true);
             const userEvents = await userEventsPromise;
-            if (userEvents && userEvents.length > 0) {
-                // Filter events to get upcoming 5 events
-                const now = new Date();
-                const upcomingEvents = userEvents
-                    .filter(event => {
-                        try {
-                            if (!event.startTime) return false;
-                            const eventDate = new Date(event.startTime);
-                            return eventDate >= now && !isNaN(eventDate.getTime());
-                        } catch {
-                            return false;
-                        }
-                    })
-                    .sort((a, b) => {
-                        try {
-                            const aTime = new Date(a.startTime).getTime();
-                            const bTime = new Date(b.startTime).getTime();
-                            return aTime - bTime;
-                        } catch {
-                            return 0;
-                        }
-                    })
-                    .slice(0, 5);
 
-                // Update state with events
-                setProfileData(prev => ({
-                    ...prev,
-                    userEvents: upcomingEvents
-                }));
-            }
+            // Filter events to get upcoming 5 events
+            const now = new Date();
+            const upcomingEvents = (userEvents || [])
+                .filter(event => {
+                    try {
+                        if (!event.startTime) return false;
+                        const eventDate = new Date(event.startTime);
+                        return eventDate >= now && !isNaN(eventDate.getTime());
+                    } catch {
+                        return false;
+                    }
+                })
+                .sort((a, b) => {
+                    try {
+                        const aTime = new Date(a.startTime).getTime();
+                        const bTime = new Date(b.startTime).getTime();
+                        return aTime - bTime;
+                    } catch {
+                        return 0;
+                    }
+                })
+                .slice(0, 5);
+
+            // Update state with events (always update to show empty state if no events)
+            setProfileData(prev => ({
+                ...prev,
+                userEvents: upcomingEvents
+            }));
+            setLoadingEvents(false);
 
             // Cache the complete profile data for 10 minutes to reduce redundant calls
             const cacheKey = `user-profile-data-${userIdString}`;
@@ -187,6 +203,7 @@ const UserProfile = () => {
                 loading: false,
                 userEvents: [] // Ensure events are empty on error
             }));
+            setLoadingEvents(false);
         }
     }, [userIdString, router]);
 
@@ -202,13 +219,53 @@ const UserProfile = () => {
         }
     }, [loading, userProfile, headerOpacity]);
 
-    // Simplified focus effect - only reload if no data
+    // Enhanced focus effect - reload if no data or no events
     useFocusEffect(
         useCallback(() => {
             if (!userProfile) {
                 loadUserData(false);
+            } else if (userEvents.length === 0) {
+                // If profile loaded but no events, try loading events again
+                const retryLoadEvents = async () => {
+                    try {
+                        setLoadingEvents(true);
+                        const events = await getUserAttendingEvents(userIdString);
+
+                        const now = new Date();
+                        const upcomingEvents = (events || [])
+                            .filter(event => {
+                                try {
+                                    if (!event.startTime) return false;
+                                    const eventDate = new Date(event.startTime);
+                                    return eventDate >= now && !isNaN(eventDate.getTime());
+                                } catch {
+                                    return false;
+                                }
+                            })
+                            .sort((a, b) => {
+                                try {
+                                    const aTime = new Date(a.startTime).getTime();
+                                    const bTime = new Date(b.startTime).getTime();
+                                    return aTime - bTime;
+                                } catch {
+                                    return 0;
+                                }
+                            })
+                            .slice(0, 5);
+
+                        setProfileData(prev => ({
+                            ...prev,
+                            userEvents: upcomingEvents
+                        }));
+                    } catch (error) {
+                        console.warn('Failed to retry loading events on focus:', error);
+                    } finally {
+                        setLoadingEvents(false);
+                    }
+                };
+                retryLoadEvents();
             }
-        }, [loadUserData, userProfile])
+        }, [loadUserData, userProfile, userEvents.length, userIdString])
     );
 
     // Load friendship state between current user and this profile
@@ -341,7 +398,13 @@ const UserProfile = () => {
 
     // Custom back handler that respects navigation history
     const handleBack = () => {
-        router.back();
+        // Check if we can go back in navigation history
+        if (router.canGoBack()) {
+            router.back();
+        } else {
+            // Fallback to feed if no history (e.g., direct link access)
+            router.push('/(root)/(tabs)/Feed');
+        }
     };
 
     // Hook-based handlers (must be before early returns to follow Rules of Hooks)
@@ -590,7 +653,14 @@ const UserProfile = () => {
                             </TouchableOpacity>
                         </View>
 
-                        {userEvents && userEvents.length > 0 ? (
+                        {loadingEvents ? (
+                            <View style={styles.newEmptyEventsContainer}>
+                                <MaterialIcons name="schedule" size={48} color={colors.textSecondary} />
+                                <Text style={[styles.newEmptyEventsText, { color: colors.text }]}>
+                                    Loading Events...
+                                </Text>
+                            </View>
+                        ) : userEvents && userEvents.length > 0 ? (
                             userEvents.map((event, index) => (
                                 <TouchableOpacity
                                     key={event.$id || index}

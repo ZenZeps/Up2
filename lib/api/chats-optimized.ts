@@ -326,23 +326,40 @@ export const createGroupChat = async (groupId: string): Promise<Chat> => {
 };
 
 /**
- * Delete a chat and all its messages
- * Note: Messages should be deleted via cascade rules in Appwrite
+ * Delete a chat and all its messages with manual cascade deletion
+ * This handles the case when database relationships are not configured
  */
 export const deleteChat = async (chatId: string): Promise<void> => {
     try {
-        await databases.deleteDocument(
-            config.databaseID!,
-            CHATS_COLLECTION_ID,
-            chatId
-        );
+        console.log(`🗑️ Deleting chat with cascade deletion: ${chatId}`);
+
+        // Use manual cascade deletion to ensure all messages are deleted
+        const { deleteChatWithMessages } = await import('./cascadeDelete');
+        await deleteChatWithMessages(chatId);
 
         // Clear from cache
         chatCache.delete(`chat-${chatId}`);
 
-        console.log(`🗑️ Deleted chat: ${chatId}`);
+        console.log(`✅ Successfully deleted chat and all messages: ${chatId}`);
     } catch (error) {
-        console.error('❌ Error deleting chat:', error);
-        throw error;
+        console.error('❌ Error deleting chat with cascade:', error);
+
+        // Fallback: try basic deletion if cascade fails
+        try {
+            console.log(`⚠️ Attempting basic chat deletion as fallback: ${chatId}`);
+            await databases.deleteDocument(
+                config.databaseID!,
+                CHATS_COLLECTION_ID,
+                chatId
+            );
+
+            // Clear from cache
+            chatCache.delete(`chat-${chatId}`);
+
+            console.log(`⚠️ Basic deletion succeeded but messages may not be deleted: ${chatId}`);
+        } catch (fallbackError) {
+            console.error('❌ Both cascade and basic deletion failed:', fallbackError);
+            throw error;
+        }
     }
 };

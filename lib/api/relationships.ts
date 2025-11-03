@@ -128,9 +128,9 @@ export const createMessageWithRelationship = async (chatId: string, senderId: st
     try {
         const payload = {
             // Use relationship fields (new)
-            chat: chatId,
-            sender: senderId,
-            // Keep string fields temporarily for compatibility
+            // chat: chatId, // REMOVED: Not in database schema - causes "Unknown attribute" error
+            // sender: senderId, // REMOVED: Not in database schema - causes "Unknown attribute" error
+            // Keep string fields for compatibility
             chatId,
             senderId,
             content
@@ -230,7 +230,8 @@ export const getMessagesBySenderRelationship = async (senderId: string) => {
                 config.databaseID!,
                 config.messagesCollectionID!,
                 [
-                    Query.equal('sender', senderId),
+                    // Query.equal('sender', senderId), // REMOVED: Not in database schema - causes "Unknown attribute" error
+                    Query.equal('authorId', senderId), // Use string field instead
                     Query.orderDesc('$createdAt')
                 ]
             );

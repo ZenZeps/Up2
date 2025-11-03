@@ -41,18 +41,65 @@ export const transformEventForCalendar = (
   };
 };
 
-// Process calendar events with error handling and filtering
+// Transform travel announcement for calendar display
+export const transformTravelForCalendar = (travel: TravelAnnouncement) => {
+  const startDate = new Date(travel.startDate);
+  const endDate = new Date(travel.endDate);
+
+  console.log('📅 transformTravelForCalendar:', {
+    id: travel.$id,
+    destination: travel.destination,
+    startDate: travel.startDate,
+    endDate: travel.endDate
+  });
+
+  return {
+    title: `✈️ ${travel.destination}`,
+    start: startDate,
+    end: endDate,
+    color: '#3B82F6', // Blue color for travel
+    isTravel: true,
+    rawTravel: travel,
+    allDay: true // Travel announcements are typically all-day events
+  };
+};
+
+// Process calendar events with error handling and filtering, including travel announcements
 export const processCalendarEvents = (
   events: AppEvent[],
   getCreatorName: (id: string) => string,
   userTravelData: TravelAnnouncement[] = []
 ): any[] => {
-  if (!events || !Array.isArray(events)) return [];
+  const processedItems: any[] = [];
 
-  return events
-    .filter(isValidCalendarEvent)
-    .map(event => transformEventForCalendar(event, getCreatorName, userTravelData))
-    .filter(Boolean); // Remove any null/undefined results
+  // Add regular events
+  if (events && Array.isArray(events)) {
+    const processedEvents = events
+      .filter(isValidCalendarEvent)
+      .map(event => transformEventForCalendar(event, getCreatorName, userTravelData))
+      .filter(Boolean);
+
+    processedItems.push(...processedEvents);
+  }
+
+  // Add travel announcements as calendar items
+  if (userTravelData && Array.isArray(userTravelData)) {
+    const processedTravel = userTravelData
+      .filter(travel => travel && travel.startDate && travel.endDate && travel.destination)
+      .map(transformTravelForCalendar)
+      .filter(Boolean);
+
+    processedItems.push(...processedTravel);
+  }
+
+  console.log('📅 processCalendarEvents combined results:', {
+    totalItems: processedItems.length,
+    events: processedItems.filter(item => !item.isTravel).length,
+    travel: processedItems.filter(item => item.isTravel).length,
+    travelItems: processedItems.filter(item => item.isTravel).map(t => t.title)
+  });
+
+  return processedItems;
 };
 
 // Custom date renderer for travel periods

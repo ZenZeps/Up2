@@ -766,26 +766,44 @@ const addUserToGroupLegacy = async (groupId: string, userId: string): Promise<bo
 };
 
 /**
- * Delete group (Owner only) with relationship-based cascade deletion
+ * Delete group (Owner only) with manual cascade deletion
+ * This function attempts manual cascade via our custom functions first,
+ * then falls back to basic deletion if needed.
  */
 export const deleteGroup = async (groupId: string, userId: string): Promise<boolean> => {
     try {
-        console.log(`Starting relationship-based group deletion: ${groupId}`);
+        console.log(`🗑️ Attempting to delete group with cascade: ${groupId}`);
 
-        // With relationship-based cascade deletion, we just delete the group
-        // All related data (memberships, events, messages, etc.) will be automatically deleted
-        await databases.deleteDocument(
-            config.databaseID!,
-            config.groupsCollectionID!,
-            groupId
-        );
+        // First, try the manual cascade deletion approach
+        // This ensures all related data is properly deleted regardless of database setup
+        const { deleteGroupWithCascade } = await import('./groupCascadeDelete');
+        const success = await deleteGroupWithCascade(groupId);
 
-        console.log(`Successfully deleted group ${groupId} - relationships automatically cascaded deletion of all memberships, events, and related data`);
+        if (success) {
+            console.log(`✅ Successfully deleted group ${groupId} with full cascade deletion`);
+            return true;
+        } else {
+            throw new Error('Manual cascade deletion failed');
+        }
 
-        return true;
-    } catch (error) {
-        console.error('Error deleting group:', error);
-        return false;
+    } catch (err) {
+        console.error(`❌ Error deleting group: ${groupId}`, err);
+
+        // If manual cascade fails, try basic deletion as last resort
+        try {
+            console.log(`⚠️ Attempting basic group deletion as fallback for: ${groupId}`);
+            await databases.deleteDocument(
+                config.databaseID!,
+                config.groupsCollectionID!,
+                groupId
+            );
+
+            console.log(`⚠️ Basic deletion succeeded but related data may not be deleted for group: ${groupId}`);
+            return true;
+        } catch (fallbackErr) {
+            console.error(`❌ Both cascade and basic deletion failed for group: ${groupId}`, fallbackErr);
+            return false;
+        }
     }
 };
 

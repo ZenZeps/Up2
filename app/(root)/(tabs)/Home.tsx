@@ -19,12 +19,13 @@ import { useCreatorInfo } from '@/lib/utils/creatorInfoManager';
 import { cacheScreenData, shouldFetchData } from '@/lib/utils/dataFetchingOptimizer';
 import { createEventAttendanceHandlers } from '@/lib/utils/eventHandlers';
 import {
+  combineEventsAndTravel,
   filterEventsByCreator,
   filterUpcomingEvents,
   formatDateHeader,
-  groupEventsByDay,
+  groupAgendaItemsByDay,
   mergeEventsWithRealTimeFiltering,
-  transformGroupedEventsForList
+  transformGroupedAgendaForList
 } from '@/lib/utils/homeHelpers';
 import { realTimeUI } from '@/lib/utils/realTimeUI';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -37,6 +38,7 @@ import { Calendar as BigCalendar, Mode } from 'react-native-big-calendar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MessageModal from '../chat/ChatModal';
 import EventForm from '../components/forms/EventForm';
+import TravelForm from '../components/forms/TravelForm';
 import EventDetailsModal from '../components/modals/EventDetailsModal';
 import UserAvatar from '../components/UserAvatar';
 import { EventsContext } from '../context/EventContext';
@@ -90,7 +92,7 @@ export default function Home() {
   const smartRefetchEvents = useCallback(async (reason: 'navigation' | 'viewModeChange' | 'manual' = 'manual') => {
     const now = Date.now();
     const timeSinceLastFetch = now - lastFetchTime.current;
-    const minFetchInterval = 30 * 1000; // Minimum 30 seconds between automatic fetches
+    const minFetchInterval = 10 * 1000; // Reduced to 10 seconds for better responsiveness
 
     // For manual triggers (like creating/editing events), always fetch
     if (reason === 'manual') {
@@ -126,6 +128,8 @@ export default function Home() {
   const [agendaEvents, setAgendaEvents] = useState<AppEvent[]>([]);
   const [messageModalVisible, setMessageModalVisible] = useState(false);
   const [userAttendingEvents, setUserAttendingEvents] = useState<AppEvent[]>([]);
+  const [travelEditVisible, setTravelEditVisible] = useState(false);
+  const [editingTravel, setEditingTravel] = useState<any>(null);
 
   // Get unique creator IDs from events
   const creatorIds = useMemo(() => {
@@ -189,7 +193,7 @@ export default function Home() {
   const userProfile = currentUser?.profile;
 
   // Fetch user's travel data for calendar highlighting
-  const { data: travelData } = useAppwrite({
+  const { data: travelData, refetch: refetchTravelData } = useAppwrite({
     fn: async () => {
       if (!currentUser?.$id) return [];
 
@@ -226,6 +230,23 @@ export default function Home() {
   // Use travel data directly from the useAppwrite hook
   const userTravelData = travelData || [];
 
+  // Debug logging for travel data
+  React.useEffect(() => {
+    if (userTravelData.length > 0) {
+      console.log('📅 Home: Travel data available for calendar highlighting:', {
+        count: userTravelData.length,
+        travels: userTravelData.map(t => ({
+          id: t.$id.substring(0, 8) + '...',
+          destination: t.destination,
+          startDate: t.startDate,
+          endDate: t.endDate
+        }))
+      });
+    } else {
+      console.log('📅 Home: No travel data available for calendar');
+    }
+  }, [userTravelData]);
+
   // Remove problematic useEffect that caused infinite loops
   // displayedMonth will be managed directly where needed
 
@@ -240,6 +261,48 @@ export default function Home() {
     // Check if we should fetch from database or use cache
     const strategy = await shouldFetchData('home', isInitialMount.current);
     authDebug.debug(`Home: fetchUserAttendingEvents strategy - ${strategy.cacheStrategy} (${strategy.reason})`);
+
+    // Use progressive loading for better user experience on initial mount
+    if (isInitialMount.current && strategy.cacheStrategy !== 'database') {
+      try {
+        // Try progressive loading for initial mount
+        const { loadEventsProgressively } = await import('@/lib/api/event');
+
+        // Get cached events
+        const cachedEvents = strategy.cacheStrategy === 'memory'
+          ? (getScreenEvents ? getScreenEvents('home') : [])
+          : [];
+
+        // Use progressive loading - show cache immediately, then update if needed
+        await loadEventsProgressively(
+          currentUser.$id,
+          cachedEvents,
+          // onCacheLoad: Show cached data immediately
+          (cachedData: AppEvent[]) => {
+            authDebug.debug(`Home: Showing ${cachedData.length} cached events immediately`);
+            setUserAttendingEvents(cachedData);
+          },
+          // onUpdate: Update with fresh data if changes detected
+          (freshData: AppEvent[]) => {
+            authDebug.info(`Home: Updating with ${freshData.length} fresh events`);
+            setUserAttendingEvents(freshData);
+
+            // Cache the fresh data
+            cacheScreenData('home', freshData);
+
+            // Mark as loaded from DB
+            if (markScreenLoadedFromDb) {
+              markScreenLoadedFromDb('home', true);
+            }
+          }
+        );
+
+        isInitialMount.current = false;
+        return;
+      } catch (error) {
+        authDebug.warn('Progressive loading failed, falling back to standard loading', error);
+      }
+    }
 
     if (strategy.shouldFetch) {
       try {
@@ -487,10 +550,48 @@ export default function Home() {
     enrichEvents();
   }, [userAttendingEvents, currentUser, getScreenEvents, markScreenLoadedFromDb, setScreenEvents, events]);
 
+  // Combine events and travel announcements for unified agenda using useMemo to prevent infinite loops
+  const agendaItems = useMemo(() => {
+    if (!currentUser?.$id) {
+      return [];
+    }
+
+    // Get upcoming events only
+    const upcomingEvents = filterUpcomingEvents(agendaEvents || []);
+
+    // Get future travel (not past travel)
+    const futureTravel = (userTravelData || []).filter(travel => {
+      const travelEnd = new Date(travel.endDate);
+      return travelEnd >= new Date();
+    });
+
+    // Combine and create agenda items
+    const combinedItems = combineEventsAndTravel(upcomingEvents, futureTravel);
+
+    console.log('📅 Updated agenda with combined items:', {
+      upcomingEvents: upcomingEvents.length,
+      futureTravel: futureTravel.length,
+      combinedItems: combinedItems.length,
+      travelDestinations: futureTravel.map(t => t.destination)
+    });
+
+    return combinedItems;
+  }, [agendaEvents, userTravelData, currentUser?.$id]);
+
   // Format events for the calendar with date validation using utility function
   // Use enriched events (user's attending/created events) for calendar view
   const calendarEvents = useMemo(() => {
+    console.log('📅 calendarEvents useMemo triggered:', {
+      enrichedEventsCount: enrichedEvents?.length || 0,
+      userTravelDataCount: userTravelData?.length || 0,
+      userTravelDataSample: userTravelData?.slice(0, 2).map(t => ({
+        destination: t.destination,
+        startDate: t.startDate
+      })) || []
+    });
+
     if (!enrichedEvents || !Array.isArray(enrichedEvents)) {
+      console.log('📅 No enriched events, returning empty calendar array');
       return [];
     }
 
@@ -502,11 +603,25 @@ export default function Home() {
     // Process events and ensure colors are assigned based on tags
     const processedEvents = processCalendarEvents(enrichedEvents, getCreatorName, userTravelData || []);
 
+    console.log('📅 processCalendarEvents returned:', {
+      totalCount: processedEvents.length,
+      eventCount: processedEvents.filter(e => !e.isTravel).length,
+      travelCount: processedEvents.filter(e => e.isTravel).length,
+      travelTitles: processedEvents.filter(e => e.isTravel).map(e => e.title)
+    });
+
     // Ensure each event has a color based on its tags
-    return processedEvents.map((event: any) => ({
+    const finalEvents = processedEvents.map((event: any) => ({
       ...event,
       color: event.color || getEventColor(event.rawEvent?.tags || [])
     }));
+
+    console.log('📅 Final calendar events:', {
+      count: finalEvents.length,
+      sampleTitles: finalEvents.slice(0, 5).map(e => e.title)
+    });
+
+    return finalEvents;
   }, [enrichedEvents, getCreatorName, userTravelData]);
 
   // Memoize event handlers (declare before renderEvent to avoid dependency issues)
@@ -521,12 +636,19 @@ export default function Home() {
 
         // Check if this is a travel event
         if (event.isTravel && event.rawTravel) {
-          // Show travel details in an alert
+          // Show travel action options
           Alert.alert(
             `✈️ Travel: ${event.rawTravel.destination}`,
             `📅 ${dayjs(event.rawTravel.startDate).format('MMM D')} - ${dayjs(event.rawTravel.endDate).format('MMM D, YYYY')}\n${event.rawTravel.description ? `\n📝 ${event.rawTravel.description}` : ''}`,
             [
               { text: 'Close', style: 'cancel' },
+              {
+                text: 'Edit Travel',
+                onPress: () => {
+                  setEditingTravel(event.rawTravel);
+                  setTravelEditVisible(true);
+                }
+              },
               { text: 'View on Map', onPress: () => openInMaps(event.rawTravel.destination) }
             ]
           );
@@ -989,10 +1111,10 @@ export default function Home() {
         {/* Content */}
         <View style={styles.content}>
           {activeTab === 'agenda' ? (
-            /* Modern Agenda View with Day Groupings */
+            /* Modern Agenda View with Day Groupings - Events + Travel */
             <FlatList
               style={[styles.agendaList, { backgroundColor: colors.background }]}
-              data={transformGroupedEventsForList(groupEventsByDay(agendaEvents))}
+              data={transformGroupedAgendaForList(groupAgendaItemsByDay(agendaItems))}
               keyExtractor={(item) => item.date.toDateString()}
               renderItem={({ item: dayGroup }) => (
                 <View style={styles.dayGroup}>
@@ -1003,63 +1125,129 @@ export default function Home() {
                     </Text>
                   </View>
 
-                  {/* Events for this day */}
-                  {dayGroup.events.map(item => (
-                    <TouchableOpacity
-                      key={item.$id}
-                      onPress={() => handlePressEvent({
-                        id: item.$id,
-                        title: item.title,
-                        start: new Date(item.startTime),
-                        end: new Date(item.endTime),
-                        location: item.location,
-                        color: getEventColor(item.tags || []),
-                        rawEvent: item
-                      })}
-                      style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                    >
-                      <EventImage
-                        photoId={(item as any).photoId}
-                        tags={item.tags}
-                        size={72}
-                        style={styles.feedThumb}
-                        gradientColors={["#FF6B6B", "#FFD166"]}
-                      />
+                  {/* Items for this day (events + travel) */}
+                  {dayGroup.items.map(agendaItem => {
+                    if (agendaItem.type === 'travel') {
+                      // Render travel announcement
+                      return (
+                        <TouchableOpacity
+                          key={agendaItem.$id}
+                          onPress={() => {
+                            // Show travel action options
+                            if (agendaItem.travelData) {
+                              Alert.alert(
+                                `✈️ Travel: ${agendaItem.travelData.destination}`,
+                                `📅 ${dayjs(agendaItem.travelData.startDate).format('MMM D')} - ${dayjs(agendaItem.travelData.endDate).format('MMM D, YYYY')}\n${agendaItem.travelData.description ? `\n📝 ${agendaItem.travelData.description}` : ''}`,
+                                [
+                                  { text: 'Close', style: 'cancel' },
+                                  {
+                                    text: 'Edit Travel',
+                                    onPress: () => {
+                                      setEditingTravel(agendaItem.travelData);
+                                      setTravelEditVisible(true);
+                                    }
+                                  },
+                                  { text: 'View on Map', onPress: () => openInMaps(agendaItem.travelData!.destination) }
+                                ]
+                              );
+                            }
+                          }}
+                          style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                        >
+                          {/* Travel icon/thumbnail */}
+                          <View style={[styles.feedThumb, { backgroundColor: '#3B82F6' }]}>
+                            <Text style={styles.eventEmojiThumb}>✈️</Text>
+                          </View>
 
-                      <View style={styles.feedBody}>
-                        <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
-                        <View style={styles.feedMetaRow}>
-                          <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
-                          <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{new Date(item.startTime).toLocaleDateString()}</Text>
-                          <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
-                          <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
-                          <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
-                        </View>
+                          <View style={styles.feedBody}>
+                            <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{agendaItem.title}</Text>
+                            <View style={styles.feedMetaRow}>
+                              <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
+                              <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>
+                                {dayjs(agendaItem.startTime).format('MMM D')} - {dayjs(agendaItem.endTime || agendaItem.startTime).format('MMM D')}
+                              </Text>
+                              <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
+                              <MaterialIcons name="flight" size={12} color={colors.textSecondary} />
+                              <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>
+                                {agendaItem.destination || 'Travel'}
+                              </Text>
+                            </View>
 
-                        <View style={styles.feedSubRow}>
-                          <UserAvatar photoUrl={getCreatorPhotoUrl(item.creatorId)} name={getCreatorName(item.creatorId)} size={28} />
-                          <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(item.creatorId)}</Text>
-                        </View>
-                      </View>
+                            <View style={styles.feedSubRow}>
+                              <UserAvatar photoUrl={getCreatorPhotoUrl(currentUser?.$id || '')} name="You" size={28} />
+                              <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>Your Travel</Text>
+                            </View>
+                          </View>
 
-                      <View style={styles.feedRightCol}>
-                        <View style={{ alignItems: 'flex-end' }}>
-                          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{getAttendeeCount(item)} {t('homeScreen.attending')}</Text>
-                          <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{(item as any).inviteCount ?? 0} {t('homeScreen.invited')}</Text>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
+                          <View style={styles.feedRightCol}>
+                            <View style={{ alignItems: 'flex-end' }}>
+                              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Travel</Text>
+                              <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>Personal</Text>
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    } else {
+                      // Render regular event (keep existing logic)
+                      const eventItem = agendaItem.eventData!;
+                      return (
+                        <TouchableOpacity
+                          key={agendaItem.$id}
+                          onPress={() => handlePressEvent({
+                            id: eventItem.$id,
+                            title: eventItem.title,
+                            start: new Date(eventItem.startTime),
+                            end: new Date(eventItem.endTime),
+                            location: eventItem.location,
+                            color: getEventColor(eventItem.tags || []),
+                            rawEvent: eventItem
+                          })}
+                          style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                        >
+                          <EventImage
+                            photoId={(eventItem as any).photoId}
+                            tags={eventItem.tags}
+                            size={72}
+                            style={styles.feedThumb}
+                            gradientColors={["#FF6B6B", "#FFD166"]}
+                          />
+
+                          <View style={styles.feedBody}>
+                            <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{eventItem.title}</Text>
+                            <View style={styles.feedMetaRow}>
+                              <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
+                              <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{new Date(eventItem.startTime).toLocaleDateString()}</Text>
+                              <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
+                              <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
+                              <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{eventItem.location || ''}</Text>
+                            </View>
+
+                            <View style={styles.feedSubRow}>
+                              <UserAvatar photoUrl={getCreatorPhotoUrl(eventItem.creatorId)} name={getCreatorName(eventItem.creatorId)} size={28} />
+                              <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(eventItem.creatorId)}</Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.feedRightCol}>
+                            <View style={{ alignItems: 'flex-end' }}>
+                              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{getAttendeeCount(eventItem)} {t('homeScreen.attending')}</Text>
+                              <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{(eventItem as any).inviteCount ?? 0} {t('homeScreen.invited')}</Text>
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    }
+                  })}
                 </View>
               )}
               ListEmptyComponent={
                 <View style={styles.emptyState}>
                   <MaterialIcons name="event" size={64} color={colors.textSecondary} />
                   <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
-                    No Upcoming Events
+                    No Upcoming Events or Travel
                   </Text>
                   <Text style={[styles.emptyStateDescription, { color: colors.textSecondary }]}>
-                    You&apos;re not attending any upcoming events. Join some events to see them here!
+                    You&apos;re not attending any upcoming events or have any travel planned. Create some events or add travel announcements to see them here!
                   </Text>
                 </View>
               }
@@ -1188,6 +1376,27 @@ export default function Home() {
                     }}
                     // Week view specific styling
                     weekStartsOn={0} // Start week on Sunday
+                    // Travel day highlighting
+                    calendarCellStyle={(date?: Date) => {
+                      if (!date) return {};
+
+                      const isTravel = userTravelData.some(travel => {
+                        const travelStart = new Date(travel.startDate);
+                        const travelEnd = new Date(travel.endDate);
+                        const checkDate = new Date(date);
+                        checkDate.setHours(0, 0, 0, 0);
+                        travelStart.setHours(0, 0, 0, 0);
+                        travelEnd.setHours(0, 0, 0, 0);
+                        return checkDate >= travelStart && checkDate <= travelEnd;
+                      });
+
+                      return isTravel ? {
+                        backgroundColor: colors.primary + '20',
+                        borderRadius: 4,
+                        borderWidth: 1,
+                        borderColor: colors.primary,
+                      } : {};
+                    }}
                   />
                 )}
               </View>
@@ -1229,6 +1438,27 @@ export default function Home() {
             eventId={selectedEvent.$id}
             title={`${selectedEvent.title} Chat`}
             currentUserId={currentUser?.$id || ''}
+          />
+        )}
+
+        {/* Travel Edit Modal */}
+        {travelEditVisible && (
+          <TravelForm
+            visible={travelEditVisible}
+            onClose={() => {
+              setTravelEditVisible(false);
+              setEditingTravel(null);
+              // Refresh travel data to show any changes
+              refetchTravelData();
+            }}
+            onSuccess={() => {
+              setTravelEditVisible(false);
+              setEditingTravel(null);
+              // Refresh travel data to show changes
+              refetchTravelData();
+            }}
+            currentUserId={currentUser?.$id || ''}
+            editingTravel={editingTravel}
           />
         )}
       </SafeAreaView>

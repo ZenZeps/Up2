@@ -12,6 +12,9 @@ export interface TravelAnnouncement {
     destinationLat?: number; // Latitude of the destination
     destinationLng?: number; // Longitude of the destination
     locationName?: string; // Human readable location name
+    friendsNotified?: string[]; // Array of friend user IDs who were notified (for future use)
+    $createdAt?: string; // Appwrite system creation timestamp
+    $updatedAt?: string; // Appwrite system update timestamp
 }
 
 export interface TravelAnnouncementWithUserInfo extends TravelAnnouncement {

@@ -23,7 +23,7 @@ export const createMessage = async (messageInput: MessageInput, authorId: string
             // Keep string fields for compatibility during transition
             authorId,
             chatId: messageInput.chatId,
-            senderId: authorId, // Alternative field name used in some places
+            // senderId: authorId, // REMOVED: Not in database schema - causes "Unknown attribute" error
             replyToId: messageInput.replyToId || null,
             isEdited: false,
         };

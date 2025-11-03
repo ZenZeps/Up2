@@ -5,7 +5,6 @@ import { getCategoriesByValues } from '@/constants/categories';
 import { addEventAttendee, getEventAttendeesFor, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
 import { getUserGroups } from '@/lib/api/group';
-
 import { getFriendsTravelAnnouncements } from '@/lib/api/travel';
 import { getUsersByIds } from '@/lib/api/user';
 import { useTheme } from '@/lib/context/ThemeContext';
@@ -21,10 +20,9 @@ import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-// header will be plain white
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Linking, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import UserAvatar from '../components/UserAvatar';
@@ -114,25 +112,35 @@ export default function Feed() {
     return filtered;
   }, [baseEventsWithCreatorNames, currentUserId, rtTick, events]);
 
-  // Apply filtered events only when they actually change
+  // Apply filtered events only when content actually changes - deep optimized
   useEffect(() => {
-    console.log('🍽️ Feed setting filtered events', { count: filteredEvents?.length || 0 });
-    setEventsWithCreatorNames(filteredEvents);
-  }, [filteredEvents]);
+    if (filteredEvents !== eventsWithCreatorNames) {
+      // Prevent unnecessary updates if arrays have same content
+      const currentIds = eventsWithCreatorNames?.map(e => e.$id).sort().join(',') || '';
+      const newIds = filteredEvents?.map(e => e.$id).sort().join(',') || '';
+
+      if (currentIds !== newIds) {
+        console.log('🍽️ Feed setting filtered events', { count: filteredEvents?.length || 0 });
+        setEventsWithCreatorNames(filteredEvents);
+      }
+    }
+  }, [filteredEvents, eventsWithCreatorNames]);
 
   const [travelAnnouncements, setTravelAnnouncements] = useState<TravelAnnouncementWithUserInfo[]>([]);
   const [friends, setFriends] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
   const lastFeedFetch = useRef<number>(0);
-  const MIN_FETCH_INTERVAL = 30 * 1000; // 30s rate limit for automatic fetches
+  const fetchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const MIN_FETCH_INTERVAL = 5 * 1000; // Reduced to 5s for better responsiveness
   const attendingCache = useRef<Map<string, { ids: Set<string>; ts: number }>>(new Map());
-  const ATTENDING_CACHE_TTL = 60 * 1000; // 60s
+  const ATTENDING_CACHE_TTL = 2 * 60 * 1000; // Reduced to 2 minutes
   const isInitialMount = useRef<boolean>(true);
 
   // Optimized single-path fetch function
   const fetchFeedData = useCallback(async (force: boolean = false) => {
-    if (!globalUser?.$id) return;
+    if (!globalUser?.$id || isFetching) return;
 
     // Rate limit automatic fetches
     if (!force && Date.now() - lastFeedFetch.current < MIN_FETCH_INTERVAL) {
@@ -140,6 +148,7 @@ export default function Feed() {
       return;
     }
 
+    setIsFetching(true);
     setRefreshing(true);
     setCurrentUserId(globalUser.$id);
     lastFeedFetch.current = Date.now();
@@ -173,7 +182,7 @@ export default function Feed() {
       } else {
         allEvents = await getPublicEvents(false, globalUser.$id);
         if (allEvents?.length > 0) {
-          cacheManager.set('all-events', allEvents, 15 * 60 * 1000); // 15 min cache
+          cacheManager.set('all-events', allEvents, 3 * 60 * 1000); // Reduced to 3 min cache
         }
         console.log('Feed: Fetched fresh events', allEvents.length);
       }
@@ -234,49 +243,87 @@ export default function Feed() {
         await fetchTravelAnnouncements(userFriends);
       });
 
-      console.log(`Feed: Loaded ${mappedEvents.length} events successfully`);
+      console.log(`✅ Feed: Loaded ${mappedEvents.length} events successfully (${Date.now() - lastFeedFetch.current}ms)`);
 
     } catch (error) {
       console.error('Error fetching feed:', error);
     } finally {
       setRefreshing(false);
+      setIsFetching(false);
       isInitialMount.current = false;
     }
   }, [globalUser?.$id, getScreenEvents, setScreenEvents, markScreenLoadedFromDb]);
 
-  // Initial load - simplified single path
+  // Debounced fetch to prevent rapid successive calls
+  const debouncedFetchFeedData = useCallback((force: boolean = false) => {
+    if (fetchTimeout.current) {
+      clearTimeout(fetchTimeout.current);
+    }
+
+    fetchTimeout.current = setTimeout(() => {
+      fetchFeedData(force);
+    }, 100); // 100ms debounce
+  }, [fetchFeedData]);
+
+  // Initial load - simplified single path with proper dependency management
   useEffect(() => {
-    if (initialLoadComplete || !globalUser?.$id) return;
+    if (initialLoadComplete || !globalUser?.$id || isInitialMount.current === false) return;
 
     const init = async () => {
-      await fetchFeedData();
+      console.log('🚀 Feed: Initial load starting');
+      await fetchFeedData(false); // Use cache on initial load
       setInitialLoadComplete(true);
+      isInitialMount.current = false;
     };
     init();
-  }, [initialLoadComplete, globalUser?.$id, fetchFeedData]);
+  }, [globalUser?.$id]); // Removed fetchFeedData from deps to prevent re-runs
 
-  // Simple focus effect for refresh check
+  // Simple focus effect for refresh check with debounce
   useFocusEffect(
     useCallback(() => {
       if (!initialLoadComplete) return;
 
-      // Simple 5-minute cache check
+      // Check if we have recent cached data
       const lastFetch = lastFeedFetch.current;
-      const shouldRefresh = Date.now() - lastFetch > 5 * 60 * 1000; // 5 minutes
+      const cacheAge = Date.now() - lastFetch;
+      const shouldRefresh = cacheAge > 5 * 60 * 1000; // 5 minutes
 
-      if (shouldRefresh) {
-        fetchFeedData(true);
+      // Only refresh if cache is stale and we have existing data
+      if (shouldRefresh && eventsWithCreatorNames?.length > 0) {
+        console.log('Feed: Focus refresh - cache is stale');
+        debouncedFetchFeedData(false); // Use debounced version
+      } else if (shouldRefresh && (!eventsWithCreatorNames || eventsWithCreatorNames.length === 0)) {
+        console.log('Feed: Focus refresh - no data available');
+        debouncedFetchFeedData(true); // Force if no data
       }
-    }, [initialLoadComplete, fetchFeedData])
+    }, [initialLoadComplete, eventsWithCreatorNames?.length]) // Only depend on data availability
   );
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (fetchTimeout.current) {
+        clearTimeout(fetchTimeout.current);
+        fetchTimeout.current = null;
+      }
+    };
+  }, []);
 
   const fetchTravelAnnouncements = async (friendIds: string[]) => {
     try {
       console.log('🧳 Feed: Loading travel announcements for', friendIds.length, 'friends');
+      console.log('🧳 Feed: Friend IDs:', friendIds.slice(0, 3).map(id => id.substring(0, 8) + '...'));
 
-      const travelData = await getFriendsTravelAnnouncements(friendIds, 30);
+      const travelData = await getFriendsTravelAnnouncements(friendIds, 30, true, currentUserId || undefined);
+
+      console.log('🧳 Feed: Travel query returned:', {
+        count: travelData.length,
+        sampleIds: travelData.slice(0, 3).map(t => t.$id.substring(0, 8) + '...'),
+        sampleDestinations: travelData.slice(0, 3).map(t => t.destination)
+      });
 
       if (travelData.length === 0) {
+        console.log('🧳 Feed: No travel data found, setting empty array');
         setTravelAnnouncements([]);
         return;
       }
@@ -384,6 +431,41 @@ export default function Feed() {
   const now = new Date();
   const upcomingEvents = eventsWithCreatorNames.filter(event => new Date(event.endTime) > now);
 
+  // Create combined feed items (events + travel announcements) sorted chronologically
+  const combinedFeedItems = useMemo((): FeedItem[] => {
+    const eventItems: FeedItem[] = upcomingEvents.map(event => ({
+      ...event,
+      type: 'event' as const
+    }));
+
+    const travelItems: FeedItem[] = travelAnnouncements.map(travel => ({
+      ...travel,
+      type: 'travel' as const
+    }));
+
+    // Combine and sort by creation time (most recent first)
+    const allItems = [...eventItems, ...travelItems];
+    const sortedItems = allItems.sort((a, b) => {
+      const timeA = a.type === 'event' ? new Date(a.startTime).getTime() : new Date(a.startDate).getTime();
+      const timeB = b.type === 'event' ? new Date(b.startTime).getTime() : new Date(b.startDate).getTime();
+      return timeA - timeB; // Ascending order (soonest first)
+    });
+
+    // Debug logging
+    console.log('🧳 Feed: Combined timeline items:', {
+      totalItems: sortedItems.length,
+      eventCount: eventItems.length,
+      travelCount: travelItems.length,
+      sampleItems: sortedItems.slice(0, 3).map(item => ({
+        type: item.type,
+        title: item.type === 'event' ? item.title : `Travel to ${item.destination}`,
+        date: item.type === 'event' ? item.startTime : item.startDate
+      }))
+    });
+
+    return sortedItems;
+  }, [upcomingEvents, travelAnnouncements]);
+
   // Group upcoming events by primary category (derived from tags) and sort groups by soonest event
   const groupedByCategory = (() => {
     const map = new Map<string, { key: string; label: string; emoji: string; events: AppEvent[] }>();
@@ -456,57 +538,115 @@ export default function Feed() {
     </View>
   );
 
+  const handleShareEvent = async (item: AppEvent) => {
+    try {
+      const result = await Share.share({
+        message: `Check out "${item.title}" on Up2! Join us ${dayjs(item.startTime).format('MMM DD, YYYY')} at ${item.location || 'TBA'}`,
+        title: item.title,
+      });
+    } catch (error) {
+      console.error('Error sharing event:', error);
+    }
+  };
+
   const renderEventItem = ({ item }: { item: AppEvent & { creatorName?: string } }) => {
     const { formattedDistance } = getEventDistance(item.location || '');
 
     return (
-      <TouchableOpacity
-        onPress={() => router.push(`/(root)/events/${item.$id}?from=feed` as any)}
-        style={[styles.feedRowCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-      >
-        <EventImage
-          photoId={(item as any).photoId}
-          tags={item.tags}
-          size={72}
-          style={styles.feedThumb}
-        />
+      <View style={[styles.modernPostCard, { backgroundColor: colors.card }]}>
+        {/* Event Title and Location */}
+        <View style={styles.eventTitleContainer}>
+          <Text style={[styles.eventTitle, { color: colors.text }]}>
+            {item.title}
+          </Text>
+          <Text style={[styles.eventLocation, { color: colors.textSecondary }]}>
+            {item.location || 'Location not specified'}
+          </Text>
+        </View>
 
-        <View style={styles.feedBody}>
-          <Text style={[styles.feedTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
+        {/* Event Image - Only clickable element */}
+        <TouchableOpacity
+          onPress={() => router.push(`/(root)/events/${item.$id}?from=feed` as any)}
+          style={styles.postImageContainer}
+        >
+          <EventImage
+            photoId={(item as any).photoId}
+            tags={item.tags}
+            size={400}
+            style={styles.postImage}
+          />
+          {/* Creator Overlay - Top Left */}
+          <View style={styles.creatorOverlay}>
+            <UserAvatar
+              photoUrl={getCreatorPhotoUrl(item.creatorId)}
+              name={getCreatorName(item.creatorId)}
+              size={28}
+            />
+            <Text style={styles.creatorOverlayText}>
+              {getCreatorName(item.creatorId)}
+            </Text>
+          </View>
+          {/* Event Date Overlay */}
+          <View style={styles.dateOverlay}>
+            <Text style={styles.dateOverlayText}>
+              {dayjs(item.startTime).format('MMM DD')}
+            </Text>
+            <Text style={styles.timeOverlayText}>
+              {dayjs(item.startTime).format('h:mm A')}
+            </Text>
+          </View>
+          {/* Attending Count Overlay */}
+          <View style={styles.attendingOverlay}>
+            <Text style={styles.attendingOverlayText}>
+              {(item as any).attendeeCount ?? 0} Attending
+            </Text>
+          </View>
+        </TouchableOpacity>
 
-          <View style={styles.feedMetaRow}>
-            <MaterialIcons name="calendar-today" size={12} color={colors.textSecondary} />
-            <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6 }]}>{dayjs(item.startTime).format('DD MMM, YYYY')}</Text>
-            <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
-            <MaterialIcons name="location-on" size={12} color={colors.textSecondary} />
-            <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginLeft: 6, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode='tail'>{item.location || ''}</Text>
+        {/* Post Actions */}
+        <View style={styles.postActions}>
+          <View style={styles.leftActions}>
+            <TouchableOpacity style={styles.actionButton}>
+              <MaterialIcons name="favorite-border" size={26} color={colors.text} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleShareEvent(item)}
+            >
+              <MaterialIcons name="share" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            style={styles.attendPostButtonGrey}
+          >
+            <MaterialIcons name="person-add" size={20} color="white" />
+            <Text style={styles.attendPostButtonGreyText}>Attend</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Post Content - Reduced padding */}
+        <View style={styles.postContentMinimal}>
+          {/* Event Details - Only distance and price */}
+          <View style={styles.eventDetails}>
             {formattedDistance && (
-              <>
-                <Text style={[styles.feedMetaText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
-                <Text style={[styles.feedMetaText, { color: '#4A90E2', marginLeft: 0, fontWeight: '500' }]}>{formattedDistance}</Text>
-              </>
+              <View style={styles.eventDetailRow}>
+                <MaterialIcons name="location-on" size={16} color={colors.primary} />
+                <Text style={[styles.eventDetailText, { color: colors.textSecondary }]}>
+                  {formattedDistance} away
+                </Text>
+              </View>
+            )}
+            {((item as any).price !== undefined && (item as any).price !== null) && (
+              <View style={styles.eventDetailRow}>
+                <MaterialIcons name="attach-money" size={16} color={colors.primary} />
+                <Text style={[styles.eventDetailText, { color: colors.primary, fontWeight: '600' }]}>
+                  ${(item as any).price}
+                </Text>
+              </View>
             )}
           </View>
-
-          <View style={styles.feedSubRow}>
-            <UserAvatar photoUrl={getCreatorPhotoUrl(item.creatorId)} name={getCreatorName(item.creatorId)} size={28} />
-            <Text style={[styles.smallCreatorName, { color: colors.text, marginLeft: 8 }]} numberOfLines={1}>{getCreatorName(item.creatorId)}</Text>
-          </View>
         </View>
-
-        <View style={styles.feedRightCol}>
-          {((item as any).price !== undefined && (item as any).price !== null) ? (
-            <View style={styles.pricePill}>
-              <Text style={styles.priceText}>${(item as any).price}</Text>
-            </View>
-          ) : null}
-
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{(item as any).attendeeCount ?? 0} attending</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{(item as any).inviteCount ?? 0} invited</Text>
-          </View>
-        </View>
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -558,20 +698,12 @@ export default function Feed() {
 
       {/* Travel Actions */}
       <View style={[styles.cardActions, { borderTopColor: colors.border }]}>
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity style={styles.cardActionButton}>
           <MaterialIcons name="favorite-border" size={20} color={colors.textSecondary} />
           <Text style={[styles.actionText, { color: colors.textSecondary }]}>Like</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => Alert.alert('Message', 'Messaging feature coming soon!')}
-        >
-          <MaterialIcons name="chat-bubble-outline" size={20} color={colors.textSecondary} />
-          <Text style={[styles.actionText, { color: colors.textSecondary }]}>Message</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity style={styles.cardActionButton}>
           <MaterialIcons name="share" size={20} color={colors.textSecondary} />
           <Text style={[styles.actionText, { color: colors.textSecondary }]}>Share</Text>
         </TouchableOpacity>
@@ -590,52 +722,40 @@ export default function Feed() {
   return (
     <Background>
       <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
-        {/* Conditional Header - gradient only in colorful mode */}
-        {isColorful ? (
-          <View style={[styles.headerGradient, { backgroundColor: 'transparent' }]}>
-            <View style={styles.headerContent}>
-              <Text style={[styles.headerTitle, { color: '#fff' }]}>UP2 YOU</Text>
-              <View style={styles.headerActions}>
-                <TouchableOpacity onPress={() => setTravelFormVisible(true)} style={styles.headerActionButton}>
-                  <MaterialIcons name="flight" size={18} color={'#fff'} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setFormVisible(true)} style={styles.headerActionButton}>
-                  <MaterialIcons name="add" size={18} color={'#fff'} />
-                </TouchableOpacity>
-              </View>
+        {/* Modern Instagram-style Header */}
+        <View style={[styles.modernHeader, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+          <View style={styles.headerContent}>
+            <Text style={[styles.modernHeaderTitle, { color: colors.text }]}>Up2</Text>
+            <View style={styles.headerActions}>
+              <TouchableOpacity onPress={() => setTravelFormVisible(true)} style={styles.modernHeaderButton}>
+                <MaterialIcons name="flight" size={22} color={colors.text} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setFormVisible(true)} style={styles.modernHeaderButton}>
+                <MaterialIcons name="add-box" size={24} color={colors.text} />
+              </TouchableOpacity>
             </View>
           </View>
-        ) : (
-          <View style={[styles.headerGradient, { backgroundColor: colors.background }]}>
-            <View style={styles.headerContent}>
-              <Text style={[styles.headerTitle, { color: colors.text }]}>UP2 YOU</Text>
-              <View style={styles.headerActions}>
-                <TouchableOpacity onPress={() => setTravelFormVisible(true)} style={styles.headerActionButton}>
-                  <MaterialIcons name="flight" size={18} color={colors.text} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setFormVisible(true)} style={styles.headerActionButton}>
-                  <MaterialIcons name="add" size={18} color={colors.text} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        )}
+        </View>
 
-        {/* Event Feed as a single vertical FlatList with pull-to-refresh */}
+        {/* Combined Feed Timeline (Events + Travel) */}
         <View style={[styles.feedContent, { flex: 1 }]}>
-          {/* Main events FlatList (condensed chronological list) */}
           <FlatList
-            data={eventsWithCreatorNames}
-            keyExtractor={(item) => item.$id}
-            renderItem={renderEventItem}
+            data={combinedFeedItems}
+            keyExtractor={(item) => `${item.type}-${item.$id}`}
+            renderItem={renderFeedItem}
             ListHeaderComponent={useMemo(() => () => (
-              <TopPicks
-                allEvents={allEventsForTopPicks}
-                userFriends={friends}
-                currentUserId={currentUserId || undefined}
-                maxPicks={8}
-              />
-            ), [allEventsForTopPicks, friends, currentUserId])}
+              <View>
+                {/* Top Picks */}
+                <View style={{ marginTop: 8 }}>
+                  <TopPicks
+                    allEvents={allEventsForTopPicks}
+                    userFriends={friends}
+                    currentUserId={currentUserId || undefined}
+                    maxPicks={8}
+                  />
+                </View>
+              </View>
+            ), [allEventsForTopPicks, friends, currentUserId, colors])}
             ListEmptyComponent={() => (
               <View style={{ padding: 24, alignItems: 'center' }}>
                 <Text style={{ color: colors.textSecondary }}>No events yet. Pull to refresh.</Text>
@@ -644,35 +764,11 @@ export default function Feed() {
             refreshing={refreshing}
             onRefresh={onRefresh}
             style={{ flex: 1 }}
-            contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 70 + insets.bottom }}
+            contentContainerStyle={{ paddingBottom: 70 + insets.bottom }}
+            showsVerticalScrollIndicator={false}
           />
 
-          {/* Travel announcements (kept below the main feed) */}
-          {travelAnnouncements.length > 0 && (
-            <View style={{ marginTop: 12 }}>
-              <Text style={[styles.sectionHeaderTitle, { color: colors.text, marginLeft: 16 }]}>Travel Announcements</Text>
-              <FlatList
-                data={travelAnnouncements}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                keyExtractor={(t) => t.$id}
-                renderItem={({ item }) => (
-                  <View style={[styles.feedCard, { width: 300, marginHorizontal: 12, backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <View style={styles.cardHeader}>
-                      <UserAvatar photoUrl={item.userPhotoUrl || null} name={item.userName} size={40} />
-                      <View style={styles.headerText}>
-                        <Text style={[styles.creatorName, { color: colors.text }]}>{item.userName}</Text>
-                        <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>{dayjs(item.startDate).fromNow()}</Text>
-                      </View>
-                      <TouchableOpacity style={styles.moreButton} onPress={() => router.push(`/(root)/events/${item.$id}?from=feed` as any)}>
-                        <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-              />
-            </View>
-          )}
+
         </View>
 
         {/* Event Form Modal */}
@@ -734,11 +830,276 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#ffffff',
+    letterSpacing: -0.5,
+  },
+  // Modern Instagram-style post card styles
+  modernPostCard: {
+    backgroundColor: 'white',
+    marginBottom: 16,
+    borderRadius: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  postHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  postHeaderInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  postUsername: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  postLocation: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  postMoreButton: {
+    padding: 8,
+  },
+  postImageContainer: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: 1,
+  },
+  postImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 0,
+  },
+  dateOverlay: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  dateOverlayText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  timeOverlayText: {
+    color: 'white',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  postActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8, // Reduced from 12 to 8
+  },
+  leftActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionButton: {
+    marginRight: 16,
+    padding: 4,
+  },
+  attendPostButton: {
+    backgroundColor: '#0095f6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  attendPostButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  postContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  postLikes: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  postCaption: {
+    fontSize: 14,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  postCaptionUsername: {
+    fontWeight: '600',
+  },
+  eventDetails: {
+    marginVertical: 8,
+  },
+  eventDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  eventDetailText: {
+    fontSize: 13,
+    marginLeft: 8,
+  },
+  postTime: {
+    fontSize: 12,
+    marginTop: 8,
+  },
+  // Event title container - prominent position
+  eventTitleContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  eventTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
+  eventLocation: {
+    fontSize: 14,
+    marginTop: 4,
+  },
+  // Creator overlay on image - top left
+  creatorOverlay: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  creatorOverlayText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  // Attending count overlay on image
+  attendingOverlay: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  attendingOverlayText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  // Dark grey attend button
+  attendPostButtonGrey: {
+    backgroundColor: '#6B7280',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  attendPostButtonGreyText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  // Minimal post content with less padding
+  postContentMinimal: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  // Creator info section - below image
+  postCreatorInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#dbdbdb',
+  },
+  creatorInfoText: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  creatorUsername: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  creatorLocation: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  creatorMoreButton: {
+    padding: 4,
+  },
+  // Modern header styles
+  modernHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#dbdbdb',
+  },
+  modernHeaderTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    fontFamily: 'Billabong', // Instagram-style font (fallback to system)
+  },
+  modernHeaderButton: {
+    padding: 6,
+    marginLeft: 0, // Removed extra margin since gap handles spacing
+  },
+  // Stories section styles
+  storiesSection: {
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#dbdbdb',
+  },
+  storiesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 16,
+    marginBottom: 12,
+  },
+  storiesContainer: {
+    paddingHorizontal: 16,
+  },
+  storyItem: {
+    alignItems: 'center',
+    marginRight: 16,
+    width: 70,
+  },
+  storyAvatar: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    borderWidth: 2,
+    padding: 2,
+    marginBottom: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  storyName: {
+    fontSize: 12,
+    textAlign: 'center',
   },
   headerActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8, // Reduced from 12 to 8
   },
   headerButton: {
     padding: 8,
@@ -800,11 +1161,6 @@ const styles = StyleSheet.create({
   cardContent: {
     padding: 16,
   },
-  eventTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
   eventMeta: {
     marginBottom: 12,
   },
@@ -861,7 +1217,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderTopWidth: 1,
   },
-  actionButton: {
+  cardActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 8,
@@ -949,146 +1305,13 @@ const styles = StyleSheet.create({
   friendBubble: {
     marginRight: 12,
   },
-  // Condensed event card (vertical feed)
-  condensedCard: {
-    borderRadius: 12,
-    padding: 12,
-    marginHorizontal: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-  },
-  // New condensed feed card styles
-  condensedFeedCard: {
-    borderRadius: 12,
-    marginHorizontal: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  emojiContainerCondensed: {
-    width: '100%',
-    height: 110,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  eventEmojiCondensed: {
-    fontSize: 48,
-  },
-  cardContentCondensed: {
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 8,
-  },
-  eventTitleCondensed: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  eventMetaCondensed: {
-    marginBottom: 6,
-  },
-  cardFooterCondensed: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderTopWidth: 1,
-  },
+
   smallCreatorName: {
     fontSize: 13,
     fontWeight: '600',
   },
-  // New horizontal feed row styles
-  feedRowCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 12,
-    marginHorizontal: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-  },
-  feedThumb: {
-    width: 72,
-    height: 72,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  eventEmojiThumb: {
-    fontSize: 28,
-  },
-  feedBody: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  feedTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  feedMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  feedMetaText: {
-    fontSize: 12,
-  },
-  feedSubRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  feedRightCol: {
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    height: 72,
-  },
-  pricePill: {
-    backgroundColor: '#fff0f0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  priceText: {
-    color: '#d64545',
-    fontWeight: '700',
-  },
-  joinButton: {
-    backgroundColor: '#1f6feb',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  joinButtonText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  // Compact friends summary styles
-  feedFriendSummary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 8,
-    marginHorizontal: 12,
-    marginBottom: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  friendOverlapRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  friendOverlap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: '#ffffff',
-  },
+
+
   headerActionButton: {
     width: 36,
     height: 36,

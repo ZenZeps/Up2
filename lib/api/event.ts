@@ -1189,31 +1189,48 @@ export async function updateEventAttendance(eventId: string, userId: string, isA
 }
 
 /**
- * Delete an event
+ * Delete an event with full cascade deletion
+ * This function attempts automatic cascade via relationships first,
+ * then falls back to manual cascade deletion if needed.
  */
 export async function deleteEvent(id: string) {
   try {
-    authDebug.info(`Deleting event with relationship-based cascade: ${id}`);
+    authDebug.info(`🗑️ Attempting to delete event with cascade: ${id}`);
 
-    // With relationship-based cascade deletion, we just delete the event
-    // All related data (attendances, messages, etc.) will be automatically deleted
-    await databases.deleteDocument(
-      config.databaseID!,
-      config.eventsCollectionID!,
-      id
-    );
+    // First, try the manual cascade deletion approach
+    // This ensures all related data is properly deleted regardless of database setup
+    const { deleteEventWithCascade } = await import('./cascadeDelete');
+    const success = await deleteEventWithCascade(id);
 
-    authDebug.info(`Successfully deleted event ${id} - relationships automatically cascaded deletion of all attendances and related data`);
+    if (success) {
+      authDebug.info(`✅ Successfully deleted event ${id} with full cascade deletion`);
+      return true;
+    } else {
+      throw new Error('Manual cascade deletion failed');
+    }
 
-    // Invalidate caches
-    cacheManager.remove(`event-${id}`);
-    cacheManager.remove(EVENT_COLLECTION_CACHE_KEY);
-
-    authDebug.info("Deleted event successfully", { id });
-    return true;
   } catch (err) {
-    authDebug.error(`Error deleting event: ${id}`, err);
-    throw new Error("Failed to delete event");
+    authDebug.error(`❌ Error deleting event: ${id}`, err);
+
+    // If manual cascade fails, try basic deletion as last resort
+    try {
+      authDebug.info(`⚠️ Attempting basic event deletion as fallback for: ${id}`);
+      await databases.deleteDocument(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        id
+      );
+
+      // Clear caches
+      cacheManager.remove(`event-${id}`);
+      cacheManager.remove(EVENT_COLLECTION_CACHE_KEY);
+
+      authDebug.warn(`⚠️ Basic deletion succeeded but related data may not be deleted for event: ${id}`);
+      return true;
+    } catch (fallbackErr) {
+      authDebug.error(`❌ Both cascade and basic deletion failed for event: ${id}`, fallbackErr);
+      throw new Error("Failed to delete event completely");
+    }
   }
 }
 
@@ -1531,5 +1548,195 @@ export async function cleanupOrphanedAttendanceRecords(): Promise<number> {
   } catch (error) {
     authDebug.error('❌ Cleanup failed:', error);
     throw error;
+  }
+}
+
+/**
+ * Smart Event Change Detection - Check if user's attending events have been modified
+ * This lightweight function only fetches minimal data to determine if a full refresh is needed
+ */
+export async function checkEventChanges(
+  userId: string,
+  cachedEventIds: string[],
+  lastCheckTimestamp: number = 0
+): Promise<{
+  hasChanges: boolean;
+  changedEventIds: string[];
+  newEventIds: string[];
+  removedEventIds: string[];
+  needsFullRefresh: boolean;
+}> {
+  try {
+    authDebug.debug(`Checking event changes for user ${userId} since ${new Date(lastCheckTimestamp).toISOString()}`);
+
+    // Get current events user is attending (from junction table) - only fetch IDs and updated timestamps
+    let currentUserEvents: string[] = [];
+
+    try {
+      const attendanceRecords = await databases.listDocuments(
+        config.databaseID!,
+        config.eventAttendancesCollectionID!,
+        [
+          Query.equal('userId', userId),
+          Query.limit(100) // Reasonable limit for attending events
+        ]
+      );
+
+      currentUserEvents = attendanceRecords.documents.map(record => record.eventId);
+    } catch (junctionError) {
+      authDebug.warn('Junction table not available, falling back to event search', junctionError);
+
+      // Fallback: search events where user is in attendees array
+      const attendeeEvents = await databases.listDocuments(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        [
+          Query.search('attendees', userId),
+          Query.select(['$id']),
+          Query.limit(100)
+        ]
+      );
+
+      currentUserEvents = attendeeEvents.documents.map(doc => doc.$id);
+    }
+
+    // Also include events user created
+    const createdEvents = await databases.listDocuments(
+      config.databaseID!,
+      config.eventsCollectionID!,
+      [
+        Query.equal('creatorId', userId),
+        Query.select(['$id']),
+        Query.limit(50)
+      ]
+    );
+
+    const createdEventIds = createdEvents.documents.map(doc => doc.$id);
+    const allCurrentEventIds = [...new Set([...currentUserEvents, ...createdEventIds])];
+
+    // Compare with cached event IDs
+    const cachedSet = new Set(cachedEventIds);
+    const currentSet = new Set(allCurrentEventIds);
+
+    const newEventIds = allCurrentEventIds.filter(id => !cachedSet.has(id));
+    const removedEventIds = cachedEventIds.filter(id => !currentSet.has(id));
+
+    // If there are new or removed events, we need a full refresh
+    if (newEventIds.length > 0 || removedEventIds.length > 0) {
+      authDebug.info(`Event list changes detected: +${newEventIds.length} new, -${removedEventIds.length} removed`);
+      return {
+        hasChanges: true,
+        changedEventIds: [],
+        newEventIds,
+        removedEventIds,
+        needsFullRefresh: true
+      };
+    }
+
+    // Check for modifications in existing events (only if we have a timestamp to compare)
+    let changedEventIds: string[] = [];
+
+    if (lastCheckTimestamp > 0 && allCurrentEventIds.length > 0) {
+      // Check for modifications by fetching recent updates and filtering client-side
+      // This is more efficient than complex OR queries
+      const recentlyModified = await databases.listDocuments(
+        config.databaseID!,
+        config.eventsCollectionID!,
+        [
+          Query.select(['$id', '$updatedAt', 'title', 'startTime', 'endTime', 'location']),
+          Query.greaterThan('$updatedAt', new Date(lastCheckTimestamp).toISOString()),
+          Query.limit(100)
+        ]
+      );
+
+      // Filter to only events the user cares about
+      const currentEventSet = new Set(allCurrentEventIds);
+      const relevantChanges = recentlyModified.documents.filter(doc =>
+        currentEventSet.has(doc.$id)
+      );
+
+      changedEventIds = relevantChanges.map(doc => doc.$id);
+
+      if (changedEventIds.length > 0) {
+        authDebug.info(`Found ${changedEventIds.length} modified events since last check`);
+      }
+    }
+
+    const hasChanges = newEventIds.length > 0 || removedEventIds.length > 0 || changedEventIds.length > 0;
+
+    authDebug.debug(`Change detection result: hasChanges=${hasChanges}, changed=${changedEventIds.length}, new=${newEventIds.length}, removed=${removedEventIds.length}`);
+
+    return {
+      hasChanges,
+      changedEventIds,
+      newEventIds,
+      removedEventIds,
+      needsFullRefresh: newEventIds.length > 0 || removedEventIds.length > 0
+    };
+
+  } catch (error) {
+    authDebug.error('Error checking event changes:', error);
+    // On error, assume changes exist to be safe
+    return {
+      hasChanges: true,
+      changedEventIds: [],
+      newEventIds: [],
+      removedEventIds: [],
+      needsFullRefresh: true
+    };
+  }
+}
+
+/**
+ * Progressive event loading - Show cached data immediately, then update if changes detected
+ */
+export async function loadEventsProgressively(
+  userId: string,
+  cachedEvents: Event[] = [],
+  onCacheLoad?: (events: Event[]) => void,
+  onUpdate?: (events: Event[]) => void
+): Promise<Event[]> {
+  try {
+    authDebug.debug('Starting progressive event loading for user', userId);
+
+    // Step 1: If we have cached events, show them immediately
+    if (cachedEvents.length > 0 && onCacheLoad) {
+      authDebug.debug(`Showing ${cachedEvents.length} cached events immediately`);
+      onCacheLoad(cachedEvents);
+    }
+
+    // Step 2: Check if events have changed
+    const cachedEventIds = cachedEvents.map(e => e.$id);
+    const lastCheck = Date.now() - (5 * 60 * 1000); // Check for changes in last 5 minutes
+
+    const changeCheck = await checkEventChanges(userId, cachedEventIds, lastCheck);
+
+    // Step 3: If no changes, return cached events
+    if (!changeCheck.hasChanges) {
+      authDebug.debug('No changes detected, using cached events');
+      return cachedEvents;
+    }
+
+    // Step 4: Changes detected - fetch fresh data
+    authDebug.info('Changes detected, fetching fresh event data');
+
+    const freshEvents = await fetchUserEvents(userId);
+
+    // Step 5: Notify callback with updated data
+    if (onUpdate) {
+      onUpdate(freshEvents);
+    }
+
+    return freshEvents;
+
+  } catch (error) {
+    authDebug.error('Error in progressive event loading:', error);
+
+    // On error, return cached events if available, otherwise fetch fresh
+    if (cachedEvents.length > 0) {
+      return cachedEvents;
+    }
+
+    return await fetchUserEvents(userId);
   }
 }

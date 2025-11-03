@@ -5,7 +5,7 @@ import {
     getEventMessages,
     getGroupMessages,
     updateMessage,
-} from '@/lib/api/messages';
+} from '@/lib/api/messages-optimized';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { MessageWithAuthor } from '@/lib/types/Messages';
 import dayjs from 'dayjs';
@@ -66,17 +66,17 @@ export default function MessageModal({
     const loadMessages = async () => {
         try {
             setLoading(true);
-            let messageThread;
+            let messageResult;
 
             if (eventId) {
-                messageThread = await getEventMessages(eventId);
+                messageResult = await getEventMessages(eventId);
             } else if (groupId) {
-                messageThread = await getGroupMessages(groupId);
+                messageResult = await getGroupMessages(groupId);
             } else {
                 throw new Error('Either eventId or groupId must be provided');
             }
 
-            setMessages(messageThread.messages);
+            setMessages(messageResult.messages);
         } catch (error) {
             console.error('Error loading messages:', error);
             Alert.alert('Error', 'Failed to load messages');
@@ -125,7 +125,7 @@ export default function MessageModal({
         if (!editingMessage || !editText.trim()) return;
 
         try {
-            await updateMessage(editingMessage, editText.trim(), currentUserId);
+            await updateMessage(editingMessage, editText.trim());
             await loadMessages();
             setEditingMessage(null);
             setEditText('');
@@ -146,7 +146,7 @@ export default function MessageModal({
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            await deleteMessage(messageId, currentUserId);
+                            await deleteMessage(messageId);
                             await loadMessages();
                         } catch (error) {
                             console.error('Error deleting message:', error);

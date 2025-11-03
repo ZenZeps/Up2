@@ -49,16 +49,16 @@ export const createMessage = async (
         // Get author data (with caching)
         const author = await getCachedAuthor(authorId);
 
-        // Create message data with relationship fields
+        // Create message data with string fields only (no relationships)
         const messageData = {
             content: content.trim(),
             // New relationship fields
-            sender: authorId,
-            chat: chatId,
+            // sender: authorId, // REMOVED: Not in database schema - causes "Unknown attribute" error
+            // chat: chatId, // REMOVED: Not in database schema - causes "Unknown attribute" error
             // Keep string fields for compatibility during transition
             authorId,
             chatId,
-            senderId: authorId, // Alternative field name
+            // senderId: authorId, // REMOVED: Not in database schema - causes "Unknown attribute" error
             authorName: author.name,
             authorPhotoUrl: author.photoUrl,
             isEdited: false,
@@ -488,4 +488,90 @@ export const markMessagesAsRead = async (
 ): Promise<void> => {
     // TODO: Implement read receipts
     console.log(`📖 Marking messages as read for user ${userId} in chat ${chatId}`);
+};
+
+/**
+ * ========================================
+ * CONVENIENCE FUNCTIONS FOR EVENTS/GROUPS
+ * ========================================
+ */
+
+/**
+ * Get messages for a specific event (optimized version)
+ */
+export const getEventMessages = async (
+    eventId: string,
+    limit: number = 50,
+    cursor?: string
+): Promise<{
+    messages: MessageWithAuthor[];
+    hasMore: boolean;
+    nextCursor?: string;
+}> => {
+    try {
+        const { getOrCreateChat } = await import('./chats-optimized');
+        const chat = await getOrCreateChat(eventId, 'event');
+        return await getChatMessages(chat.$id, limit, cursor);
+    } catch (error) {
+        console.error('❌ Error fetching event messages:', error);
+        throw error;
+    }
+};
+
+/**
+ * Get messages for a specific group (optimized version)
+ */
+export const getGroupMessages = async (
+    groupId: string,
+    limit: number = 50,
+    cursor?: string
+): Promise<{
+    messages: MessageWithAuthor[];
+    hasMore: boolean;
+    nextCursor?: string;
+}> => {
+    try {
+        const { getOrCreateChat } = await import('./chats-optimized');
+        const chat = await getOrCreateChat(groupId, 'group');
+        return await getChatMessages(chat.$id, limit, cursor);
+    } catch (error) {
+        console.error('❌ Error fetching group messages:', error);
+        throw error;
+    }
+};
+
+/**
+ * Create a message for an event (optimized version)
+ */
+export const createEventMessage = async (
+    eventId: string,
+    content: string,
+    authorId: string
+): Promise<MessageWithAuthor> => {
+    try {
+        const { getOrCreateChat } = await import('./chats-optimized');
+        const chat = await getOrCreateChat(eventId, 'event');
+        return await createMessage(chat.$id, content, authorId);
+    } catch (error) {
+        console.error('❌ Error creating event message:', error);
+        throw error;
+    }
+};
+
+/**
+ * Create a message for a group (optimized version)
+ */
+export const createGroupMessage = async (
+    groupId: string,
+    content: string,
+    authorId: string
+): Promise<MessageWithAuthor> => {
+    try {
+        const { getOrCreateChat } = await import('./chats-optimized');
+        const chat = await getOrCreateChat(groupId, 'group');
+        return await createMessage(chat.$id, content, authorId);
+    } catch (error) {
+        console.error('❌ Error creating group message:', error);
+        throw error;
+    }
 };

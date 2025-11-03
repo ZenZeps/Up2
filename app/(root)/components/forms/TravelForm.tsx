@@ -1,8 +1,10 @@
-import { createTravelAnnouncementWithFriendNotifications } from '@/lib/api/travelFriendNotifications';
+import { getLocationCoordinates, QUICK_SEARCH_CITIES } from '@/constants/locations';
+import { deleteTravelAnnouncement } from '@/lib/api/travel';
+import { config, databases, ID, Permission, Role } from '@/lib/appwrite/appwrite';
 import { TravelAnnouncement } from '@/lib/types/Travel';
 import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -14,44 +16,26 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
 
 interface TravelFormProps {
     visible: boolean;
     onClose: () => void;
     onSuccess: () => void;
     currentUserId: string;
-    userFriends: string[];
-    editingTravel?: TravelAnnouncement | null;
+    userFriends?: string[]; // Made optional since we're not using it
+    editingTravel?: TravelAnnouncement;
 }
-
-// Shared location mock data for consistency across components
-const LOCATION_MOCKS: Record<string, { lat: number; lng: number }> = {
-    'sydney': { lat: -33.8688, lng: 151.2093 },
-    'melbourne': { lat: -37.8136, lng: 144.9631 },
-    'brisbane': { lat: -27.4698, lng: 153.0251 },
-    'perth': { lat: -31.9505, lng: 115.8605 },
-    'adelaide': { lat: -34.9285, lng: 138.6007 },
-    'new york': { lat: 40.7128, lng: -74.0060 },
-    'london': { lat: 51.5074, lng: -0.1278 },
-    'tokyo': { lat: 35.6762, lng: 139.6503 },
-    'paris': { lat: 48.8566, lng: 2.3522 },
-    'bali': { lat: -8.3405, lng: 115.0920 },
-    'bangkok': { lat: 13.7563, lng: 100.5018 },
-    'singapore': { lat: 1.3521, lng: 103.8198 },
-    'hong kong': { lat: 22.3193, lng: 114.1694 },
-    'los angeles': { lat: 34.0522, lng: -118.2437 },
-    'san francisco': { lat: 37.7749, lng: -122.4194 },
-};
 
 const TravelForm: React.FC<TravelFormProps> = ({
     visible,
     onClose,
     onSuccess,
     currentUserId,
-    userFriends,
+    userFriends = [], // Default to empty array
     editingTravel
 }) => {
     // Consolidated form state
@@ -77,9 +61,8 @@ const TravelForm: React.FC<TravelFormProps> = ({
     const { showStartDatePicker, showEndDatePicker } = datePickerState;
 
     // Optimized location search with shared logic
-    const searchLocation = React.useCallback((query: string) => {
-        const normalizedQuery = query.toLowerCase();
-        const location = LOCATION_MOCKS[normalizedQuery];
+    const searchLocation = useCallback((query: string) => {
+        const location = getLocationCoordinates(query);
 
         setFormState(prev => ({
             ...prev,
@@ -88,6 +71,36 @@ const TravelForm: React.FC<TravelFormProps> = ({
             destinationLng: location?.lng
         }));
     }, []);
+
+    const handleDelete = async () => {
+        if (!editingTravel) return;
+
+        Alert.alert(
+            'Delete Travel Announcement',
+            'Are you sure you want to delete this travel announcement? This action cannot be undone.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setFormState(prev => ({ ...prev, isLoading: true }));
+                        try {
+                            await deleteTravelAnnouncement(editingTravel.$id);
+                            Alert.alert('Success', 'Travel announcement deleted successfully!');
+                            onSuccess();
+                            onClose();
+                        } catch (error) {
+                            console.error('Error deleting travel:', error);
+                            Alert.alert('Error', 'Failed to delete travel announcement');
+                        } finally {
+                            setFormState(prev => ({ ...prev, isLoading: false }));
+                        }
+                    }
+                }
+            ]
+        );
+    };
 
     const handleSave = async () => {
         if (!currentUserId || currentUserId.trim() === '') {
@@ -124,14 +137,64 @@ const TravelForm: React.FC<TravelFormProps> = ({
                 locationName: destination.trim(),
             };
 
-            await createTravelAnnouncementWithFriendNotifications(
-                travelData,
-                userFriends
+            console.log('🧳 TravelForm: About to create travel with data:', {
+                ...travelData,
+                userId: travelData.userId?.substring(0, 8) + '...'
+            });
+
+            console.log('🧳 TravelForm: About to create travel with direct approach');
+
+            // Create travel announcement directly to avoid import issues
+            const travelId = ID.unique();
+
+            // Start with absolute minimum required fields only
+            const minimalTravelData = {
+                userId: travelData.userId,
+                destination: travelData.destination,
+                startDate: travelData.startDate,
+                endDate: travelData.endDate,
+                isPublic: travelData.isPublic
+                // Test with core fields first, add others if this works
+            };
+
+            console.log('🧳 Creating with minimal data:', minimalTravelData);
+
+            const result = await databases.createDocument(
+                config.databaseID!,
+                config.travelCollectionID!,
+                travelId,
+                minimalTravelData,
+                [
+                    Permission.read(Role.any()),
+                    Permission.update(Role.user(travelData.userId)),
+                    Permission.delete(Role.user(travelData.userId)),
+                ]
             );
+
+            console.log('🧳 TravelForm: Simple travel created successfully:', result.$id);
+
+            // Verify the document was created properly
+            try {
+                const verification = await databases.getDocument(
+                    config.databaseID!,
+                    config.travelCollectionID!,
+                    result.$id
+                );
+                console.log('✅ Verification successful - document structure:', {
+                    id: verification.$id,
+                    userId: verification.userId?.substring(0, 8) + '...',
+                    destination: verification.destination,
+                    allKeys: Object.keys(verification)
+                });
+            } catch (verifyError) {
+                console.error('❌ Verification failed:', verifyError);
+            }
+
+            console.log('🧳 TravelForm: Full result object:', JSON.stringify(result, null, 2));
 
             Alert.alert(
                 'Travel Created! 🌍',
-                `Your travel to ${destination} has been created and friends have been notified!`
+                `Your travel to ${destination} has been created!\n\nID: ${result.$id}`
             );
 
             onSuccess();
@@ -195,21 +258,33 @@ const TravelForm: React.FC<TravelFormProps> = ({
                         {editingTravel ? 'Edit Travel' : 'New Travel'}
                     </Text>
 
-                    <TouchableOpacity
-                        onPress={handleSave}
-                        disabled={isLoading || !destination.trim()}
-                    >
-                        {isLoading ? (
-                            <ActivityIndicator color="#007AFF" />
-                        ) : (
-                            <Text style={[
-                                styles.saveButton,
-                                { color: (!destination.trim() || isLoading) ? '#999' : '#007AFF' }
-                            ]}>
-                                Save
-                            </Text>
+                    <View style={styles.headerButtons}>
+                        {editingTravel && (
+                            <TouchableOpacity
+                                onPress={handleDelete}
+                                disabled={isLoading}
+                                style={styles.deleteButton}
+                            >
+                                <MaterialIcons name="delete" size={20} color="#FF3B30" />
+                            </TouchableOpacity>
                         )}
-                    </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={handleSave}
+                            disabled={isLoading || !destination.trim()}
+                        >
+                            {isLoading ? (
+                                <ActivityIndicator color="#007AFF" />
+                            ) : (
+                                <Text style={[
+                                    styles.saveButton,
+                                    { color: (!destination.trim() || isLoading) ? '#999' : '#007AFF' }
+                                ]}>
+                                    Save
+                                </Text>
+                            )}
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -329,7 +404,7 @@ const TravelForm: React.FC<TravelFormProps> = ({
                     <View style={styles.section}>
                         <Text style={styles.label}>Popular Destinations</Text>
                         <View style={styles.chipContainer}>
-                            {['Sydney', 'Melbourne', 'New York', 'Tokyo', 'London', 'Bali'].map((city) => (
+                            {QUICK_SEARCH_CITIES.map((city) => (
                                 <TouchableOpacity
                                     key={city}
                                     style={styles.chip}
@@ -516,6 +591,13 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 14,
         fontWeight: '500',
+    },
+    headerButtons: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    deleteButton: {
+        padding: 4,
     },
 });
 
