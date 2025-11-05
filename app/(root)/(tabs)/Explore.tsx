@@ -24,6 +24,7 @@ import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -1019,49 +1020,93 @@ const Explore = () => {
     <Background>
       <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
         {/* Header with Search */}
-        <View style={[styles.searchHeader, { backgroundColor: isColorful ? 'transparent' : colors.background, borderBottomColor: colors.border }]}>
-          <View style={[styles.searchContainer, { backgroundColor: '#FFFFFF' }]}>
-            <MaterialIcons name="search" size={20} color={colors.textSecondary} />
-            <TextInput
-              placeholder={mode === 'events' ? t('explore.searchEvents') : mode === 'users' ? t('explore.searchUsers') : t('explore.searchGroups')}
-              value={query}
-              onChangeText={setQuery}
-              style={[styles.searchInput, { color: colors.text }]}
-              placeholderTextColor={colors.textSecondary}
-            />
-          </View>
-
-          {/* Filter button for events */}
-          {mode === 'events' && (
-            <TouchableOpacity
-              onPress={() => setShowFilters(!showFilters)}
-              style={[
-                styles.filterButton,
-                {
-                  // Keep filter button background transparent when inactive so gradient shows through
-                  backgroundColor: (showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') ? colors.primary : '#FFFFFF',
-                  borderColor: colors.border
-                }
-              ]}
-            >
-              <MaterialIcons
-                name="tune"
-                size={20}
-                color={showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any'
-                  ? colors.buttonText
-                  : '#000000'}
+        {isColorful ? (
+          <LinearGradient colors={["#667eea", "#764ba2"]} style={[styles.searchHeader]}>
+            <View style={[styles.searchContainer, { backgroundColor: 'rgba(255, 255, 255, 0.9)' }]}>
+              <MaterialIcons name="search" size={20} color={colors.textSecondary} />
+              <TextInput
+                placeholder={mode === 'events' ? t('explore.searchEvents') : mode === 'users' ? t('explore.searchUsers') : t('explore.searchGroups')}
+                value={query}
+                onChangeText={setQuery}
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholderTextColor={colors.textSecondary}
               />
-              {/* Filter count badge */}
-              {(dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') && (
-                <View style={[styles.filterBadge, { backgroundColor: colors.buttonText }]}>
-                  <Text style={[styles.filterBadgeText, { color: colors.primary }]}>
-                    {(dateFilter !== 'any' ? 1 : 0) + selectedTags.length + (priceFilter !== 'any' ? 1 : 0) + (locationFilter !== 'any' ? 1 : 0)}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
+            </View>
+
+            {/* Filter button for events */}
+            {mode === 'events' && (
+              <TouchableOpacity
+                onPress={() => setShowFilters(!showFilters)}
+                style={[
+                  styles.filterButton,
+                  {
+                    backgroundColor: (showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') ? '#FFFFFF' : 'rgba(255, 255, 255, 0.9)',
+                    borderColor: 'rgba(255, 255, 255, 0.3)'
+                  }
+                ]}
+              >
+                <MaterialIcons
+                  name="tune"
+                  size={20}
+                  color={showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any'
+                    ? colors.primary
+                    : '#000000'}
+                />
+                {/* Filter count badge */}
+                {(dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') && (
+                  <View style={[styles.filterBadge, { backgroundColor: colors.primary }]}>
+                    <Text style={[styles.filterBadgeText, { color: '#FFFFFF' }]}>
+                      {(dateFilter !== 'any' ? 1 : 0) + selectedTags.length + (priceFilter !== 'any' ? 1 : 0) + (locationFilter !== 'any' ? 1 : 0)}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
+          </LinearGradient>
+        ) : (
+          <View style={[styles.searchHeader, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+            <View style={[styles.searchContainer, { backgroundColor: '#FFFFFF' }]}>
+              <MaterialIcons name="search" size={20} color={colors.textSecondary} />
+              <TextInput
+                placeholder={mode === 'events' ? t('explore.searchEvents') : mode === 'users' ? t('explore.searchUsers') : t('explore.searchGroups')}
+                value={query}
+                onChangeText={setQuery}
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+
+            {/* Filter button for events */}
+            {mode === 'events' && (
+              <TouchableOpacity
+                onPress={() => setShowFilters(!showFilters)}
+                style={[
+                  styles.filterButton,
+                  {
+                    backgroundColor: (showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') ? colors.primary : '#FFFFFF',
+                    borderColor: colors.border
+                  }
+                ]}
+              >
+                <MaterialIcons
+                  name="tune"
+                  size={20}
+                  color={showFilters || dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any'
+                    ? colors.buttonText
+                    : '#000000'}
+                />
+                {/* Filter count badge */}
+                {(dateFilter !== 'any' || selectedTags.length > 0 || priceFilter !== 'any' || locationFilter !== 'any') && (
+                  <View style={[styles.filterBadge, { backgroundColor: colors.buttonText }]}>
+                    <Text style={[styles.filterBadgeText, { color: colors.primary }]}>
+                      {(dateFilter !== 'any' ? 1 : 0) + selectedTags.length + (priceFilter !== 'any' ? 1 : 0) + (locationFilter !== 'any' ? 1 : 0)}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* Mode Selection */}
         <View style={[styles.modeContainer, { backgroundColor: 'transparent', borderBottomColor: colors.border }]}>

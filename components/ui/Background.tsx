@@ -1,5 +1,4 @@
 import { useTheme } from '@/lib/context/ThemeContext';
-import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { View, ViewStyle } from 'react-native';
 
@@ -9,19 +8,9 @@ interface BackgroundProps {
 }
 
 export const Background: React.FC<BackgroundProps> = ({ children, style }) => {
-    const { isColorful, colors } = useTheme();
+    const { colors } = useTheme();
 
-    if (isColorful) {
-        return (
-            <LinearGradient
-                colors={["#9b8fb6", "#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]}
-                style={[{ flex: 1 }, style]}
-            >
-                {children}
-            </LinearGradient>
-        );
-    }
-
+    // Always use regular background - gradients are now only for headers and tab bars
     return (
         <View style={[{ flex: 1, backgroundColor: colors.background }, style]}>
             {children}

@@ -31,7 +31,7 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
   currentUserId,
   maxPicks = 8
 }) => {
-  const { colors } = useTheme();
+  const { colors, isColorful } = useTheme();
   const [topPicks, setTopPicks] = useState<TopPickEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [recommendationSource, setRecommendationSource] = useState<'location' | 'fallback' | null>(null);
@@ -192,7 +192,7 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
           {Array.from({ length: 4 }).map((_, index) => (
             <View key={`placeholder-${index}`} style={styles.pickItem}>
               <LinearGradient
-                colors={[colors.primary + '30', colors.primary + '10']}
+                colors={isColorful ? ['#667eea', '#764ba2'] : [colors.primary + '30', colors.primary + '10']}
                 style={styles.pickCircle}
               >
                 <Text style={styles.placeholderEmoji}>✨</Text>
@@ -309,7 +309,7 @@ const TopPicks: React.FC<TopPicksProps> = React.memo(({
           Array.from({ length: 3 }, (_, index) => (
             <View key={`fallback-${index}`} style={styles.pickItem}>
               <LinearGradient
-                colors={[colors.primary + '30', colors.primary + '10']}
+                colors={isColorful ? ['#667eea', '#764ba2'] : [colors.primary + '30', colors.primary + '10']}
                 style={styles.pickCircle}
               >
                 <Text style={styles.placeholderEmoji}>✨</Text>

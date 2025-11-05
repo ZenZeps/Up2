@@ -20,6 +20,7 @@ import { userDisplayUtils } from '@/lib/utils/userDisplay';
 import { MaterialIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Linking, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -723,19 +724,35 @@ export default function Feed() {
     <Background>
       <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
         {/* Modern Instagram-style Header */}
-        <View style={[styles.modernHeader, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-          <View style={styles.headerContent}>
-            <Text style={[styles.modernHeaderTitle, { color: colors.text }]}>Up2</Text>
-            <View style={styles.headerActions}>
-              <TouchableOpacity onPress={() => setTravelFormVisible(true)} style={styles.modernHeaderButton}>
-                <MaterialIcons name="flight" size={22} color={colors.text} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setFormVisible(true)} style={styles.modernHeaderButton}>
-                <MaterialIcons name="add-box" size={24} color={colors.text} />
-              </TouchableOpacity>
+        {isColorful ? (
+          <LinearGradient colors={["#667eea", "#764ba2"]} style={[styles.modernHeader]}>
+            <View style={styles.headerContent}>
+              <Text style={[styles.modernHeaderTitle, { color: '#ffffff' }]}>Up2</Text>
+              <View style={styles.headerActions}>
+                <TouchableOpacity onPress={() => setTravelFormVisible(true)} style={styles.modernHeaderButton}>
+                  <MaterialIcons name="flight" size={22} color="#ffffff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setFormVisible(true)} style={styles.modernHeaderButton}>
+                  <MaterialIcons name="add-box" size={24} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </LinearGradient>
+        ) : (
+          <View style={[styles.modernHeader, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+            <View style={styles.headerContent}>
+              <Text style={[styles.modernHeaderTitle, { color: colors.text }]}>Up2</Text>
+              <View style={styles.headerActions}>
+                <TouchableOpacity onPress={() => setTravelFormVisible(true)} style={styles.modernHeaderButton}>
+                  <MaterialIcons name="flight" size={22} color={colors.text} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setFormVisible(true)} style={styles.modernHeaderButton}>
+                  <MaterialIcons name="add-box" size={24} color={colors.text} />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         {/* Combined Feed Timeline (Events + Travel) */}
         <View style={[styles.feedContent, { flex: 1 }]}>

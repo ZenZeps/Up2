@@ -66,10 +66,10 @@ const darkColors = {
 };
 
 const colorfulColors = {
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', // Will be handled specially for gradient
+    background: '#ffffff', // Normal white background in colorful mode
     surface: 'rgba(255, 255, 255, 0.9)',
-    primary: '#000000',
-    secondary: '#6c757d',
+    primary: '#667eea', // Use gradient start color for primary highlights
+    secondary: '#764ba2', // Use gradient end color for secondary highlights
     text: '#000000',
     textSecondary: '#333333',
     border: 'rgba(255, 255, 255, 0.3)',
@@ -77,7 +77,7 @@ const colorfulColors = {
     success: '#28a745',
     warning: '#ffc107',
     card: 'rgba(255, 255, 255, 0.9)',
-    tabBar: 'rgba(255, 255, 255, 0.95)',
+    tabBar: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', // Gradient for tab bar
     shadow: 'rgba(0, 0, 0, 0.2)',
     buttonText: '#ffffff',
 };

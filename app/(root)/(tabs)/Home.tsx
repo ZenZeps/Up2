@@ -1000,7 +1000,7 @@ export default function Home() {
       <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
         {/* Conditional Header - gradient only in colorful mode */}
         {isColorful ? (
-          <LinearGradient colors={["#9b8fb6", "#c78aa5", "#db7d95", "#f2948f", "#f6b793", "#fbf4be"]} style={[styles.headerGradient]}>
+          <LinearGradient colors={["#667eea", "#764ba2"]} style={[styles.headerGradient]}>
             <View style={styles.headerContent}>
               <Text style={[styles.headerTitle, { color: '#fff' }]}>UP2 YOU</Text>
               <View style={styles.headerButtonsContainer}>
@@ -1476,7 +1476,7 @@ const styles = StyleSheet.create({
   },
   headerGradient: {
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 12,
   },
   headerContent: {
     flexDirection: 'row',

@@ -382,7 +382,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
     <Modal visible={visible} animationType="slide" onRequestClose={() => onClose(false)}>
       {isColorful ? (
         <LinearGradient
-          colors={['#FF6B6B', '#4ECDC4', '#45B7D1']}
+          colors={['#667eea', '#764ba2']}
           style={styles.gradientContainer}
         >
           <SafeAreaView style={styles.safeArea}>
@@ -996,7 +996,7 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
             >
               {isColorful ? (
                 <LinearGradient
-                  colors={['#FF6B6B', '#4ECDC4', '#45B7D1']}
+                  colors={['#667eea', '#764ba2']}
                   style={styles.gradientContainer}
                 >
                   <SafeAreaView style={styles.safeArea}>
@@ -1253,8 +1253,8 @@ export default function EventForm({ visible, onClose, event, selectedDateTime, c
                   <View style={[styles.dateTimeGradient, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     {/* Header Row */}
                     <View style={styles.dateTimeHeader}>
-                      <View style={[styles.dateTimeIconWrapper, { backgroundColor: colors.primary + '20' }]}>
-                        <MaterialIcons name="event" size={24} color={colors.primary} />
+                      <View style={[styles.dateTimeIconWrapper, { backgroundColor: isColorful ? colors.primary : colors.primary + '20' }]}>
+                        <MaterialIcons name="event" size={24} color={isColorful ? '#ffffff' : colors.primary} />
                       </View>
                       <View style={styles.dateTimeHeaderText}>
                         <Text style={[styles.dateTimeTitle, { color: colors.text }]}>Event Schedule</Text>

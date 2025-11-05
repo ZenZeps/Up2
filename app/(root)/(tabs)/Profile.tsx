@@ -32,7 +32,7 @@ import UserAvatar from '../components/UserAvatar';
 const Profile = () => {
   const router = useRouter();
   const { user } = useGlobalContext();
-  const { colors } = useTheme();
+  const { colors, isColorful } = useTheme();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const userId = user?.$id;
@@ -232,83 +232,154 @@ const Profile = () => {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 70 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Enhanced Gradient Profile Header */}
-        <LinearGradient
-          colors={['#667eea', '#764ba2']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.profileHeader, { borderBottomColor: colors.border }]}
-        >
-          {/* Header Actions */}
-          <View style={styles.headerActions}>
-            <View style={styles.headerSpacer} />
-            <Text style={[styles.headerTitle, { color: '#fff' }]}>Profile</Text>
-            <View style={styles.headerRight}>
-              <TouchableOpacity style={[styles.headerButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]} onPress={() => router.push('/(root)/settings/Settings')}>
-                <MaterialIcons name="settings" size={20} color="#fff" />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Profile Content */}
-          <View style={styles.profileContent}>
-            <TouchableOpacity
-              onPress={handleUpdateProfilePhoto}
-              disabled={isUploadingPhoto}
-              style={styles.avatarContainer}
-            >
-              {profilePhotoUrl ? (
-                <Image source={{ uri: profilePhotoUrl }} style={[styles.profileAvatar, { borderColor: 'rgba(255,255,255,0.3)' }]} />
-              ) : (
-                <LinearGradient
-                  colors={['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.15)']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={[styles.avatarPlaceholder, { borderColor: 'rgba(255,255,255,0.3)' }]}
-                >
-                  <Text style={styles.avatarText}>{userDisplayUtils.getInitials({ firstName, lastName })}</Text>
-                </LinearGradient>
-              )}
-              <View style={[styles.cameraIcon, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
-                <MaterialIcons name={isUploadingPhoto ? 'hourglass-empty' : 'camera-alt'} size={16} color="white" />
+        {/* Enhanced Gradient Profile Header - only in colorful mode */}
+        {isColorful ? (
+          <LinearGradient
+            colors={['#667eea', '#764ba2']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.gradientBackground, { borderBottomColor: colors.border, borderBottomWidth: 1 }]}
+          >
+            {/* Header Actions */}
+            <View style={styles.headerActions}>
+              <View style={styles.headerSpacer} />
+              <Text style={[styles.headerTitle, { color: '#fff' }]}>Profile</Text>
+              <View style={styles.headerRight}>
+                <TouchableOpacity style={[styles.headerButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]} onPress={() => router.push('/(root)/settings/Settings')}>
+                  <MaterialIcons name="settings" size={20} color="#fff" />
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
-
-            <Text style={[styles.profileName, { color: '#fff' }]}>{userDisplayUtils.getFullName({ firstName, lastName })}</Text>
-            <Text style={[styles.profileTitle, { color: 'rgba(255,255,255,0.8)' }]}>
-              {about ? about.slice(0, 80) + (about.length > 80 ? '...' : '') : 'Add your bio to tell others about yourself'}
-            </Text>
-
-            {/* Simple Stats Row */}
-            <View style={styles.statsContainer}>
-              <TouchableOpacity style={styles.statItem}>
-                <Text style={[styles.statNumber, { color: '#fff' }]}>{stats.friends}</Text>
-                <Text style={[styles.statLabel, { color: 'rgba(255,255,255,0.8)' }]}>{t('profile.friends')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.statItem}>
-                <Text style={[styles.statNumber, { color: '#fff' }]}>{stats.groups}</Text>
-                <Text style={[styles.statLabel, { color: 'rgba(255,255,255,0.8)' }]}>{t('profile.groups')}</Text>
-              </TouchableOpacity>
             </View>
 
-            {/* Action Buttons */}
-            <View style={styles.actionButtons}>
+            {/* Profile Content inside gradient header for colorful mode */}
+            <View style={styles.profileContent}>
               <TouchableOpacity
-                style={[styles.editProfileButton, { backgroundColor: isEditing ? '#EF4444' : 'rgba(255,255,255,0.2)' }]}
-                onPress={() => setIsEditing(!isEditing)}
+                onPress={handleUpdateProfilePhoto}
+                disabled={isUploadingPhoto}
+                style={styles.avatarContainer}
               >
-                <MaterialIcons name={isEditing ? "close" : "edit"} size={16} color="#fff" />
-                <Text style={[styles.editProfileButtonText, { color: '#fff' }]}>
-                  {isEditing ? 'Cancel' : t('profile.editProfile')}
-                </Text>
+                {profilePhotoUrl ? (
+                  <Image source={{ uri: profilePhotoUrl }} style={[styles.profileAvatar, { borderColor: 'rgba(255,255,255,0.3)' }]} />
+                ) : (
+                  <LinearGradient
+                    colors={['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.15)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={[styles.avatarPlaceholder, { borderColor: 'rgba(255,255,255,0.3)' }]}
+                  >
+                    <Text style={styles.avatarText}>{userDisplayUtils.getInitials({ firstName, lastName })}</Text>
+                  </LinearGradient>
+                )}
+                <View style={[styles.cameraIcon, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
+                  <MaterialIcons name={isUploadingPhoto ? 'hourglass-empty' : 'camera-alt'} size={16} color="white" />
+                </View>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.shareButton, { borderColor: 'rgba(255,255,255,0.3)', backgroundColor: 'rgba(255,255,255,0.1)' }]}>
-                <MaterialIcons name="share" size={16} color="#fff" />
-                <Text style={[styles.shareButtonText, { color: '#fff' }]}>{t('profile.share')}</Text>
-              </TouchableOpacity>
+
+              <Text style={[styles.profileName, { color: '#fff' }]}>{userDisplayUtils.getFullName({ firstName, lastName })}</Text>
+              <Text style={[styles.profileTitle, { color: 'rgba(255,255,255,0.8)' }]}>
+                {about ? about.slice(0, 80) + (about.length > 80 ? '...' : '') : 'Add your bio to tell others about yourself'}
+              </Text>
+
+              {/* Simple Stats Row */}
+              <View style={styles.statsContainer}>
+                <TouchableOpacity style={styles.statItem}>
+                  <Text style={[styles.statNumber, { color: '#fff' }]}>{stats.friends}</Text>
+                  <Text style={[styles.statLabel, { color: 'rgba(255,255,255,0.8)' }]}>{t('profile.friends')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.statItem}>
+                  <Text style={[styles.statNumber, { color: '#fff' }]}>{stats.groups}</Text>
+                  <Text style={[styles.statLabel, { color: 'rgba(255,255,255,0.8)' }]}>{t('profile.groups')}</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.actionButtons}>
+                <TouchableOpacity
+                  style={[styles.editProfileButton, { backgroundColor: isEditing ? '#EF4444' : 'rgba(255,255,255,0.2)' }]}
+                  onPress={() => setIsEditing(!isEditing)}
+                >
+                  <MaterialIcons name={isEditing ? "close" : "edit"} size={16} color="#fff" />
+                  <Text style={[styles.editProfileButtonText, { color: '#fff' }]}>
+                    {isEditing ? 'Cancel' : t('profile.editProfile')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.shareButton, { borderColor: 'rgba(255,255,255,0.3)', backgroundColor: 'rgba(255,255,255,0.1)' }]}>
+                  <MaterialIcons name="share" size={16} color="#fff" />
+                  <Text style={[styles.shareButtonText, { color: '#fff' }]}>{t('profile.share')}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        </LinearGradient>
+          </LinearGradient>
+        ) : (
+          <>
+            <View style={[styles.profileHeader, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+              {/* Header Actions */}
+              <View style={styles.headerActions}>
+                <View style={styles.headerSpacer} />
+                <Text style={[styles.headerTitle, { color: colors.text }]}>Profile</Text>
+                <View style={styles.headerRight}>
+                  <TouchableOpacity style={[styles.headerButton, { backgroundColor: colors.surface }]} onPress={() => router.push('/(root)/settings/Settings')}>
+                    <MaterialIcons name="settings" size={20} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {/* Profile Content outside header for normal modes */}
+            <View style={[styles.profileContent, { backgroundColor: colors.background }]}>
+              <TouchableOpacity
+                onPress={handleUpdateProfilePhoto}
+                disabled={isUploadingPhoto}
+                style={styles.avatarContainer}
+              >
+                {profilePhotoUrl ? (
+                  <Image source={{ uri: profilePhotoUrl }} style={[styles.profileAvatar, { borderColor: colors.border }]} />
+                ) : (
+                  <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.avatarText, { color: colors.text }]}>{userDisplayUtils.getInitials({ firstName, lastName })}</Text>
+                  </View>
+                )}
+                <View style={[styles.cameraIcon, { backgroundColor: colors.primary }]}>
+                  <MaterialIcons name={isUploadingPhoto ? 'hourglass-empty' : 'camera-alt'} size={16} color={colors.buttonText} />
+                </View>
+              </TouchableOpacity>
+
+              <Text style={[styles.profileName, { color: colors.text }]}>{userDisplayUtils.getFullName({ firstName, lastName })}</Text>
+              <Text style={[styles.profileTitle, { color: colors.textSecondary }]}>
+                {about ? about.slice(0, 80) + (about.length > 80 ? '...' : '') : 'Add your bio to tell others about yourself'}
+              </Text>
+
+              {/* Simple Stats Row */}
+              <View style={styles.statsContainer}>
+                <TouchableOpacity style={styles.statItem}>
+                  <Text style={[styles.statNumber, { color: colors.text }]}>{stats.friends}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('profile.friends')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.statItem}>
+                  <Text style={[styles.statNumber, { color: colors.text }]}>{stats.groups}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('profile.groups')}</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.actionButtons}>
+                <TouchableOpacity
+                  style={[styles.editProfileButton, { backgroundColor: isEditing ? '#EF4444' : colors.primary }]}
+                  onPress={() => setIsEditing(!isEditing)}
+                >
+                  <MaterialIcons name={isEditing ? "close" : "edit"} size={16} color={colors.buttonText} />
+                  <Text style={[styles.editProfileButtonText, { color: colors.buttonText }]}>
+                    {isEditing ? 'Cancel' : t('profile.editProfile')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.shareButton, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+                  <MaterialIcons name="share" size={16} color={colors.text} />
+                  <Text style={[styles.shareButtonText, { color: colors.text }]}>{t('profile.share')}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
+        )}
 
         {/* Bio Section with Edit Functionality */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 8 }]}>
@@ -527,9 +598,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   gradientBackground: {
-    flex: 1,
     paddingHorizontal: 20,
-    paddingVertical: 50,
+    paddingVertical: 30,
+    paddingBottom: 40,
   },
   headerActions: {
     flexDirection: 'row',

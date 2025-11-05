@@ -3,6 +3,7 @@ import { config, databases } from '@/lib/appwrite/appwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { useGlobalContext } from '@/lib/global-provider';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Tabs } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
@@ -56,12 +57,13 @@ const useNotificationCount = () => {
 };
 
 // TabIcon: Renders an icon and label for each tab in the bottom navigation bar
-const TabIcon = ({ focused, icon, title, colors, hasNotifications = false }: {
+const TabIcon = ({ focused, icon, title, colors, hasNotifications = false, isColorful = false }: {
   focused: boolean;
   icon: any;
   title: string;
   colors: any;
   hasNotifications?: boolean;
+  isColorful?: boolean;
 }) => (
   <View className="flex-1 mt-3 flex flex-col items-center relative">
     {/* Tab icon with dynamic tint color based on focus */}
@@ -71,7 +73,7 @@ const TabIcon = ({ focused, icon, title, colors, hasNotifications = false }: {
         style={{
           width: 24,
           height: 24,
-          // Use white for the active tab highlight to ensure visibility on dark tab bar
+          // Use white for active tab in both dark and colorful modes
           tintColor: focused ? '#FFFFFF' : colors.textSecondary
         }}
         resizeMode="contain"
@@ -85,7 +87,7 @@ const TabIcon = ({ focused, icon, title, colors, hasNotifications = false }: {
     <Text
       className={`${focused ? 'font-rubik-medium' : 'font-rubik'} text-xs w-full text-center mt-1`}
       style={{
-        // Ensure active tab label is white on dark tab bar
+        // Use white for active tab in both dark and colorful modes
         color: focused ? '#FFFFFF' : colors.textSecondary
       }}
     >
@@ -96,7 +98,7 @@ const TabIcon = ({ focused, icon, title, colors, hasNotifications = false }: {
 
 // TabsLayout: Main layout for the tab navigator
 const TabsLayout = () => {
-  const { colors, isDark } = useTheme();
+  const { colors, isDark, isColorful } = useTheme();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const hasNotifications = useNotificationCount();
@@ -109,14 +111,25 @@ const TabsLayout = () => {
         screenOptions={{
           tabBarShowLabel: false, // Hide default tab labels
           tabBarStyle: {
-            // Use a consistent dark tab bar appearance even in light mode so the Feed looks the same
-            backgroundColor: isDark ? colors.tabBar : '#1c1c1e',
+            backgroundColor: isColorful ? 'transparent' : (isDark ? colors.tabBar : '#1c1c1e'),
             position: 'absolute',
             borderTopColor: colors.border,
             borderTopWidth: 1,
             height: 70 + insets.bottom, // Add bottom safe area padding
             paddingBottom: insets.bottom, // Ensure content is above safe area
-          }
+          },
+          tabBarBackground: isColorful ? () => (
+            <LinearGradient
+              colors={["#667eea", "#764ba2"]}
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: 0,
+                height: 70 + insets.bottom,
+              }}
+            />
+          ) : undefined,
         }}
       >
         {/* Home tab */}
@@ -126,7 +139,7 @@ const TabsLayout = () => {
             title: 'Home',
             headerShown: false, // Hide the header for this tab
             tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.home} focused={focused} title={t('navigation.home')} colors={colors} hasNotifications={false} />
+              <TabIcon icon={icons.home} focused={focused} title={t('navigation.home')} colors={colors} hasNotifications={false} isColorful={isColorful} />
             )
           }}
         />
@@ -139,7 +152,7 @@ const TabsLayout = () => {
             tabBarIcon: ({ focused }) => (
               // Do not show the notification badge on the bottom Feed tab for invites.
               // Invite highlighting is handled inside the Home screen UI's bell icon.
-              <TabIcon icon={icons.bell} focused={focused} title="Feed" colors={colors} hasNotifications={false} />
+              <TabIcon icon={icons.bell} focused={focused} title="Feed" colors={colors} hasNotifications={false} isColorful={isColorful} />
             )
           }}
         />
@@ -151,7 +164,7 @@ const TabsLayout = () => {
             title: 'Explore',
             headerShown: false,
             tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.search} focused={focused} title={t('navigation.explore')} colors={colors} hasNotifications={false} />
+              <TabIcon icon={icons.search} focused={focused} title={t('navigation.explore')} colors={colors} hasNotifications={false} isColorful={isColorful} />
             )
           }}
         />
@@ -162,7 +175,7 @@ const TabsLayout = () => {
             title: 'Profile',
             headerShown: false,
             tabBarIcon: ({ focused }) => (
-              <TabIcon icon={icons.person} focused={focused} title={t('navigation.profile')} colors={colors} hasNotifications={false} />
+              <TabIcon icon={icons.person} focused={focused} title={t('navigation.profile')} colors={colors} hasNotifications={false} isColorful={isColorful} />
             )
           }}
         />
