@@ -1,6 +1,7 @@
 import EventImage from '@/components/EventImage';
 import TopPicks from '@/components/feed/TopPicks';
 import { Background } from '@/components/ui/Background';
+import { FeedSkeletonLoader } from '@/components/ui/SkeletonLoaders';
 import { getCategoriesByValues } from '@/constants/categories';
 import { addEventAttendee, getEventAttendeesFor, getUserAttendingEvents, removeEventAttendee } from '@/lib/api/event';
 import { getUserFriends } from '@/lib/api/friendship';
@@ -132,6 +133,8 @@ export default function Feed() {
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
+  const [showSkeletonLoader, setShowSkeletonLoader] = useState(true);
+  const [hasDisplayedCachedData, setHasDisplayedCachedData] = useState(false);
   const lastFeedFetch = useRef<number>(0);
   const fetchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MIN_FETCH_INTERVAL = 5 * 1000; // Reduced to 5s for better responsiveness
@@ -278,6 +281,46 @@ export default function Feed() {
     };
     init();
   }, [globalUser?.$id]); // Removed fetchFeedData from deps to prevent re-runs
+
+  // Progressive loading: Show cached data immediately if available
+  useEffect(() => {
+    if (!globalUser?.$id) return;
+
+    const showCachedDataImmediately = async () => {
+      try {
+        // Check for cached screen data from EventContext
+        const cachedEvents = getScreenEvents?.('feed');
+        if (cachedEvents && cachedEvents.length > 0 && !hasDisplayedCachedData) {
+          console.log('🚀 Feed: Showing cached data immediately', { count: cachedEvents.length });
+
+          // Display cached events immediately
+          setBaseEventsWithCreatorNames(cachedEvents);
+          setAllEventsForTopPicks(cachedEvents);
+          setShowSkeletonLoader(false);
+          setHasDisplayedCachedData(true);
+
+          // Trigger background refresh after a short delay
+          setTimeout(() => {
+            if (!isFetching) {
+              console.log('🔄 Feed: Starting background refresh');
+              debouncedFetchFeedData(false);
+            }
+          }, 300);
+        }
+      } catch (error) {
+        console.error('Feed: Error showing cached data:', error);
+      }
+    };
+
+    showCachedDataImmediately();
+  }, [globalUser?.$id, getScreenEvents, hasDisplayedCachedData, isFetching]);
+
+  // Hide skeleton loader when we have data
+  useEffect(() => {
+    if (eventsWithCreatorNames.length > 0 || travelAnnouncements.length > 0) {
+      setShowSkeletonLoader(false);
+    }
+  }, [eventsWithCreatorNames.length, travelAnnouncements.length]);
 
   // Simple focus effect for refresh check with debounce
   useFocusEffect(
@@ -756,34 +799,38 @@ export default function Feed() {
 
         {/* Combined Feed Timeline (Events + Travel) */}
         <View style={[styles.feedContent, { flex: 1 }]}>
-          <FlatList
-            data={combinedFeedItems}
-            keyExtractor={(item) => `${item.type}-${item.$id}`}
-            renderItem={renderFeedItem}
-            ListHeaderComponent={useMemo(() => () => (
-              <View>
-                {/* Top Picks */}
-                <View style={{ marginTop: 8 }}>
-                  <TopPicks
-                    allEvents={allEventsForTopPicks}
-                    userFriends={friends}
-                    currentUserId={currentUserId || undefined}
-                    maxPicks={8}
-                  />
+          {showSkeletonLoader && !hasDisplayedCachedData && combinedFeedItems.length === 0 ? (
+            <FeedSkeletonLoader itemCount={4} />
+          ) : (
+            <FlatList
+              data={combinedFeedItems}
+              keyExtractor={(item) => `${item.type}-${item.$id}`}
+              renderItem={renderFeedItem}
+              ListHeaderComponent={useMemo(() => () => (
+                <View>
+                  {/* Top Picks */}
+                  <View style={{ marginTop: 8 }}>
+                    <TopPicks
+                      allEvents={allEventsForTopPicks}
+                      userFriends={friends}
+                      currentUserId={currentUserId || undefined}
+                      maxPicks={8}
+                    />
+                  </View>
                 </View>
-              </View>
-            ), [allEventsForTopPicks, friends, currentUserId, colors])}
-            ListEmptyComponent={() => (
-              <View style={{ padding: 24, alignItems: 'center' }}>
-                <Text style={{ color: colors.textSecondary }}>No events yet. Pull to refresh.</Text>
-              </View>
-            )}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: 70 + insets.bottom }}
-            showsVerticalScrollIndicator={false}
-          />
+              ), [allEventsForTopPicks, friends, currentUserId, colors])}
+              ListEmptyComponent={() => (
+                <View style={{ padding: 24, alignItems: 'center' }}>
+                  <Text style={{ color: colors.textSecondary }}>No events yet. Pull to refresh.</Text>
+                </View>
+              )}
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingBottom: 70 + insets.bottom }}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
 
 
         </View>

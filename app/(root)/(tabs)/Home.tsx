@@ -1,9 +1,10 @@
-import { Background } from '@/components/ui/Background';
-import { getEventColor } from '@/constants/categories';
-import { enrichEventsWithGroupNames, getUserAttendingEvents } from '@/lib/api/event';
-import { getUserGroupInvites } from '@/lib/api/group';
-// Removed static import of getActiveTravelForUser - using dynamic import instead
 import EventImage from '@/components/EventImage';
+import { Background } from '@/components/ui/Background';
+import { HomeSkeletonLoader } from '@/components/ui/SkeletonLoaders';
+import { getEventColor } from '@/constants/categories';
+import { enrichEventsWithGroupNames, getUserAttendingEvents, loadEventsProgressively } from '@/lib/api/event';
+import { getUserGroupInvites } from '@/lib/api/group';
+import { getActiveTravelForUser } from '@/lib/api/travel';
 import { useAppwrite } from '@/lib/appwrite/useAppwrite';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { authDebug } from '@/lib/debug/authDebug';
@@ -130,6 +131,8 @@ export default function Home() {
   const [userAttendingEvents, setUserAttendingEvents] = useState<AppEvent[]>([]);
   const [travelEditVisible, setTravelEditVisible] = useState(false);
   const [editingTravel, setEditingTravel] = useState<any>(null);
+  const [showSkeletonLoader, setShowSkeletonLoader] = useState(true);
+  const [hasDisplayedCachedData, setHasDisplayedCachedData] = useState(false);
 
   // Get unique creator IDs from events
   const creatorIds = useMemo(() => {
@@ -189,6 +192,37 @@ export default function Home() {
   const { user: globalUser } = useGlobalContext();
   const currentUser = globalUser; // Use the already-authenticated user from global context
 
+  // Progressive loading: Show cached data immediately, hide skeleton when fresh data loads
+  useEffect(() => {
+    if (!currentUser?.$id || !getScreenEvents) return;
+
+    // Try to show cached data immediately
+    const cachedData = getScreenEvents('home');
+    if (cachedData && cachedData.length > 0 && !hasDisplayedCachedData) {
+      authDebug.debug('Home: Displaying cached data for immediate feedback');
+      setEnrichedEvents(cachedData);
+      setAgendaEvents(filterUpcomingEvents(cachedData));
+      setHasDisplayedCachedData(true);
+      setShowSkeletonLoader(false);
+    }
+
+    // Load fresh data
+    const loadFreshData = async () => {
+      try {
+        // This will trigger the normal data loading process
+        await smartRefetchEvents('navigation');
+        setShowSkeletonLoader(false);
+      } catch (error) {
+        authDebug.error('Home: Error loading fresh data', error);
+        setShowSkeletonLoader(false);
+      }
+    };
+
+    if (showSkeletonLoader) {
+      loadFreshData();
+    }
+  }, [currentUser?.$id, getScreenEvents, hasDisplayedCachedData, showSkeletonLoader, smartRefetchEvents]);
+
   // Use profile data from global context (already includes profile)
   const userProfile = currentUser?.profile;
 
@@ -199,20 +233,7 @@ export default function Home() {
 
       console.log('Home: Starting travel data fetch for user:', currentUser.$id);
 
-      // Use dynamic import from index.ts with detailed debugging
       try {
-        const apiModule = await import('@/lib/api');
-        console.log('Home: Successfully imported API module');
-        console.log('Home: Available exports from API module:', Object.keys(apiModule));
-        console.log('Home: getActiveTravelForUser type:', typeof apiModule.getActiveTravelForUser);
-        console.log('Home: All function types:', Object.entries(apiModule).map(([key, value]) => `${key}: ${typeof value}`));
-
-        const { getActiveTravelForUser } = apiModule;
-
-        if (typeof getActiveTravelForUser !== 'function') {
-          throw new Error('getActiveTravelForUser is not a function after dynamic import');
-        }
-
         const result = await getActiveTravelForUser(currentUser.$id);
         console.log('Home: Successfully fetched travel data, count:', result?.length || 0);
         return result;
@@ -266,8 +287,6 @@ export default function Home() {
     if (isInitialMount.current && strategy.cacheStrategy !== 'database') {
       try {
         // Try progressive loading for initial mount
-        const { loadEventsProgressively } = await import('@/lib/api/event');
-
         // Get cached events
         const cachedEvents = strategy.cacheStrategy === 'memory'
           ? (getScreenEvents ? getScreenEvents('home') : [])
@@ -1110,7 +1129,9 @@ export default function Home() {
 
         {/* Content */}
         <View style={styles.content}>
-          {activeTab === 'agenda' ? (
+          {showSkeletonLoader ? (
+            <HomeSkeletonLoader />
+          ) : activeTab === 'agenda' ? (
             /* Modern Agenda View with Day Groupings - Events + Travel */
             <FlatList
               style={[styles.agendaList, { backgroundColor: colors.background }]}
